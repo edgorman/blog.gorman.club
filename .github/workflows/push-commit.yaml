@@ -54,7 +54,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -87,61 +86,17 @@ jobs:
             echo 'COMMITS_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      # Skipped until infrastructure/config/prod exists (the env-level
-      # Terraform root described in CLAUDE.md hasn't been scaffolded yet,
-      # same as the staging/prod filters noted in github-file-diff) - keeps
-      # every merge to main from failing here in the meantime.
-      - name: Authenticate to Google Cloud
-        if: hashFiles('infrastructure/config/prod/**') != ''
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.SERVICE_ACCOUNT }}
-
-      - name: Setup Terraform
-        if: hashFiles('infrastructure/config/prod/**') != ''
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: '1.15.8'
-
-      - name: Terraform Init
-        if: hashFiles('infrastructure/config/prod/**') != ''
-        shell: bash
-        working-directory: infrastructure
-        run: |
-          terraform init \
-            -backend-config="${{ github.workspace }}/infrastructure/config/prod/terraform.tfbackend"
-
-      - id: plan
-        name: Terraform Plan
-        if: hashFiles('infrastructure/config/prod/**') != ''
-        shell: bash
-        working-directory: infrastructure
-        run: |
-          terraform plan \
-            -var-file="${{ github.workspace }}/infrastructure/config/prod/terraform.tfvars" \
-            -lock=false \
-            -no-color \
-            -out=tfplan.binary
-          {
-            echo 'plan<<PLAN_EOF'
-            terraform show -no-color tfplan.binary
-            echo 'PLAN_EOF'
-          } >> "$GITHUB_OUTPUT"
-
+      # The prod terraform plan CLAUDE.md describes as part of this step is
+      # deliberately left out until infrastructure/config/prod (the
+      # env-level Terraform root) actually exists - same "wire it up once
+      # that part of the repo exists" rule as the staging/prod filters
+      # noted in github-file-diff.
       - name: Write Release Notes
         shell: bash
         run: |
           {
             echo "## Commits since ${{ steps.version.outputs.last_tag }}"
             echo "${{ steps.commits.outputs.log }}"
-            if [ -n "${{ steps.plan.outputs.plan }}" ]; then
-              echo
-              echo "## Terraform Plan (blog-gorman-club-prod)"
-              echo '```hcl'
-              echo "${{ steps.plan.outputs.plan }}"
-              echo '```'
-            fi
           } > RELEASE_NOTES.md
 
       - name: Create Pre-Release

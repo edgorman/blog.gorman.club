@@ -1,0 +1,71 @@
+# This file is synced to GitHub by https://github.com/repository-settings/app
+#
+# Repository settings, branch protection, and labels are managed declaratively
+# from here. Edit this file (via a pull request) rather than changing settings
+# by hand in the GitHub UI — manual changes will be reverted on the next sync.
+
+repository:
+  # General
+  name: blog.gorman.club
+  description: Monorepo for the static frontend, backend services, and infrastructure behind blog.gorman.club
+  private: false
+  has_issues: true
+  has_projects: false
+  has_wiki: false
+  has_downloads: false
+
+  default_branch: main
+
+  # Merge button behaviour — squash-only keeps trunk history linear, which the
+  # pre-release/release tagging strategy in CLAUDE.md depends on.
+  allow_squash_merge: true
+  allow_merge_commit: false
+  allow_rebase_merge: false
+  squash_merge_commit_title: PR_TITLE
+  squash_merge_commit_message: PR_BODY
+  delete_branch_on_merge: true
+
+  # Security
+  enable_automated_security_fixes: true
+  enable_vulnerability_alerts: true
+
+labels:
+  - name: infrastructure
+    color: "1d76db"
+    description: Terraform / infrastructure changes
+  - name: backend
+    color: "0e8a16"
+    description: Backend service changes
+  - name: frontend
+    color: "fbca04"
+    description: Frontend changes
+  - name: ci
+    color: "5319e7"
+    description: GitHub Actions / workflow changes
+  - name: release
+    color: "0052cc"
+    description: Related to a pre-release or production release
+
+branches:
+  - name: main
+    protection:
+      # Require every change to land via reviewed PR — trunk-based dev with
+      # no direct pushes to main.
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: true
+        require_code_owner_reviews: false
+
+      # Status check contexts are intentionally empty until the CI workflows
+      # under /.github/workflow land; update this list with the real job
+      # names (e.g. "backend / test", "frontend / build") once they exist.
+      required_status_checks:
+        strict: true
+        contexts: []
+
+      enforce_admins: false
+      required_linear_history: true
+      required_conversation_resolution: true
+      restrictions: null
+      allow_force_pushes: false
+      allow_deletions: false

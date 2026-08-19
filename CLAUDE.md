@@ -42,7 +42,7 @@ Releases use plain semantic versioning — `major.minor.patch`, with no `-rc.N` 
 
 ### Staging Deployments (Push to main)
 
-Merging a pull request to `main` automatically builds backend container images and pushes them to the `my-app-staging` Artifact Registry, tagged with the calculated version, then deploys them to Cloud Run in the `my-app-staging` project and updates the staging subdomain on Cloudflare Pages.
+Merging a pull request to `main` automatically builds backend container images and pushes them to the `my-app-staging` Artifact Registry, tagged with the commit SHA (never the calculated version — that can still change if a developer renames the pre-release before promotion), then deploys that image to Cloud Run in the `my-app-staging` project and updates the staging subdomain on Cloudflare Pages.
 
 ### Pre-Release Generation
 
@@ -53,7 +53,7 @@ Merges to `main` calculate the next version (see Versioning above), execute a `t
 Promoting a specific pre-release tag via GitHub Actions converts it into a formal Release (e.g., `v1.0.0`) and runs, in order:
 
 1. `terraform apply` on `my-app-prod`, applying any infrastructure changes first.
-2. Image promotion via [`gcrane`](https://github.com/google/go-containerregistry/tree/main/cmd/gcrane) — the exact container images already built and tested in the `my-app-staging` Artifact Registry are copied by digest into the `my-app-prod` Artifact Registry and retagged with the release version. Images are **never rebuilt** for production; promotion guarantees prod runs the identical bytes validated in staging.
+2. Image promotion via [`gcrane`](https://github.com/google/go-containerregistry/tree/main/cmd/gcrane) — the pre-release records which commit SHA it was cut from, so promotion looks up that commit-SHA-tagged image in the `my-app-staging` Artifact Registry and copies it by digest into the `my-app-prod` Artifact Registry, retagged with the release version. Images are **never rebuilt** for production; promotion guarantees prod runs the identical bytes validated in staging.
 3. Cloud Run traffic in `my-app-prod` is bumped to the newly copied image tag, completing the release.
 
 ### Rollback Strategy

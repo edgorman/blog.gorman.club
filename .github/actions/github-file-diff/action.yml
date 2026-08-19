@@ -1,0 +1,30 @@
+name: 'GitHub File Diff'
+description: 'Determines which parts of the infrastructure and services have changed'
+
+inputs:
+  branch_ref:
+    description: 'The branch we are generating a diff against'
+    required: true
+
+outputs:
+  infrastructure-root:
+    description: 'Whether infrastructure root files changed'
+    value: ${{ steps.filter.outputs.infrastructure-root }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        base: ${{ inputs.branch_ref }}
+        filters: |
+          infrastructure-root:
+            - 'infrastructure/config/root/**'
+            - 'infrastructure/root/**'
+            - '.github/actions/terraform-pull-request/**'
+            - '.github/actions/terraform-push-commit/**'
+            - '.github/actions/gcp-secret-manager/**'
+
+          # Add staging/prod (infrastructure/env) and service filters here
+          # once those areas of the repo exist, following the same pattern.

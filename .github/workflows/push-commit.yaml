@@ -1,0 +1,48 @@
+name: 'Push Commit'
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: push-commit-root-main
+  cancel-in-progress: false
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    outputs:
+      infrastructure-root: ${{ steps.diff.outputs.infrastructure-root }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: diff
+        uses: ./.github/actions/github-file-diff
+        with:
+          branch_ref: ${{ github.ref_name }}
+
+  infrastructure-root:
+    needs: diff
+    if: needs.diff.outputs.infrastructure-root == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - id: secrets
+        uses: ./.github/actions/gcp-secret-manager
+        with:
+          project_id: 'blog-gorman-club-root'
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+          secrets_list: |
+            TF_VAR_github_provider_token=github_provider_token
+      - uses: ./.github/actions/terraform-push-commit
+        with:
+          terraform_directory: 'infrastructure/root'
+          config_directory: 'infrastructure/config/root'
+          secrets: ${{ steps.secrets.outputs.secrets }}

@@ -1,0 +1,51 @@
+name: 'Pull Request'
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pull-request-root-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    outputs:
+      infrastructure-root: ${{ steps.diff.outputs.infrastructure-root }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: diff
+        uses: ./.github/actions/github-file-diff
+        with:
+          branch_ref: ${{ github.base_ref }}
+
+  infrastructure-root:
+    needs: diff
+    if: needs.diff.outputs.infrastructure-root == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+      - id: secrets
+        uses: ./.github/actions/gcp-secret-manager
+        with:
+          project_id: 'blog-gorman-club-root'
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+          secrets_list: |
+            TF_VAR_github_provider_token=github_provider_token
+      - uses: ./.github/actions/terraform-pull-request
+        with:
+          terraform_directory: 'infrastructure/root'
+          config_directory: 'infrastructure/config/root'
+          secrets: ${{ steps.secrets.outputs.secrets }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,61 @@
+name: 'GCP Secret Manager'
+description: 'Reads secrets from GCP Secret Manager and outputs them in a format suitable for the Terraform actions'
+
+inputs:
+  project_id:
+    description: 'The GCP Project ID'
+    required: true
+  workload_identity_provider:
+    description: 'The Workload Identity Provider resource name'
+    required: true
+  service_account:
+    description: 'The Google Service Account email'
+    required: true
+  secrets_list:
+    description: 'A newline-separated list of mapping between ENV_VAR and Secret name (e.g. DB_PASSWORD=database-pwd)'
+    required: true
+
+outputs:
+  secrets:
+    description: 'Newline-separated list of secrets in KEY=VALUE format'
+    value: ${{ steps.fetch-secrets.outputs.formatted_secrets }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: auth
+      name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - id: fetch-secrets
+      name: Fetch Secrets
+      shell: bash
+      run: |
+        RESULT=""
+        while IFS= read -r line || [[ -n "$line" ]]; do
+          if [[ -z "$line" ]]; then continue; fi
+
+          # Expected format: ENV_VAR=SECRET_NAME
+          KEY=$(echo "$line" | cut -d'=' -f1)
+          SECRET_NAME=$(echo "$line" | cut -d'=' -f2)
+
+          echo "Fetching secret: $SECRET_NAME for $KEY"
+
+          VALUE=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="${{ inputs.project_id }}")
+
+          if [ -n "$RESULT" ]; then
+            RESULT="$RESULT%0A$KEY=$VALUE"
+          else
+            RESULT="$KEY=$VALUE"
+          fi
+        done <<EOF
+        ${{ inputs.secrets_list }}
+        EOF
+
+        echo "formatted_secrets=$RESULT" >> "$GITHUB_OUTPUT"

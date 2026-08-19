@@ -1,0 +1,44 @@
+name: 'Terraform Push Commit'
+description: 'Performs terraform init and apply'
+
+inputs:
+  terraform_directory:
+    description: 'The directory containing the Terraform files'
+    required: true
+  config_directory:
+    description: 'The directory containing the configuration files (backend and vars)'
+    required: true
+  secrets:
+    description: 'Newline-separated list of secrets or env vars to export (e.g., KEY=VALUE)'
+    required: false
+    default: ''
+
+runs:
+  using: "composite"
+  steps:
+    - name: Export Secrets
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.secrets }}" ]; then
+          echo "${{ inputs.secrets }}" >> "$GITHUB_ENV"
+        fi
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.15.8"
+
+    - name: Terraform Init
+      shell: bash
+      working-directory: ${{ inputs.terraform_directory }}
+      run: |
+        terraform init \
+          -backend-config="${{ github.workspace }}/${{ inputs.config_directory }}/terraform.tfbackend"
+
+    - name: Terraform Apply
+      shell: bash
+      working-directory: ${{ inputs.terraform_directory }}
+      run: |
+        terraform apply \
+          -var-file="${{ github.workspace }}/${{ inputs.config_directory }}/terraform.tfvars" \
+          -auto-approve

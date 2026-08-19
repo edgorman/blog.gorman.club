@@ -27,7 +27,7 @@ To maintain strict blast radius boundaries, environments live in distinct GCP pr
 
 ### Root Environment
 
-A third, non-application Terraform root lives at `/infrastructure/root` and provisions the resources shared across staging and prod: the `blog-gorman-club-staging` and `blog-gorman-club-prod` GCP projects themselves, the Terraform state buckets for all environments (root included), the GitHub Actions WIF pool/provider, and any domain configuration shared between the two environments (e.g. the parent DNS zone). It also enables the baseline set of GCP APIs uniformly across root and both environment projects, so the per-environment Terraform roots can assume those APIs are already on.
+A third, non-application Terraform root lives at `/infrastructure/root` and provisions the `blog-gorman-club-root` GCP project itself, along with the resources shared across staging and prod: the `blog-gorman-club-staging` and `blog-gorman-club-prod` GCP projects, the Terraform state buckets for all environments (root included), the GitHub Actions WIF pool/provider, and any domain configuration shared between the two environments (e.g. the parent DNS zone). It also enables the baseline set of GCP APIs uniformly across root and both environment projects, so the per-environment Terraform roots can assume those APIs are already on.
 
 This root environment is configured manually — it has to exist before any pipeline has credentials or state to work with, so it can't be bootstrapped by the CI/CD it enables. This is the one exception to the rule: the `blog-gorman-club-staging` and `blog-gorman-club-prod` environments are **only ever** changed by CI/CD, never manually.
 
@@ -55,14 +55,14 @@ Merging a pull request to `main` automatically builds backend container images a
 
 ### Pre-Release Generation
 
-Merges to `main` calculate the next version (see Versioning above), execute a `terraform plan` against the production environment, and auto-generate a GitHub Pre-Release. This entry includes the plan output and a summary of commits merged since the last release. Multiple pre-releases can accumulate on `main` without touching production.
+Merges to `main` calculate the next version (see Versioning above), execute a `terraform plan -lock=false` against the production environment, and auto-generate a GitHub Pre-Release. This entry includes the plan output and a summary of commits merged since the last release. The plan is read-only and disables state locking so it never contends with an in-flight production `terraform apply`, and so a pre-release build on `main` can never block a promotion from applying. Multiple pre-releases can accumulate on `main` without touching production.
 
 ### Production Releases (Manual Promotion)
 
 Promoting a specific pre-release tag via GitHub Actions converts it into a formal Release (e.g., `v1.0.0`) and runs, in order:
 
 1. `terraform apply` on `blog-gorman-club-prod`, applying any infrastructure changes first.
-2. Image promotion via [`gcrane`](https://github.com/google/go-containerregistry/tree/main/cmd/gcrane) — the pre-release records which commit SHA it was cut from, so promotion looks up that commit-SHA-tagged image in the `blog-gorman-club-staging` Artifact Registry and copies it by digest into the `blog-gorman-club-prod` Artifact Registry, retagged with the release version. Images are **never rebuilt** for production; promotion guarantees prod runs the identical bytes validated in staging.
+2. Image promotion via [`gcrane`](https://github.com/google/go-containerregistry/tree/main/cmd/gcrane) — the workflow resolves the target commit SHA directly from the release tag pointer (`github.sha`), looks up that commit-SHA-tagged image in the `blog-gorman-club-staging` Artifact Registry, and copies it by digest into the `blog-gorman-club-prod` Artifact Registry, retagged with the formal release version (e.g. `v1.0.0`). Images are **never rebuilt** for production; promotion guarantees prod runs the identical bytes validated in staging.
 3. Cloud Run traffic in `blog-gorman-club-prod` is bumped to the newly copied image tag, completing the release.
 
 ### Rollback Strategy

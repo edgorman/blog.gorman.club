@@ -45,3 +45,14 @@ variable "github_repository_name" {
   type        = string
   default     = "blog.gorman.club"
 }
+
+variable "cloudflare_account_id" {
+  description = "The id of the cloudflare account."
+  type        = string
+}
+
+variable "cloudflare_api_token" {
+  description = "The api token granting CICD access to the cloudflare account. Passed by hand for the one-time manual bootstrap; every apply after that (including CI's) sources it from the cloudflare_api_token secret in Secret Manager instead (see gcp_secret.tf), so it's never stored as a GitHub Actions secret."
+  type        = string
+  sensitive   = true
+}

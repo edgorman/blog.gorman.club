@@ -26,11 +26,12 @@ jobs:
           branch_ref: ${{ github.ref_name }}
 
   # Deploys the frontend straight to Cloudflare Pages on every merge to
-  # main, per the Staging Deployments section of CLAUDE.md. Cloudflare has
-  # no WIF-style OIDC federation like the GCP jobs below, so its credentials
-  # are plain GitHub Actions secrets/variables instead of Secret Manager:
-  # CLOUDFLARE_API_TOKEN (secret) and CLOUDFLARE_ACCOUNT_ID (variable) need
-  # to be created by hand once, the same way root's bootstrap PAT was.
+  # main, per the Staging Deployments section of CLAUDE.md. Cloudflare
+  # credentials are fetched directly from Secret Manager via WIF (same
+  # pattern as infrastructure-root below), never stored as GitHub Actions
+  # secrets/variables — this only works once cloudflare_account_id and
+  # cloudflare_api_token exist in Secret Manager (see
+  # infrastructure/root/gcp_secret.tf).
   # backend_url is left unset until the backend service exists; until then
   # the deployed site shows the "no backend deployed yet" placeholder.
   services-frontend:
@@ -39,12 +40,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v5
+      - id: secrets
+        uses: ./.github/actions/gcp-secret-manager
+        with:
+          project_id: 'blog-gorman-club-root'
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+          secrets_list: |
+            CLOUDFLARE_API_TOKEN=cloudflare_api_token
+            CLOUDFLARE_ACCOUNT_ID=cloudflare_account_id
       - uses: ./.github/actions/frontend-push-commit
         with:
-          cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          secrets: ${{ steps.secrets.outputs.secrets }}
           cloudflare_project_name: 'frontend-stag'
 
   infrastructure-root:

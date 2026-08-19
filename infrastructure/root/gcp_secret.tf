@@ -25,11 +25,14 @@ resource "google_secret_manager_secret_iam_member" "github_actions_secret_access
   member    = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Same bootstrap-then-Secret-Manager pattern as github_provider_token above,
-# for the two Cloudflare values cloudflare_cicd.tf writes into GitHub
-# Actions. cloudflare_account_id isn't sensitive, but it still needs a
-# source on every apply since it has no default, so it goes through Secret
-# Manager the same way.
+# Same bootstrap pattern as github_provider_token above: passed by hand once,
+# then every subsequent apply (including CI's) reads these back out via the
+# gcp-secret-manager composite action and passes them in as
+# TF_VAR_cloudflare_account_id / TF_VAR_cloudflare_api_token, so this module
+# can keep the Secret Manager copies current. Unlike github_provider_token,
+# these two are never written into GitHub Actions secrets/variables — the
+# services-frontend deploy job (push-commit.yaml) fetches them from Secret
+# Manager directly via WIF at deploy time instead.
 resource "google_secret_manager_secret" "cloudflare_account_id" {
   project   = var.gcp_provider_project_id
   secret_id = "cloudflare_account_id"

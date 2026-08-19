@@ -27,13 +27,15 @@ To maintain strict blast radius boundaries, environments live in distinct GCP pr
 
 ### Root Environment
 
-A third, non-application Terraform root lives at `/infrastructure/root` and provisions the resources shared across staging and prod: the Terraform state buckets for all environments, the GitHub Actions WIF pool/provider, and any domain configuration shared between `blog-gorman-club-staging` and `blog-gorman-club-prod` (e.g. the parent DNS zone).
+A third, non-application Terraform root lives at `/infrastructure/root` and provisions the resources shared across staging and prod: the `blog-gorman-club-staging` and `blog-gorman-club-prod` GCP projects themselves, the Terraform state buckets for all environments (root included), the GitHub Actions WIF pool/provider, and any domain configuration shared between the two environments (e.g. the parent DNS zone). It also enables the baseline set of GCP APIs uniformly across root and both environment projects, so the per-environment Terraform roots can assume those APIs are already on.
 
 This root environment is configured manually — it has to exist before any pipeline has credentials or state to work with, so it can't be bootstrapped by the CI/CD it enables. This is the one exception to the rule: the `blog-gorman-club-staging` and `blog-gorman-club-prod` environments are **only ever** changed by CI/CD, never manually.
 
+Because the root project's own state bucket doesn't exist until root has been applied once, the very first `terraform apply` for root runs against local state; once the GCS bucket it creates exists, state is migrated into it (`terraform init -migrate-state`) and the local state files are discarded. Every apply after that first bootstrap uses the remote backend like any other environment.
+
 ### IAM & Authentication
 
-Workflows authenticate to GCP using Workload Identity Federation (WIF) over short-lived OIDC tokens, avoiding long-lived JSON keys. Service accounts are bound strictly per project.
+Workflows authenticate to GCP using Workload Identity Federation (WIF) over short-lived OIDC tokens, avoiding long-lived JSON keys. A single GitHub Actions service account is created in the root environment and granted IAM roles on each project (root, staging, prod) individually — never a broad org-level grant — and the WIF provider's attribute condition restricts it to OIDC tokens asserting this specific GitHub repository. The resulting Workload Identity Provider path and service account email are written into GitHub Actions repository variables by the root apply, so workflows never hardcode them.
 
 ### Resource Naming
 

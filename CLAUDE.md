@@ -8,21 +8,28 @@ This is a single-repository (monorepo), multi-cloud deployment strategy built on
 
 ## Repository Structure
 
-- `/infrastructure` — Centralized Terraform manifests using environment-specific variable configurations (`staging.tfvars`, `prod.tfvars`).
-- `/services/backend` — Backend service(s) packaged as Docker containers targeted for GCP Cloud Run.
-- `/services/frontend` — Static single-page app deployed to Cloudflare Pages.
+- `/infrastructure` — Centralized Terraform manifests using environment-specific variable configurations (`staging.tfvars`, `prod.tfvars`), plus a `root` subfolder for shared, manually-bootstrapped resources (see Root Environment below).
+- `/services/backend` — Golang backend service(s) packaged as Docker containers targeted for GCP Cloud Run.
+- `/services/frontend` — Conventional Vite/React single-page app deployed to Cloudflare Pages.
+- `/services/*/Makefile` — Per-service `lint` and `test` targets used by both local development and CI (to be added later).
 - `/.github/actions` — Modular, local GitHub Composite Actions (`action.yml`) encapsulating reusable workflow logic.
 - `/.github/settings.yml` — Repository settings, branch permissions, and rulesets managed declaratively as code via the Probot Settings App.
-- `/.github/workflow` — Event-specific workflow YAMLs (e.g. pull request, commit, release) that use reusable GitHub Actions.
+- `/.github/workflows` — Event-specific workflow YAMLs (e.g. pull request, commit, release) that use reusable GitHub Actions.
 
 ## Cloud Infrastructure & Security Isolation
 
 ### Isolated GCP Projects
 
-To maintain strict blast radius boundaries, environments live in distinct GCP projects (placeholder naming for now):
+To maintain strict blast radius boundaries, environments live in distinct GCP projects:
 
-- `my-app-staging` — Hosts staging services and serves as the isolated sandbox for testing. Future feature: ephemeral/PR environments.
-- `my-app-prod` — Hosts live production infrastructure and sensitive datastores.
+- `blog-gorman-club-staging` — Hosts staging services and serves as the isolated sandbox for testing. Future feature: ephemeral/PR environments.
+- `blog-gorman-club-prod` — Hosts live production infrastructure and sensitive datastores.
+
+### Root Environment
+
+A third, non-application Terraform root lives at `/infrastructure/root` and provisions the resources shared across staging and prod: the Terraform state buckets for all environments, the GitHub Actions WIF pool/provider, and any domain configuration shared between `blog-gorman-club-staging` and `blog-gorman-club-prod` (e.g. the parent DNS zone).
+
+This root environment is configured manually — it has to exist before any pipeline has credentials or state to work with, so it can't be bootstrapped by the CI/CD it enables. This is the one exception to the rule: the `blog-gorman-club-staging` and `blog-gorman-club-prod` environments are **only ever** changed by CI/CD, never manually.
 
 ### IAM & Authentication
 
@@ -42,7 +49,7 @@ Releases use plain semantic versioning — `major.minor.patch`, with no `-rc.N` 
 
 ### Staging Deployments (Push to main)
 
-Merging a pull request to `main` automatically builds backend container images and pushes them to the `my-app-staging` Artifact Registry, tagged with the commit SHA (never the calculated version — that can still change if a developer renames the pre-release before promotion), then deploys that image to Cloud Run in the `my-app-staging` project and updates the staging subdomain on Cloudflare Pages.
+Merging a pull request to `main` automatically builds backend container images and pushes them to the `blog-gorman-club-staging` Artifact Registry, tagged with the commit SHA (never the calculated version — that can still change if a developer renames the pre-release before promotion), then deploys that image to Cloud Run in the `blog-gorman-club-staging` project and updates the staging subdomain on Cloudflare Pages.
 
 ### Pre-Release Generation
 
@@ -52,13 +59,13 @@ Merges to `main` calculate the next version (see Versioning above), execute a `t
 
 Promoting a specific pre-release tag via GitHub Actions converts it into a formal Release (e.g., `v1.0.0`) and runs, in order:
 
-1. `terraform apply` on `my-app-prod`, applying any infrastructure changes first.
-2. Image promotion via [`gcrane`](https://github.com/google/go-containerregistry/tree/main/cmd/gcrane) — the pre-release records which commit SHA it was cut from, so promotion looks up that commit-SHA-tagged image in the `my-app-staging` Artifact Registry and copies it by digest into the `my-app-prod` Artifact Registry, retagged with the release version. Images are **never rebuilt** for production; promotion guarantees prod runs the identical bytes validated in staging.
-3. Cloud Run traffic in `my-app-prod` is bumped to the newly copied image tag, completing the release.
+1. `terraform apply` on `blog-gorman-club-prod`, applying any infrastructure changes first.
+2. Image promotion via [`gcrane`](https://github.com/google/go-containerregistry/tree/main/cmd/gcrane) — the pre-release records which commit SHA it was cut from, so promotion looks up that commit-SHA-tagged image in the `blog-gorman-club-staging` Artifact Registry and copies it by digest into the `blog-gorman-club-prod` Artifact Registry, retagged with the release version. Images are **never rebuilt** for production; promotion guarantees prod runs the identical bytes validated in staging.
+3. Cloud Run traffic in `blog-gorman-club-prod` is bumped to the newly copied image tag, completing the release.
 
 ### Rollback Strategy
 
-Promoting a previous release tag re-runs the same promotion flow: `terraform apply` using that release's infrastructure configuration, then shifting Cloud Run traffic back to its already-promoted image tag in `my-app-prod` (no re-copy needed, since that version was promoted previously).
+Promoting a previous release tag re-runs the same promotion flow: `terraform apply` using that release's infrastructure configuration, then shifting Cloud Run traffic back to its already-promoted image tag in `blog-gorman-club-prod` (no re-copy needed, since that version was promoted previously).
 
 ### Pipeline Safety & Reusability
 

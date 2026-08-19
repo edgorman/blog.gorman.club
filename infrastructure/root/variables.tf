@@ -25,7 +25,7 @@ variable "gcp_project_prefix" {
 variable "gcp_projects" {
   description = "The environment GCP projects to create, in addition to root"
   type        = list(string)
-  default     = ["staging", "prod"]
+  default     = ["stag", "prod"]
 }
 
 variable "github_provider_token" {

@@ -2,7 +2,7 @@ gcp_provider_project_id = "blog-gorman-club-root"
 gcp_provider_region     = "europe-west1"
 gcp_provider_zone       = "europe-west1-b"
 gcp_project_prefix      = "blog-gorman-club"
-gcp_projects            = ["staging", "prod"]
+gcp_projects            = ["stag", "prod"]
 github_repository_owner = "edgorman"
 github_repository_name  = "blog.gorman.club"
 

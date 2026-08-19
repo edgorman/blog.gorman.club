@@ -41,4 +41,5 @@ runs:
       run: |
         terraform apply \
           -var-file="${{ github.workspace }}/${{ inputs.config_directory }}/terraform.tfvars" \
-          -auto-approve
+          -auto-approve \
+          -input=false

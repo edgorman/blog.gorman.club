@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    labels:
+      - ci
+
+  - package-ecosystem: 'terraform'
+    directory: '/infrastructure'
+    schedule:
+      interval: 'weekly'
+    labels:
+      - infrastructure
+
+  # Add gomod (directory: /services/backend) and npm (directory:
+  # /services/frontend) entries once those services exist, per the
+  # repository structure in CLAUDE.md.

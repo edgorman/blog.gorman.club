@@ -36,21 +36,29 @@ Strict environment suffixes (`backend-staging`, `backend-prod`) and scoped secre
 
 All build, test, infrastructure provisioning, and deployment pipelines run exclusively through GitHub Actions (bypassing GCP Cloud Build). Sequential execution rules ensure infrastructure provisioning completes successfully before service updates occur.
 
+### Versioning
+
+Releases use plain semantic versioning — `major.minor.patch`, with no `-rc.N` or other pre-release suffix on the tag itself (pre-release vs. formal release is tracked via GitHub's release "prerelease" flag, not the tag name). The default increment on every merge to `main` is a **patch** bump over the last tag; developers can rename the generated pre-release before promotion if a `minor` or `major` bump is warranted instead.
+
 ### Staging Deployments (Push to main)
 
-Merging a pull request to `main` automatically deploys backend services to Cloud Run in the `my-app-staging` project and updates the staging subdomain on Cloudflare Pages.
+Merging a pull request to `main` automatically builds backend container images and pushes them to the `my-app-staging` Artifact Registry, tagged with the calculated version, then deploys them to Cloud Run in the `my-app-staging` project and updates the staging subdomain on Cloudflare Pages.
 
 ### Pre-Release Generation
 
-Merges to `main` calculate an incremental pre-release tag (e.g., `v1.0.0-rc.1`), execute a `terraform plan` against the production environment, and auto-generate a GitHub Pre-Release. This entry includes the plan output and a summary of commits merged since the last release. Multiple pre-releases can accumulate on `main` without touching production.
+Merges to `main` calculate the next version (see Versioning above), execute a `terraform plan` against the production environment, and auto-generate a GitHub Pre-Release. This entry includes the plan output and a summary of commits merged since the last release. Multiple pre-releases can accumulate on `main` without touching production.
 
 ### Production Releases (Manual Promotion)
 
-Promoting a specific pre-release tag via GitHub Actions converts it into a formal Release (e.g., `v1.0.0`). This triggers `terraform apply` on `my-app-prod`, updating infrastructure state and shifting Cloud Run traffic to the corresponding release image tag tested in staging.
+Promoting a specific pre-release tag via GitHub Actions converts it into a formal Release (e.g., `v1.0.0`) and runs, in order:
+
+1. `terraform apply` on `my-app-prod`, applying any infrastructure changes first.
+2. Image promotion via [`gcrane`](https://github.com/google/go-containerregistry/tree/main/cmd/gcrane) — the exact container images already built and tested in the `my-app-staging` Artifact Registry are copied by digest into the `my-app-prod` Artifact Registry and retagged with the release version. Images are **never rebuilt** for production; promotion guarantees prod runs the identical bytes validated in staging.
+3. Cloud Run traffic in `my-app-prod` is bumped to the newly copied image tag, completing the release.
 
 ### Rollback Strategy
 
-Promoting a previous release tag executes `terraform apply` using the prior stable configuration and container tags.
+Promoting a previous release tag re-runs the same promotion flow: `terraform apply` using that release's infrastructure configuration, then shifting Cloud Run traffic back to its already-promoted image tag in `my-app-prod` (no re-copy needed, since that version was promoted previously).
 
 ### Pipeline Safety & Reusability
 

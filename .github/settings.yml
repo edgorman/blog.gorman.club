@@ -7,7 +7,7 @@
 repository:
   # General
   name: blog.gorman.club
-  description: Monorepo for the static frontend, backend services, and infrastructure behind blog.gorman.club
+  description: The blog subdomain for the gorman.club website.
   private: false
   has_issues: true
   has_projects: false
@@ -54,7 +54,7 @@ branches:
       required_pull_request_reviews:
         required_approving_review_count: 1
         dismiss_stale_reviews: true
-        require_code_owner_reviews: false
+        require_code_owner_reviews: true
 
       # Status check contexts are intentionally empty until the CI workflows
       # under /.github/workflow land; update this list with the real job

@@ -10,6 +10,9 @@ outputs:
   infrastructure-root:
     description: 'Whether infrastructure root files changed'
     value: ${{ steps.filter.outputs.infrastructure-root }}
+  services-frontend:
+    description: 'Whether frontend service files changed'
+    value: ${{ steps.filter.outputs.services-frontend }}
 
 runs:
   using: "composite"
@@ -26,5 +29,11 @@ runs:
             - '.github/actions/terraform-push-commit/**'
             - '.github/actions/gcp-secret-manager/**'
 
-          # Add staging/prod (infrastructure/env) and service filters here
-          # once those areas of the repo exist, following the same pattern.
+          services-frontend:
+            - 'services/frontend/**'
+            - '.github/actions/frontend-pull-request/**'
+            - '.github/actions/frontend-push-commit/**'
+
+          # Add staging/prod (infrastructure/env) and backend service filters
+          # here once those areas of the repo exist, following the same
+          # pattern.

@@ -1,0 +1,46 @@
+name: 'Frontend Push Commit'
+description: 'Builds and deploys the frontend service to Cloudflare Pages'
+
+inputs:
+  cloudflare_api_token:
+    description: 'Cloudflare API token with Pages:Edit permission'
+    required: true
+  cloudflare_account_id:
+    description: 'Cloudflare account id'
+    required: true
+  cloudflare_project_name:
+    description: 'Cloudflare Pages project name'
+    required: true
+  backend_url:
+    description: 'Base URL of the backend service, baked in at build time as VITE_BACKEND_URL. Leave unset until the backend service is deployed.'
+    required: false
+    default: ''
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: services/frontend/package-lock.json
+
+    - name: Install Dependencies
+      shell: bash
+      working-directory: services/frontend
+      run: make install
+
+    - name: Build
+      shell: bash
+      working-directory: services/frontend
+      env:
+        VITE_BACKEND_URL: ${{ inputs.backend_url }}
+      run: make build
+
+    - name: Deploy to Cloudflare Pages
+      uses: cloudflare/wrangler-action@v3
+      with:
+        apiToken: ${{ inputs.cloudflare_api_token }}
+        accountId: ${{ inputs.cloudflare_account_id }}
+        workingDirectory: services/frontend
+        command: pages deploy dist --project-name=${{ inputs.cloudflare_project_name }}

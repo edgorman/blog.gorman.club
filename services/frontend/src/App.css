@@ -1,0 +1,34 @@
+main {
+  max-width: 40rem;
+  margin: 4rem auto;
+  padding: 0 1.5rem;
+  font-family: system-ui, sans-serif;
+  text-align: center;
+}
+
+.health-check {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  border: 1px solid #d0d7de;
+  border-radius: 0.5rem;
+  text-align: left;
+}
+
+.health-check dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+
+.health-check dt {
+  font-weight: 600;
+}
+
+.health-check dd {
+  margin: 0;
+}
+
+.health-check[data-phase='error'] {
+  border-color: #cf222e;
+}

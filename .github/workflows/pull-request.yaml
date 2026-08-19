@@ -18,12 +18,23 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       infrastructure-root: ${{ steps.diff.outputs.infrastructure-root }}
+      services-frontend: ${{ steps.diff.outputs.services-frontend }}
     steps:
       - uses: actions/checkout@v5
       - id: diff
         uses: ./.github/actions/github-file-diff
         with:
           branch_ref: ${{ github.base_ref }}
+
+  services-frontend:
+    needs: diff
+    if: needs.diff.outputs.services-frontend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/frontend-pull-request
 
   infrastructure-root:
     needs: diff

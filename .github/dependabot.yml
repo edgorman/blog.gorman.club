@@ -14,6 +14,12 @@ updates:
     labels:
       - infrastructure
 
-  # Add gomod (directory: /services/backend) and npm (directory:
-  # /services/frontend) entries once those services exist, per the
-  # repository structure in CLAUDE.md.
+  - package-ecosystem: 'npm'
+    directory: '/services/frontend'
+    schedule:
+      interval: 'weekly'
+    labels:
+      - frontend
+
+  # Add a gomod entry (directory: /services/backend) once that service
+  # exists, per the repository structure in CLAUDE.md.

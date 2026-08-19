@@ -29,7 +29,7 @@ variable "gcp_projects" {
 }
 
 variable "github_provider_token" {
-  description = "GitHub PAT (repo scope) used only by this manual root apply to write the WORKLOAD_IDENTITY_PROVIDER and SERVICE_ACCOUNT Actions variables. Never stored, and never used by CI/CD."
+  description = "GitHub PAT (repo scope) used by the `github` provider to write the WORKLOAD_IDENTITY_PROVIDER and SERVICE_ACCOUNT Actions variables. Passed by hand for the one-time manual bootstrap; every apply after that (including CI's) sources it from the github_provider_token secret in Secret Manager instead (see gcp_secret.tf), so it's never stored as a GitHub Actions secret."
   type        = string
   sensitive   = true
 }

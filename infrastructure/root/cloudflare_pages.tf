@@ -46,12 +46,13 @@ resource "cloudflare_pages_domain" "frontend" {
 
 # cloudflare_pages_domain validates the hostname but doesn't create the
 # DNS record that routes traffic to it - that has to be a separate resource.
-# Left unproxied (grey cloud) deliberately: Pages' own custom-domain
-# verifier does a plain DNS lookup expecting to see this CNAME directly, and
-# a proxied record hides it behind Cloudflare's anycast IPs instead -
-# verification then never completes and requests hit error 1014. Pages
-# already serves through Cloudflare's network, so proxying here adds
-# nothing anyway.
+# Must be proxied (orange cloud): Cloudflare's Universal SSL certificate for
+# this zone is only *presented* to visitors on proxied records - a DNS-only
+# (grey cloud) record still resolves, but nothing at the target IP holds a
+# certificate for this hostname, so HTTPS requests fail with
+# ERR_SSL_VERSION_OR_CIPHER_MISMATCH. Proxying a CNAME to *.pages.dev
+# doesn't hit error 1014 (Cross-User Banned) - Cloudflare allowlists its
+# own product domains (pages.dev, workers.dev, etc.) as CNAME targets.
 resource "cloudflare_dns_record" "frontend" {
   for_each = local.frontend_environments
 
@@ -59,6 +60,6 @@ resource "cloudflare_dns_record" "frontend" {
   name    = each.value.record_name
   type    = "CNAME"
   content = "${cloudflare_pages_project.frontend[each.key].name}.pages.dev"
-  proxied = false
+  proxied = true
   ttl     = 1
 }

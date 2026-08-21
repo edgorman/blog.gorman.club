@@ -1,0 +1,31 @@
+name: 'Frontend Test'
+description: 'Installs dependencies, lints, tests, and builds the frontend service'
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: services/frontend/package-lock.json
+
+    - name: Install Dependencies
+      shell: bash
+      working-directory: services/frontend
+      run: make install
+
+    - name: Lint
+      shell: bash
+      working-directory: services/frontend
+      run: make lint
+
+    - name: Test
+      shell: bash
+      working-directory: services/frontend
+      run: make test
+
+    - name: Build
+      shell: bash
+      working-directory: services/frontend
+      run: make build

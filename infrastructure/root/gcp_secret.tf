@@ -24,3 +24,53 @@ resource "google_secret_manager_secret_iam_member" "github_actions_secret_access
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.github_actions.email}"
 }
+
+# Same bootstrap pattern as github_provider_token above: passed by hand once,
+# then every subsequent apply (including CI's) reads these back out via the
+# gcp-secret-manager composite action and passes them in as
+# TF_VAR_cloudflare_account_id / TF_VAR_cloudflare_api_token, so this module
+# can keep the Secret Manager copies current. Unlike github_provider_token,
+# these two are never written into GitHub Actions secrets/variables — the
+# services-frontend deploy job (push-commit.yaml) fetches them from Secret
+# Manager directly via WIF at deploy time instead.
+resource "google_secret_manager_secret" "cloudflare_account_id" {
+  project   = var.gcp_provider_project_id
+  secret_id = "cloudflare_account_id"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "cloudflare_account_id_v1" {
+  secret      = google_secret_manager_secret.cloudflare_account_id.id
+  secret_data = var.cloudflare_account_id
+}
+
+resource "google_secret_manager_secret_iam_member" "github_actions_cloudflare_account_id_accessor" {
+  project   = var.gcp_provider_project_id
+  secret_id = google_secret_manager_secret.cloudflare_account_id.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+resource "google_secret_manager_secret" "cloudflare_api_token" {
+  project   = var.gcp_provider_project_id
+  secret_id = "cloudflare_api_token"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "cloudflare_api_token_v1" {
+  secret      = google_secret_manager_secret.cloudflare_api_token.id
+  secret_data = var.cloudflare_api_token
+}
+
+resource "google_secret_manager_secret_iam_member" "github_actions_cloudflare_api_token_accessor" {
+  project   = var.gcp_provider_project_id
+  secret_id = google_secret_manager_secret.cloudflare_api_token.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.github_actions.email}"
+}

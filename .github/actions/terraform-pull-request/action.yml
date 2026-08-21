@@ -57,6 +57,7 @@ runs:
           -var-file="${{ github.workspace }}/${{ inputs.config_directory }}/terraform.tfvars" \
           -lock=false \
           -no-color \
+          -input=false \
           -out=tfplan.binary
         terraform show -no-color tfplan.binary > tfplan.txt
 

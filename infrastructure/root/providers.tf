@@ -10,6 +10,10 @@ terraform {
       source  = "integrations/github"
       version = "6.13.0"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "5.23.0"
+    }
   }
 
   # Bucket is intentionally blank here — the very first apply runs against
@@ -34,4 +38,14 @@ provider "google" {
 provider "github" {
   owner = var.github_repository_owner
   token = var.github_provider_token
+}
+
+# Manages the Pages projects + custom domains (cloudflare_pages.tf) that the
+# services-frontend deploy jobs (frontend-deploy composite action) push
+# builds into via wrangler. Deploy credentials and this provider's
+# api_token both ultimately come from the same cloudflare_api_token secret
+# (see gcp_secret.tf) — passed by hand at bootstrap, read from Secret
+# Manager on every apply after that.
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token
 }

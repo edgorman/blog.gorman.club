@@ -6,6 +6,9 @@ gcp_projects            = ["stag", "prod"]
 github_repository_owner = "edgorman"
 github_repository_name  = "blog.gorman.club"
 
-# github_provider_token is deliberately not set here (sensitive, no default)
+# the following are sensitive/unknown initially and thus have no defualt
+# github_provider_token
+# cloudflare_account_id
+# cloudflare_api_token
 # — pass it at apply time, e.g.:
-#   TF_VAR_github_provider_token=<PAT> make init
+#   TF_VAR_github_provider_token=<PAT> TF_VAR_cloudflare_account_id=<ID> TF_VAR_cloudflare_api_token=<TOK> make init

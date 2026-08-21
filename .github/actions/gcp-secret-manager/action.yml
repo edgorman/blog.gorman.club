@@ -50,7 +50,7 @@ runs:
           VALUE=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="${{ inputs.project_id }}")
 
           if [ -n "$RESULT" ]; then
-            RESULT="$RESULT%0A$KEY=$VALUE"
+            RESULT="$RESULT"$'\n'"$KEY=$VALUE"
           else
             RESULT="$KEY=$VALUE"
           fi
@@ -58,4 +58,8 @@ runs:
         ${{ inputs.secrets_list }}
         EOF
 
-        echo "formatted_secrets=$RESULT" >> "$GITHUB_OUTPUT"
+        {
+          echo "formatted_secrets<<SECRETS_EOF"
+          echo "$RESULT"
+          echo "SECRETS_EOF"
+        } >> "$GITHUB_OUTPUT"

@@ -35,8 +35,12 @@ jobs:
   # backend_url is left unset until the backend service exists; until then
   # the deployed site shows the "no backend deployed yet" placeholder.
   services-frontend:
-    needs: diff
-    if: needs.diff.outputs.services-frontend == 'true'
+    needs: [diff, infrastructure-root]
+    if: |
+      always() &&
+      needs.diff.outputs.services-frontend == 'true' &&
+      needs.diff.result == 'success' &&
+      (needs.infrastructure-root.result == 'success' || needs.infrastructure-root.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,7 +56,7 @@ jobs:
           secrets_list: |
             CLOUDFLARE_API_TOKEN=cloudflare_api_token
             CLOUDFLARE_ACCOUNT_ID=cloudflare_account_id
-      - uses: ./.github/actions/frontend-push-commit
+      - uses: ./.github/actions/frontend-deploy
         with:
           secrets: ${{ steps.secrets.outputs.secrets }}
           cloudflare_project_name: 'frontend-stag'

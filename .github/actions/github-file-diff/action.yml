@@ -31,8 +31,8 @@ runs:
 
           services-frontend:
             - 'services/frontend/**'
-            - '.github/actions/frontend-pull-request/**'
-            - '.github/actions/frontend-push-commit/**'
+            - '.github/actions/frontend-test/**'
+            - '.github/actions/frontend-deploy/**'
 
           # Add staging/prod (infrastructure/env) and backend service filters
           # here once those areas of the repo exist, following the same

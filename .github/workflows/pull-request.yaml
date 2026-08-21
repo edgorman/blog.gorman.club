@@ -34,7 +34,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/frontend-pull-request
+      - uses: ./.github/actions/frontend-test
 
   infrastructure-root:
     needs: diff

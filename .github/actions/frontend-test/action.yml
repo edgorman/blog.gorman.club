@@ -1,4 +1,4 @@
-name: 'Frontend Pull Request'
+name: 'Frontend Test'
 description: 'Installs dependencies, lints, tests, and builds the frontend service'
 
 runs:

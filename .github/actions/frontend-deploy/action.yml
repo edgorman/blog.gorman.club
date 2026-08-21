@@ -1,4 +1,4 @@
-name: 'Frontend Push Commit'
+name: 'Frontend Deploy'
 description: 'Builds and deploys the frontend service to Cloudflare Pages'
 
 inputs:

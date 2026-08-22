@@ -18,6 +18,8 @@ jobs:
     outputs:
       infrastructure-root: ${{ steps.diff.outputs.infrastructure-root }}
       services-frontend: ${{ steps.diff.outputs.services-frontend }}
+      services-backend: ${{ steps.diff.outputs.services-backend }}
+      infrastructure-staging: ${{ steps.diff.outputs.infrastructure-staging }}
     steps:
       - uses: actions/checkout@v7
       - id: diff
@@ -32,15 +34,15 @@ jobs:
   # secrets/variables — this only works once cloudflare_account_id and
   # cloudflare_api_token exist in Secret Manager (see
   # infrastructure/root/gcp_secret.tf).
-  # backend_url is left unset until the backend service exists; until then
-  # the deployed site shows the "no backend deployed yet" placeholder.
   services-frontend:
-    needs: [diff, infrastructure-root]
+    needs: [diff, infrastructure-root, infrastructure-staging, services-backend]
     if: |
       always() &&
       needs.diff.outputs.services-frontend == 'true' &&
       needs.diff.result == 'success' &&
-      (needs.infrastructure-root.result == 'success' || needs.infrastructure-root.result == 'skipped')
+      (needs.infrastructure-root.result == 'success' || needs.infrastructure-root.result == 'skipped') &&
+      (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped') &&
+      (needs.services-backend.result == 'success' || needs.services-backend.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -56,10 +58,29 @@ jobs:
           secrets_list: |
             CLOUDFLARE_API_TOKEN=cloudflare_api_token
             CLOUDFLARE_ACCOUNT_ID=cloudflare_account_id
+      # gcp-secret-manager already authenticated this job to GCP via WIF
+      # (needed to read the Cloudflare secrets above) and installed the
+      # Cloud SDK, so this reuses that rather than authenticating again.
+      # Looked up directly instead of reading services-backend's output,
+      # since that job's output is unavailable whenever it's skipped (no
+      # backend-related changes on this push) - the URL itself is stable
+      # regardless of whether backend-deploy ran on this particular push.
+      # Falls back to empty (the frontend's "no backend deployed yet"
+      # placeholder) if the Cloud Run service doesn't exist yet.
+      - id: backend
+        name: Get Backend URL
+        shell: bash
+        run: |
+          URL=$(gcloud run services describe backend-stag \
+            --region=europe-west1 \
+            --project=blog-gorman-club-stag \
+            --format='value(status.url)' 2>/dev/null || true)
+          echo "backend_url=$URL" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/frontend-deploy
         with:
           secrets: ${{ steps.secrets.outputs.secrets }}
           cloudflare_project_name: 'frontend-stag'
+          backend_url: ${{ steps.backend.outputs.backend_url }}
 
   infrastructure-root:
     needs: diff
@@ -85,6 +106,55 @@ jobs:
           terraform_directory: 'infrastructure/root'
           config_directory: 'infrastructure/config/root'
           secrets: ${{ steps.secrets.outputs.secrets }}
+
+  # Provisions the backend's Artifact Registry repository and Cloud Run
+  # service for staging. Only WIF auth is needed (no Secret Manager secrets
+  # - this module takes no sensitive vars), so it authenticates directly
+  # rather than going through the gcp-secret-manager action.
+  infrastructure-staging:
+    needs: diff
+    if: needs.diff.outputs.infrastructure-staging == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+      - uses: ./.github/actions/terraform-push-commit
+        with:
+          terraform_directory: 'infrastructure'
+          config_directory: 'infrastructure/config/staging'
+
+  # Builds and deploys the backend image to staging Cloud Run, tagged with
+  # the commit SHA per the Staging Deployments section of CLAUDE.md. Must
+  # follow infrastructure-staging: the Artifact Registry repository and
+  # Cloud Run service have to exist before an image can be pushed/deployed.
+  services-backend:
+    needs: [diff, infrastructure-staging]
+    if: |
+      always() &&
+      needs.diff.outputs.services-backend == 'true' &&
+      needs.diff.result == 'success' &&
+      (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/backend-deploy
+        with:
+          gcp_project_id: 'blog-gorman-club-stag'
+          gcp_region: 'europe-west1'
+          service_name: 'backend-stag'
+          image_tag: ${{ github.sha }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
 
   # Runs on every merge to main, independent of the diff job above: the
   # default patch-bump pre-release is unconditional per CLAUDE.md, not
@@ -126,10 +196,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # The prod terraform plan CLAUDE.md describes as part of this step is
-      # deliberately left out until infrastructure/config/prod (the
-      # env-level Terraform root) actually exists - same "wire it up once
-      # that part of the repo exists" rule as the staging/prod filters
-      # noted in github-file-diff.
+      # still left out here - infrastructure/config/prod now exists, but
+      # wiring an actual `terraform plan` against it into these release
+      # notes is tracked as separate follow-up work.
       - name: Write Release Notes
         shell: bash
         run: |

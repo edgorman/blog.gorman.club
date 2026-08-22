@@ -1,0 +1,86 @@
+name: 'Backend Promote'
+description: 'Copies the backend image from staging Artifact Registry into production by digest, retagged with the release version, and deploys it to Cloud Run'
+
+inputs:
+  staging_project_id:
+    description: 'GCP project holding the source (staging) Artifact Registry repository'
+    required: true
+  prod_project_id:
+    description: 'GCP project the production Artifact Registry repository and Cloud Run service live in'
+    required: true
+  gcp_region:
+    description: 'GCP region of both Artifact Registry repositories and the Cloud Run service'
+    required: true
+  service_name:
+    description: 'Cloud Run service name (e.g. backend-prod)'
+    required: true
+  source_tag:
+    description: 'Tag identifying the staging image to promote - the commit SHA the release points at'
+    required: true
+  target_tag:
+    description: 'Tag to give the promoted image in production - the formal release version (e.g. v1.0.0)'
+    required: true
+  workload_identity_provider:
+    description: 'The Workload Identity Provider resource name'
+    required: true
+  service_account:
+    description: 'The Google Service Account email'
+    required: true
+
+outputs:
+  backend_url:
+    description: 'Public URL of the deployed Cloud Run service'
+    value: ${{ steps.url.outputs.backend_url }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: auth
+      name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+
+    # gcrane authenticates using the Application Default Credentials file
+    # google-github-actions/auth wrote above - no separate `docker login` /
+    # `gcrane auth` step needed.
+    - name: Install gcrane
+      shell: bash
+      run: go install github.com/google/go-containerregistry/cmd/gcrane@latest
+
+    # Copies by digest rather than rebuilding, per the Production Releases
+    # section of CLAUDE.md - production runs the identical bytes already
+    # validated in staging.
+    - name: Promote Image
+      shell: bash
+      run: |
+        "$(go env GOPATH)/bin/gcrane" cp \
+          "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.staging_project_id }}/backend/backend:${{ inputs.source_tag }}" \
+          "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.prod_project_id }}/backend/backend:${{ inputs.target_tag }}"
+
+    - name: Deploy to Cloud Run
+      shell: bash
+      run: |
+        gcloud run deploy "${{ inputs.service_name }}" \
+          --image="${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.prod_project_id }}/backend/backend:${{ inputs.target_tag }}" \
+          --region="${{ inputs.gcp_region }}" \
+          --project="${{ inputs.prod_project_id }}" \
+          --quiet
+
+    - id: url
+      name: Get Backend URL
+      shell: bash
+      run: |
+        URL=$(gcloud run services describe "${{ inputs.service_name }}" \
+          --region="${{ inputs.gcp_region }}" \
+          --project="${{ inputs.prod_project_id }}" \
+          --format='value(status.url)')
+        echo "backend_url=$URL" >> "$GITHUB_OUTPUT"

@@ -19,6 +19,9 @@ jobs:
     outputs:
       infrastructure-root: ${{ steps.diff.outputs.infrastructure-root }}
       services-frontend: ${{ steps.diff.outputs.services-frontend }}
+      services-backend: ${{ steps.diff.outputs.services-backend }}
+      infrastructure-staging: ${{ steps.diff.outputs.infrastructure-staging }}
+      infrastructure-prod: ${{ steps.diff.outputs.infrastructure-prod }}
     steps:
       - uses: actions/checkout@v7
       - id: diff
@@ -35,6 +38,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/frontend-test
+
+  services-backend:
+    needs: diff
+    if: needs.diff.outputs.services-backend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/backend-test
 
   infrastructure-root:
     needs: diff
@@ -61,4 +74,52 @@ jobs:
           terraform_directory: 'infrastructure/root'
           config_directory: 'infrastructure/config/root'
           secrets: ${{ steps.secrets.outputs.secrets }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  # infrastructure/*.tf (the environment-level module - Artifact Registry +
+  # Cloud Run for the backend) is shared between staging and prod, so a
+  # change to it plans against both, each with its own config directory.
+  # Only WIF auth is needed here (no Secret Manager secrets - this module
+  # takes no sensitive vars), so it authenticates directly rather than going
+  # through the gcp-secret-manager action.
+  infrastructure-staging:
+    needs: diff
+    if: needs.diff.outputs.infrastructure-staging == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+      - uses: ./.github/actions/terraform-pull-request
+        with:
+          terraform_directory: 'infrastructure'
+          config_directory: 'infrastructure/config/staging'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  infrastructure-prod:
+    needs: diff
+    if: needs.diff.outputs.infrastructure-prod == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+      - uses: ./.github/actions/terraform-pull-request
+        with:
+          terraform_directory: 'infrastructure'
+          config_directory: 'infrastructure/config/prod'
           github_token: ${{ secrets.GITHUB_TOKEN }}

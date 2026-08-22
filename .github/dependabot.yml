@@ -21,5 +21,9 @@ updates:
     labels:
       - frontend
 
-  # Add a gomod entry (directory: /services/backend) once that service
-  # exists, per the repository structure in CLAUDE.md.
+  - package-ecosystem: 'gomod'
+    directory: '/services/backend'
+    schedule:
+      interval: 'weekly'
+    labels:
+      - backend

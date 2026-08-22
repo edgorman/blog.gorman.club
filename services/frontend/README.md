@@ -22,6 +22,10 @@ make build     # tsc -b && vite build
 
 `npm run dev` starts the Vite dev server directly.
 
+CI builds the `Dockerfile` here instead of running `make build` directly, then extracts its
+static files for the Cloudflare Pages deploy - so what's live always matches an image already
+sitting in Artifact Registry, and a rollback can redeploy that image's files without a rebuild.
+
 ## Configuration
 
 | Env var             | Description                                              |

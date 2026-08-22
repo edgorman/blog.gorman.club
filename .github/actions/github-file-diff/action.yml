@@ -42,6 +42,8 @@ runs:
             - 'services/frontend/**'
             - '.github/actions/frontend-test/**'
             - '.github/actions/frontend-deploy/**'
+            - '.github/actions/frontend-image-build/**'
+            - '.github/actions/frontend-image-extract/**'
 
           services-backend:
             - 'services/backend/**'
@@ -59,3 +61,6 @@ runs:
             - 'infrastructure/config/prod/**'
             - '.github/actions/backend-promote/**'
             - '.github/actions/backend-cloudrun-deploy/**'
+            - '.github/actions/frontend-image-promote/**'
+            - '.github/actions/frontend-image-extract/**'
+            - '.github/actions/frontend-deploy/**'

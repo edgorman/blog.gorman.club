@@ -27,8 +27,9 @@ jobs:
         with:
           branch_ref: ${{ github.ref_name }}
 
-  # Deploys the frontend to Cloudflare Pages on every merge to main. Credentials are fetched
-  # from Secret Manager via WIF, never stored as Actions secrets/variables.
+  # Builds the frontend image once, tagged with the commit SHA and `latest`, pushes it to staging
+  # Artifact Registry, then deploys those exact static files to Cloudflare Pages - one build feeds
+  # both, so the live staging site is never rebuilt separately from the stored image.
   services-frontend:
     needs: [diff, infrastructure-root, infrastructure-staging, services-backend]
     if: |
@@ -65,11 +66,22 @@ jobs:
             --project=blog-gorman-club-stag \
             --format='value(status.url)' 2>/dev/null || true)
           echo "backend_url=$URL" >> "$GITHUB_OUTPUT"
+      - id: image
+        uses: ./.github/actions/frontend-image-build
+        with:
+          gcp_project_id: 'blog-gorman-club-stag'
+          gcp_region: 'europe-west1'
+          image_tag: ${{ github.sha }}
+          backend_url: ${{ steps.backend.outputs.backend_url }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+      - uses: ./.github/actions/frontend-image-extract
+        with:
+          image_ref: ${{ steps.image.outputs.image_ref }}
       - uses: ./.github/actions/frontend-deploy
         with:
           secrets: ${{ steps.secrets.outputs.secrets }}
           cloudflare_project_name: 'frontend-stag'
-          backend_url: ${{ steps.backend.outputs.backend_url }}
 
   infrastructure-root:
     needs: diff

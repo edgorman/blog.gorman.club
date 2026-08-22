@@ -60,9 +60,10 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
-  # Step 3: frontend is rebuilt from source (Vite builds are fast/deterministic, unlike the
-  # backend's never-rebuild gcrane approach). Depends on services-backend so it bakes in the
-  # just-promoted backend URL.
+  # Step 3: ensures a frontend image exists for this release - built fresh only if this is a new
+  # release; a rollback re-promotion reuses the one already pushed here, skipping the build
+  # entirely - then deploys its exact static files to Cloudflare Pages. Depends on services-backend
+  # so a new build bakes in the just-promoted backend URL.
   services-frontend:
     needs: [infrastructure-prod, services-backend]
     runs-on: ubuntu-latest
@@ -82,8 +83,19 @@ jobs:
           secrets_list: |
             CLOUDFLARE_API_TOKEN=cloudflare_api_token
             CLOUDFLARE_ACCOUNT_ID=cloudflare_account_id
+      - id: image
+        uses: ./.github/actions/frontend-image-promote
+        with:
+          gcp_project_id: 'blog-gorman-club-prod'
+          gcp_region: 'europe-west1'
+          target_tag: ${{ github.event.release.tag_name }}
+          backend_url: ${{ needs.services-backend.outputs.backend_url }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+      - uses: ./.github/actions/frontend-image-extract
+        with:
+          image_ref: ${{ steps.image.outputs.image_ref }}
       - uses: ./.github/actions/frontend-deploy
         with:
           secrets: ${{ steps.secrets.outputs.secrets }}
           cloudflare_project_name: 'frontend-prod'
-          backend_url: ${{ needs.services-backend.outputs.backend_url }}

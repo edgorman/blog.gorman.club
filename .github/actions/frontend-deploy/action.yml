@@ -1,5 +1,5 @@
 name: 'Frontend Deploy'
-description: 'Builds and deploys the frontend service to Cloudflare Pages'
+description: 'Deploys an already-built frontend to Cloudflare Pages'
 
 inputs:
   secrets:
@@ -8,10 +8,10 @@ inputs:
   cloudflare_project_name:
     description: 'Cloudflare Pages project name'
     required: true
-  backend_url:
-    description: 'Base URL of the backend service, baked in at build time as VITE_BACKEND_URL. Leave unset until the backend service is deployed.'
+  dist_directory:
+    description: 'Directory of already-built static files to deploy, relative to services/frontend'
     required: false
-    default: ''
+    default: 'dist'
 
 runs:
   using: "composite"
@@ -19,24 +19,6 @@ runs:
     - name: Export Secrets
       shell: bash
       run: echo "${{ inputs.secrets }}" >> "$GITHUB_ENV"
-
-    - uses: actions/setup-node@v4
-      with:
-        node-version: '22'
-        cache: 'npm'
-        cache-dependency-path: services/frontend/package-lock.json
-
-    - name: Install Dependencies
-      shell: bash
-      working-directory: services/frontend
-      run: make install
-
-    - name: Build
-      shell: bash
-      working-directory: services/frontend
-      env:
-        VITE_BACKEND_URL: ${{ inputs.backend_url }}
-      run: make build
 
     # --branch=main is required: wrangler infers production vs. preview from GITHUB_REF_NAME, which
     # is the release tag (not "main") when triggered by promote-release.yaml's `release` event.
@@ -47,4 +29,4 @@ runs:
         apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
         accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
         workingDirectory: services/frontend
-        command: pages deploy dist --project-name=${{ inputs.cloudflare_project_name }} --branch=main
+        command: pages deploy ${{ inputs.dist_directory }} --project-name=${{ inputs.cloudflare_project_name }} --branch=main

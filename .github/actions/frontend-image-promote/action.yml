@@ -1,0 +1,77 @@
+name: 'Frontend Image Promote'
+description: 'Ensures a frontend image exists for this release in production Artifact Registry, building it only if missing'
+
+inputs:
+  gcp_project_id:
+    description: 'GCP project the production Artifact Registry repository lives in'
+    required: true
+  gcp_region:
+    description: 'GCP region of the Artifact Registry repository'
+    required: true
+  target_tag:
+    description: 'Tag to give the image in production - the formal release version (e.g. v1.0.0)'
+    required: true
+  backend_url:
+    description: 'Base URL of the backend service, baked in at build time as VITE_BACKEND_URL'
+    required: false
+    default: ''
+  workload_identity_provider:
+    description: 'The Workload Identity Provider resource name'
+    required: true
+  service_account:
+    description: 'The Google Service Account email'
+    required: true
+
+outputs:
+  image_ref:
+    description: 'Full reference of the production image for this release'
+    value: ${{ steps.image.outputs.ref }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker Auth
+      shell: bash
+      run: gcloud auth configure-docker "${{ inputs.gcp_region }}-docker.pkg.dev" --quiet
+
+    - id: image
+      shell: bash
+      run: echo "ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/frontend/frontend:${{ inputs.target_tag }}" >> "$GITHUB_OUTPUT"
+
+    # Unlike the backend, VITE_BACKEND_URL is baked into the frontend at build time, so its image
+    # can't be copied by digest between environments the way the backend's is - a staging build has
+    # staging's backend URL compiled in. Instead, each release's prod image is built once, here, and
+    # only once: a rollback re-promotes a tag that already exists from when it first went out, so the
+    # build is skipped entirely and the existing (correctly-baked) image is reused as-is.
+    - id: existing
+      name: Check for Existing Image
+      shell: bash
+      run: |
+        if gcloud artifacts docker images describe "${{ steps.image.outputs.ref }}" >/dev/null 2>&1; then
+          echo "found=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "found=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Build Image
+      if: steps.existing.outputs.found == 'false'
+      shell: bash
+      run: |
+        docker build \
+          --build-arg VITE_BACKEND_URL="${{ inputs.backend_url }}" \
+          -t "${{ steps.image.outputs.ref }}" \
+          services/frontend
+
+    - name: Push Image
+      if: steps.existing.outputs.found == 'false'
+      shell: bash
+      run: docker push "${{ steps.image.outputs.ref }}"

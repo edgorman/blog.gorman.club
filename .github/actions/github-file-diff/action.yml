@@ -16,6 +16,12 @@ outputs:
   services-backend:
     description: 'Whether backend service files changed'
     value: ${{ steps.filter.outputs.services-backend }}
+  infrastructure-staging:
+    description: 'Whether staging environment infrastructure files changed'
+    value: ${{ steps.filter.outputs.infrastructure-staging }}
+  infrastructure-prod:
+    description: 'Whether prod environment infrastructure files changed'
+    value: ${{ steps.filter.outputs.infrastructure-prod }}
 
 runs:
   using: "composite"
@@ -41,5 +47,16 @@ runs:
             - 'services/backend/**'
             - '.github/actions/backend-test/**'
 
-          # Add a staging/prod (infrastructure/env) filter here once that
-          # area of the repo exists, following the same pattern.
+          # infrastructure/*.tf is the shared environment-level module
+          # (applied once per environment via a different config directory
+          # below) - a change to it affects both environments' plans/applies,
+          # so it appears in both filters.
+          infrastructure-staging:
+            - 'infrastructure/*.tf'
+            - 'infrastructure/config/staging/**'
+            - '.github/actions/backend-deploy/**'
+
+          infrastructure-prod:
+            - 'infrastructure/*.tf'
+            - 'infrastructure/config/prod/**'
+            - '.github/actions/backend-promote/**'

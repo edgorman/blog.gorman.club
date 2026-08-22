@@ -1,0 +1,75 @@
+name: 'Backend Deploy'
+description: 'Builds the backend image, pushes it to Artifact Registry tagged with the commit SHA, and deploys it to Cloud Run'
+
+inputs:
+  gcp_project_id:
+    description: 'GCP project the Artifact Registry repository and Cloud Run service live in'
+    required: true
+  gcp_region:
+    description: 'GCP region of the Artifact Registry repository and Cloud Run service'
+    required: true
+  service_name:
+    description: 'Cloud Run service name (e.g. backend-stag)'
+    required: true
+  image_tag:
+    description: 'Tag to push the image under - the commit SHA, per the Staging Deployments section of CLAUDE.md'
+    required: true
+  workload_identity_provider:
+    description: 'The Workload Identity Provider resource name'
+    required: true
+  service_account:
+    description: 'The Google Service Account email'
+    required: true
+
+outputs:
+  backend_url:
+    description: 'Public URL of the deployed Cloud Run service'
+    value: ${{ steps.url.outputs.backend_url }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: auth
+      name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker Auth
+      shell: bash
+      run: gcloud auth configure-docker "${{ inputs.gcp_region }}-docker.pkg.dev" --quiet
+
+    - name: Build Image
+      shell: bash
+      run: |
+        docker build \
+          --build-arg COMMIT_SHA="${{ inputs.image_tag }}" \
+          -t "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/backend:${{ inputs.image_tag }}" \
+          services/backend
+
+    - name: Push Image
+      shell: bash
+      run: docker push "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/backend:${{ inputs.image_tag }}"
+
+    - name: Deploy to Cloud Run
+      shell: bash
+      run: |
+        gcloud run deploy "${{ inputs.service_name }}" \
+          --image="${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/backend:${{ inputs.image_tag }}" \
+          --region="${{ inputs.gcp_region }}" \
+          --project="${{ inputs.gcp_project_id }}" \
+          --quiet
+
+    - id: url
+      name: Get Backend URL
+      shell: bash
+      run: |
+        URL=$(gcloud run services describe "${{ inputs.service_name }}" \
+          --region="${{ inputs.gcp_region }}" \
+          --project="${{ inputs.gcp_project_id }}" \
+          --format='value(status.url)')
+        echo "backend_url=$URL" >> "$GITHUB_OUTPUT"

@@ -5,8 +5,11 @@ Vite/React single-page app for blog.gorman.club, deployed to Cloudflare Pages
 
 The landing page renders a "Backend status" card that calls the backend's
 `/debug` endpoint (the Debug Endpoint Contract described in `CLAUDE.md`) on
-page load. Until a backend is deployed and `VITE_BACKEND_URL` is set, the
-card renders a placeholder instead of making a network call.
+page load. `VITE_BACKEND_URL` is baked in at build time by the
+`services-frontend` deploy job (see `push-commit.yaml` / `promote-release.yaml`),
+which looks up the deployed Cloud Run service's URL. Locally, or if that
+lookup comes back empty, the card renders a placeholder instead of making a
+network call.
 
 ## Development
 
@@ -23,4 +26,4 @@ make build     # tsc -b && vite build
 
 | Env var             | Description                                              |
 | -------------------- | --------------------------------------------------------- |
-| `VITE_BACKEND_URL`   | Base URL of the backend service. Unset in local dev / until the backend exists. |
+| `VITE_BACKEND_URL`   | Base URL of the backend service. Unset in local dev; set automatically in CI from the deployed Cloud Run service's URL. |

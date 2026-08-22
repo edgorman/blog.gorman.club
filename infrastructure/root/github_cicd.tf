@@ -1,8 +1,5 @@
-# Identity used by GitHub Actions to authenticate to GCP, plus the WIF
-# plumbing that lets it do so without a long-lived JSON key. This file does
-# NOT manage the GitHub repository itself (settings, branches, rulesets) —
-# that's handled declaratively by .github/settings.yml via the
-# repository-settings/app instead.
+# WIF identity GitHub Actions uses to authenticate to GCP without a long-lived JSON key.
+# Repository settings themselves are managed separately by .github/settings.yml.
 
 resource "google_service_account" "github_actions" {
   project      = var.gcp_provider_project_id
@@ -20,12 +17,8 @@ resource "google_project_iam_member" "github_actions_editor" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# roles/editor deliberately excludes IAM policy management. This grants CI
-# the ability to set each project's own IAM policy - needed because this
-# root's own applies manage google_project_iam_member resources (this file)
-# across root, staging, and prod. It does NOT cover resource-level policies
-# on individual resources within a project (e.g. a single Cloud Run
-# service's invoker bindings) - that's a separate permission, granted below.
+# roles/editor excludes IAM management; this lets CI manage each project's own IAM policy (needed since
+# this root's own applies manage IAM bindings). Doesn't cover resource-level policies - granted below.
 resource "google_project_iam_member" "github_actions_iam_admin" {
   for_each = local.all_projects
 
@@ -34,11 +27,8 @@ resource "google_project_iam_member" "github_actions_iam_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Cloud Run service-level IAM (e.g. the backend's public-invoker binding in
-# infrastructure/cloud_run.tf) needs run.services.setIamPolicy, which is
-# neither part of roles/editor nor of resourcemanager.projectIamAdmin above
-# (that one only covers a project's own ancestor IAM policy, not
-# resource-level bindings within it).
+# Cloud Run's public-invoker binding (infrastructure/cloud_run.tf) needs run.services.setIamPolicy,
+# covered by neither role above.
 resource "google_project_iam_member" "github_actions_run_admin" {
   for_each = local.all_projects
 
@@ -65,8 +55,7 @@ resource "google_iam_workload_identity_pool_provider" "github_provider" {
     "attribute.actor"      = "assertion.actor"
   }
 
-  # Restricts which OIDC tokens can assume the service account below to
-  # those asserting this exact repository.
+  # Restricts to OIDC tokens asserting this exact repository.
   attribute_condition = "assertion.repository == '${var.github_repository_owner}/${var.github_repository_name}'"
 
   oidc {

@@ -27,13 +27,8 @@ jobs:
         with:
           branch_ref: ${{ github.ref_name }}
 
-  # Deploys the frontend straight to Cloudflare Pages on every merge to
-  # main, per the Staging Deployments section of CLAUDE.md. Cloudflare
-  # credentials are fetched directly from Secret Manager via WIF (same
-  # pattern as infrastructure-root below), never stored as GitHub Actions
-  # secrets/variables — this only works once cloudflare_account_id and
-  # cloudflare_api_token exist in Secret Manager (see
-  # infrastructure/root/gcp_secret.tf).
+  # Deploys the frontend to Cloudflare Pages on every merge to main. Credentials are fetched
+  # from Secret Manager via WIF, never stored as Actions secrets/variables.
   services-frontend:
     needs: [diff, infrastructure-root, infrastructure-staging, services-backend]
     if: |
@@ -58,15 +53,9 @@ jobs:
           secrets_list: |
             CLOUDFLARE_API_TOKEN=cloudflare_api_token
             CLOUDFLARE_ACCOUNT_ID=cloudflare_account_id
-      # gcp-secret-manager already authenticated this job to GCP via WIF
-      # (needed to read the Cloudflare secrets above) and installed the
-      # Cloud SDK, so this reuses that rather than authenticating again.
-      # Looked up directly instead of reading services-backend's output,
-      # since that job's output is unavailable whenever it's skipped (no
-      # backend-related changes on this push) - the URL itself is stable
-      # regardless of whether backend-deploy ran on this particular push.
-      # Falls back to empty (the frontend's "no backend deployed yet"
-      # placeholder) if the Cloud Run service doesn't exist yet.
+      # Reuses gcp-secret-manager's WIF auth/Cloud SDK setup rather than authenticating again.
+      # Looked up directly since services-backend's output is unavailable when that job is
+      # skipped; falls back to empty if the service doesn't exist yet.
       - id: backend
         name: Get Backend URL
         shell: bash
@@ -107,10 +96,8 @@ jobs:
           config_directory: 'infrastructure/config/root'
           secrets: ${{ steps.secrets.outputs.secrets }}
 
-  # Provisions the backend's Artifact Registry repository and Cloud Run
-  # service for staging. Only WIF auth is needed (no Secret Manager secrets
-  # - this module takes no sensitive vars), so it authenticates directly
-  # rather than going through the gcp-secret-manager action.
+  # Provisions the backend's Artifact Registry + Cloud Run for staging. No sensitive vars,
+  # so it authenticates directly (no gcp-secret-manager).
   infrastructure-staging:
     needs: diff
     if: needs.diff.outputs.infrastructure-staging == 'true'
@@ -130,10 +117,8 @@ jobs:
           terraform_directory: 'infrastructure'
           config_directory: 'infrastructure/config/staging'
 
-  # Builds and deploys the backend image to staging Cloud Run, tagged with
-  # the commit SHA per the Staging Deployments section of CLAUDE.md. Must
-  # follow infrastructure-staging: the Artifact Registry repository and
-  # Cloud Run service have to exist before an image can be pushed/deployed.
+  # Builds and deploys the backend image to staging, tagged with the commit SHA. Must follow
+  # infrastructure-staging so the target resources exist.
   services-backend:
     needs: [diff, infrastructure-staging]
     if: |
@@ -156,9 +141,8 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
-  # Runs on every merge to main, independent of the diff job above: the
-  # default patch-bump pre-release is unconditional per CLAUDE.md, not
-  # gated on which part of the repo changed.
+  # Runs unconditionally on every merge; the patch-bump pre-release isn't gated on which part
+  # of the repo changed.
   pre-release:
     runs-on: ubuntu-latest
     permissions:
@@ -195,10 +179,7 @@ jobs:
             echo 'COMMITS_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      # The prod terraform plan CLAUDE.md describes as part of this step is
-      # still left out here - infrastructure/config/prod now exists, but
-      # wiring an actual `terraform plan` against it into these release
-      # notes is tracked as separate follow-up work.
+      # TODO: wire in the prod terraform plan CLAUDE.md describes for this step.
       - name: Write Release Notes
         shell: bash
         run: |

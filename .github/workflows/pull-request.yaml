@@ -76,12 +76,8 @@ jobs:
           secrets: ${{ steps.secrets.outputs.secrets }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-  # infrastructure/*.tf (the environment-level module - Artifact Registry +
-  # Cloud Run for the backend) is shared between staging and prod, so a
-  # change to it plans against both, each with its own config directory.
-  # Only WIF auth is needed here (no Secret Manager secrets - this module
-  # takes no sensitive vars), so it authenticates directly rather than going
-  # through the gcp-secret-manager action.
+  # infrastructure/*.tf is shared between staging and prod, so a change to it plans against both.
+  # No sensitive vars needed, so it authenticates directly (no gcp-secret-manager).
   infrastructure-staging:
     needs: diff
     if: needs.diff.outputs.infrastructure-staging == 'true'

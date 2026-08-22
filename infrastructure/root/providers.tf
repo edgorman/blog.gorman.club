@@ -16,10 +16,8 @@ terraform {
     }
   }
 
-  # Bucket is intentionally blank here — the very first apply runs against
-  # local state (see the Makefile's `init` target) since this bucket doesn't
-  # exist yet. Once it does, state is migrated in via
-  # `terraform init -migrate-state -backend-config=../config/root/terraform.tfbackend`.
+  # Blank: the first apply runs against local state (Makefile's `init` target) since the bucket
+  # doesn't exist yet; state is migrated in afterward.
   backend "gcs" {
     bucket = ""
   }
@@ -31,21 +29,15 @@ provider "google" {
   zone    = var.gcp_provider_zone
 }
 
-# Only used to write the WORKLOAD_IDENTITY_PROVIDER / SERVICE_ACCOUNT GitHub
-# Actions variables (github_cicd.tf) — repository-level settings, branch
-# protection, and rulesets are managed separately by .github/settings.yml
-# via the repository-settings/app, not by Terraform.
+# Only writes the WORKLOAD_IDENTITY_PROVIDER / SERVICE_ACCOUNT Actions variables (github_cicd.tf);
+# repository settings are managed separately by .github/settings.yml.
 provider "github" {
   owner = var.github_repository_owner
   token = var.github_provider_token
 }
 
-# Manages the Pages projects + custom domains (cloudflare_pages.tf) that the
-# services-frontend deploy jobs (frontend-deploy composite action) push
-# builds into via wrangler. Deploy credentials and this provider's
-# api_token both ultimately come from the same cloudflare_api_token secret
-# (see gcp_secret.tf) — passed by hand at bootstrap, read from Secret
-# Manager on every apply after that.
+# Manages Pages projects + custom domains (cloudflare_pages.tf); wrangler pushes builds into
+# these same projects separately (see frontend-deploy).
 provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }

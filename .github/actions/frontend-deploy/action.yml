@@ -38,16 +38,9 @@ runs:
         VITE_BACKEND_URL: ${{ inputs.backend_url }}
       run: make build
 
-    # --branch=main is required, not just a hint: wrangler infers
-    # production vs. preview from the GITHUB_REF_NAME env var GitHub
-    # Actions sets from the triggering event, not from the actual checked
-    # out git state. push-commit.yaml is triggered by a push to main, so
-    # that happens to line up - but promote-release.yaml is triggered by a
-    # `release` event, where GITHUB_REF_NAME is the release tag (e.g.
-    # v0.0.9), even though its checkout step pins the commit via
-    # `ref: github.sha`. Without an explicit --branch, wrangler never sees
-    # "main" there and silently deploys as a Preview instead of Production
-    # (production_branch for both Pages projects, per cloudflare_pages.tf).
+    # --branch=main is required: wrangler infers production vs. preview from GITHUB_REF_NAME, which
+    # is the release tag (not "main") when triggered by promote-release.yaml's `release` event.
+    # Without it, wrangler silently deploys as Preview instead of Production.
     - name: Deploy to Cloudflare Pages
       uses: cloudflare/wrangler-action@v3
       with:

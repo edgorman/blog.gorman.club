@@ -1,8 +1,5 @@
-# The root GCP project itself is created manually out-of-band (in the GCP
-# Console, with billing enabled) before the first apply, since there's no
-# pre-existing Terraform identity to create it with. This `import` block
-# brings that manually-created project under Terraform management; the
-# staging/prod projects below are created by Terraform directly.
+# Root project is created manually out-of-band (no Terraform identity exists yet to create it with);
+# this import brings it under management. Staging/prod are created directly by Terraform.
 resource "google_project" "root_project" {
   name       = "${var.gcp_project_prefix} root"
   project_id = var.gcp_provider_project_id
@@ -31,10 +28,7 @@ locals {
   )
 }
 
-# Baseline APIs needed by root itself, plus the ones every environment
-# Terraform root (infrastructure/env) can assume are already on. App-specific
-# APIs (Cloud Run, Artifact Registry, ...) are enabled per-environment
-# instead, since root has no application services of its own.
+# Baseline APIs shared by root and every environment; app-specific APIs are enabled per-environment instead.
 resource "google_project_service" "project_services" {
   for_each = {
     for pair in setproduct(keys(local.all_projects), [

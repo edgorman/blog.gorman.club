@@ -1,9 +1,5 @@
-# Stores the GitHub PAT so CI can re-apply this root module on every future
-# push to main (not just the one-time manual bootstrap): the pull-request
-# and push-commit workflows read it back out via the gcp-secret-manager
-# composite action and pass it in as TF_VAR_github_provider_token, which the
-# `github` provider in providers.tf needs to manage the two Actions
-# variables in github_cicd.tf.
+# Stores the GitHub PAT so CI can re-apply this module after the one-time manual bootstrap
+# (read back via the gcp-secret-manager composite action as TF_VAR_github_provider_token).
 resource "google_secret_manager_secret" "github_provider_token" {
   project   = var.gcp_provider_project_id
   secret_id = "github_provider_token"
@@ -25,14 +21,8 @@ resource "google_secret_manager_secret_iam_member" "github_actions_secret_access
   member    = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Same bootstrap pattern as github_provider_token above: passed by hand once,
-# then every subsequent apply (including CI's) reads these back out via the
-# gcp-secret-manager composite action and passes them in as
-# TF_VAR_cloudflare_account_id / TF_VAR_cloudflare_api_token, so this module
-# can keep the Secret Manager copies current. Unlike github_provider_token,
-# these two are never written into GitHub Actions secrets/variables — the
-# services-frontend deploy job (push-commit.yaml) fetches them from Secret
-# Manager directly via WIF at deploy time instead.
+# Same bootstrap pattern as github_provider_token above. Unlike it, these are never written to GitHub
+# Actions secrets/variables - push-commit.yaml's frontend deploy job reads them from Secret Manager directly.
 resource "google_secret_manager_secret" "cloudflare_account_id" {
   project   = var.gcp_provider_project_id
   secret_id = "cloudflare_account_id"

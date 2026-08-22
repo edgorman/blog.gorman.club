@@ -20,7 +20,7 @@ variable "backend_cors_origin" {
 }
 
 variable "backend_initial_image" {
-  description = "Placeholder image used only the first time the Cloud Run service is created. CI deploys the real image on every push after that, and Terraform ignores drift on it (see cloud_run.tf) so it never reverts a deploy."
+  description = "Placeholder image for the Cloud Run service's initial creation; CI deploys the real image afterward (drift ignored, see cloud_run.tf)."
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }

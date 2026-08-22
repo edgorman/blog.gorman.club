@@ -29,7 +29,7 @@ variable "gcp_projects" {
 }
 
 variable "github_provider_token" {
-  description = "GitHub PAT (repo scope) used by the `github` provider to write the WORKLOAD_IDENTITY_PROVIDER and SERVICE_ACCOUNT Actions variables. Passed by hand for the one-time manual bootstrap; every apply after that (including CI's) sources it from the github_provider_token secret in Secret Manager instead (see gcp_secret.tf), so it's never stored as a GitHub Actions secret."
+  description = "GitHub PAT (repo scope) for the `github` provider. Passed by hand at bootstrap only; CI sources it from Secret Manager after (see gcp_secret.tf)."
   type        = string
   sensitive   = true
 }
@@ -52,7 +52,7 @@ variable "cloudflare_account_id" {
 }
 
 variable "cloudflare_api_token" {
-  description = "The api token granting CICD access to the cloudflare account. Passed by hand for the one-time manual bootstrap; every apply after that (including CI's) sources it from the cloudflare_api_token secret in Secret Manager instead (see gcp_secret.tf), so it's never stored as a GitHub Actions secret."
+  description = "API token granting CI/CD access to the Cloudflare account. Passed by hand at bootstrap only; CI sources it from Secret Manager after (see gcp_secret.tf)."
   type        = string
   sensitive   = true
 }

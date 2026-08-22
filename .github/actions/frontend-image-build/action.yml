@@ -22,6 +22,11 @@ inputs:
     description: 'The Google Service Account email'
     required: true
 
+outputs:
+  image_ref:
+    description: 'Full reference of the pushed image, tagged with image_tag'
+    value: ${{ steps.image.outputs.ref }}
+
 runs:
   using: "composite"
   steps:
@@ -40,16 +45,18 @@ runs:
 
     - id: image
       shell: bash
-      run: echo "repo=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/frontend/frontend" >> "$GITHUB_OUTPUT"
+      run: |
+        echo "repo=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/frontend/frontend" >> "$GITHUB_OUTPUT"
+        echo "ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/frontend/frontend:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
 
-    # Also tagged `latest` so frontend-image-promote has a stable pointer to copy from at release
-    # time - a release can be cut from a commit that never touched frontend files.
+    # Also tagged `latest` as a convenient floating pointer to what's currently on staging;
+    # nothing promotes from it - see frontend-image-promote for why prod builds its own image.
     - name: Build Image
       shell: bash
       run: |
         docker build \
           --build-arg VITE_BACKEND_URL="${{ inputs.backend_url }}" \
-          -t "${{ steps.image.outputs.repo }}:${{ inputs.image_tag }}" \
+          -t "${{ steps.image.outputs.ref }}" \
           -t "${{ steps.image.outputs.repo }}:latest" \
           services/frontend
 

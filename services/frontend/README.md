@@ -22,9 +22,9 @@ make build     # tsc -b && vite build
 
 `npm run dev` starts the Vite dev server directly.
 
-On every merge to `main`, CI also builds the `Dockerfile` here and pushes it to Artifact
-Registry (see `frontend-image-build`) - a portable build artifact, not currently served
-from anywhere; the live site still deploys via Cloudflare Pages above.
+CI builds the `Dockerfile` here instead of running `make build` directly, then extracts its
+static files for the Cloudflare Pages deploy - so what's live always matches an image already
+sitting in Artifact Registry, and a rollback can redeploy that image's files without a rebuild.
 
 ## Configuration
 

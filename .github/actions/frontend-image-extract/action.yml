@@ -1,0 +1,26 @@
+name: 'Frontend Image Extract'
+description: 'Extracts the built static files out of a frontend image into a local directory'
+
+inputs:
+  image_ref:
+    description: 'Full image reference to extract the static files from'
+    required: true
+  output_directory:
+    description: 'Local directory to extract the static files into'
+    required: false
+    default: 'services/frontend/dist'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Pull Image
+      shell: bash
+      run: docker pull "${{ inputs.image_ref }}"
+
+    - name: Extract Static Files
+      shell: bash
+      run: |
+        CONTAINER_ID=$(docker create "${{ inputs.image_ref }}")
+        mkdir -p "${{ inputs.output_directory }}"
+        docker cp "$CONTAINER_ID:/usr/share/nginx/html/." "${{ inputs.output_directory }}"
+        docker rm "$CONTAINER_ID" > /dev/null

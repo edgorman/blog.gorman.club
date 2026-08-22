@@ -1,25 +1,31 @@
 name: 'Frontend Image Promote'
-description: 'Copies the frontend image from staging Artifact Registry into production by digest, retagged with the release version'
+description: 'Ensures a frontend image exists for this release in production Artifact Registry, building it only if missing'
 
 inputs:
-  staging_project_id:
-    description: 'GCP project holding the source (staging) Artifact Registry repository'
-    required: true
-  prod_project_id:
+  gcp_project_id:
     description: 'GCP project the production Artifact Registry repository lives in'
     required: true
   gcp_region:
-    description: 'GCP region of both Artifact Registry repositories'
+    description: 'GCP region of the Artifact Registry repository'
     required: true
   target_tag:
-    description: 'Tag to give the promoted image in production - the formal release version (e.g. v1.0.0)'
+    description: 'Tag to give the image in production - the formal release version (e.g. v1.0.0)'
     required: true
+  backend_url:
+    description: 'Base URL of the backend service, baked in at build time as VITE_BACKEND_URL'
+    required: false
+    default: ''
   workload_identity_provider:
     description: 'The Workload Identity Provider resource name'
     required: true
   service_account:
     description: 'The Google Service Account email'
     required: true
+
+outputs:
+  image_ref:
+    description: 'Full reference of the production image for this release'
+    value: ${{ steps.image.outputs.ref }}
 
 runs:
   using: "composite"
@@ -33,20 +39,39 @@ runs:
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
-    - uses: actions/setup-go@v5
-      with:
-        go-version: '1.24'
-
-    # gcrane authenticates via the ADC file google-github-actions/auth wrote above; no separate login step needed.
-    - name: Install gcrane
+    - name: Configure Docker Auth
       shell: bash
-      run: go install github.com/google/go-containerregistry/cmd/gcrane@latest
+      run: gcloud auth configure-docker "${{ inputs.gcp_region }}-docker.pkg.dev" --quiet
 
-    # Promotes whatever was most recently pushed to staging (the `latest` tag), not one tagged with
-    # github.sha - a release commit may not have touched frontend files at all.
-    - name: Promote Image
+    - id: image
+      shell: bash
+      run: echo "ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/frontend/frontend:${{ inputs.target_tag }}" >> "$GITHUB_OUTPUT"
+
+    # Unlike the backend, VITE_BACKEND_URL is baked into the frontend at build time, so its image
+    # can't be copied by digest between environments the way the backend's is - a staging build has
+    # staging's backend URL compiled in. Instead, each release's prod image is built once, here, and
+    # only once: a rollback re-promotes a tag that already exists from when it first went out, so the
+    # build is skipped entirely and the existing (correctly-baked) image is reused as-is.
+    - id: existing
+      name: Check for Existing Image
       shell: bash
       run: |
-        "$(go env GOPATH)/bin/gcrane" cp \
-          "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.staging_project_id }}/frontend/frontend:latest" \
-          "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.prod_project_id }}/frontend/frontend:${{ inputs.target_tag }}"
+        if gcloud artifacts docker images describe "${{ steps.image.outputs.ref }}" >/dev/null 2>&1; then
+          echo "found=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "found=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Build Image
+      if: steps.existing.outputs.found == 'false'
+      shell: bash
+      run: |
+        docker build \
+          --build-arg VITE_BACKEND_URL="${{ inputs.backend_url }}" \
+          -t "${{ steps.image.outputs.ref }}" \
+          services/frontend
+
+    - name: Push Image
+      if: steps.existing.outputs.found == 'false'
+      shell: bash
+      run: docker push "${{ steps.image.outputs.ref }}"

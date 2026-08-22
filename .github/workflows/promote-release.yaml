@@ -41,9 +41,13 @@ jobs:
           config_directory: 'infrastructure/config/prod'
 
   # Step 2 of Production Releases in CLAUDE.md: promote the staging image by
-  # digest via gcrane rather than rebuilding - github.sha here is the commit
-  # the release tag points at (its target_commitish), which is what staging
-  # tagged its image with, per the Staging Deployments section.
+  # digest via gcrane rather than rebuilding. Promotes whatever image is
+  # currently live on backend-stag, not one tagged with github.sha - a
+  # release can be cut from a commit that never touched backend files (so
+  # services-backend never ran for it and no image exists under that SHA),
+  # while staging is still happily running the last one that was actually
+  # built and deployed. See the Resolve Staging Image step in
+  # backend-promote for the lookup this depends on.
   services-backend:
     needs: infrastructure-prod
     runs-on: ubuntu-latest
@@ -62,8 +66,8 @@ jobs:
           staging_project_id: 'blog-gorman-club-stag'
           prod_project_id: 'blog-gorman-club-prod'
           gcp_region: 'europe-west1'
-          service_name: 'backend-prod'
-          source_tag: ${{ github.sha }}
+          staging_service_name: 'backend-stag'
+          prod_service_name: 'backend-prod'
           target_tag: ${{ github.event.release.tag_name }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}

@@ -20,14 +20,30 @@ resource "google_project_iam_member" "github_actions_editor" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# roles/editor deliberately excludes IAM policy management. This is required
-# on top of it so CI can manage per-resource IAM policies it owns — e.g.
-# Cloud Run service-to-service invocation bindings.
+# roles/editor deliberately excludes IAM policy management. This grants CI
+# the ability to set each project's own IAM policy - needed because this
+# root's own applies manage google_project_iam_member resources (this file)
+# across root, staging, and prod. It does NOT cover resource-level policies
+# on individual resources within a project (e.g. a single Cloud Run
+# service's invoker bindings) - that's a separate permission, granted below.
 resource "google_project_iam_member" "github_actions_iam_admin" {
   for_each = local.all_projects
 
   project = each.value.project_id
   role    = "roles/resourcemanager.projectIamAdmin"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+# Cloud Run service-level IAM (e.g. the backend's public-invoker binding in
+# infrastructure/cloud_run.tf) needs run.services.setIamPolicy, which is
+# neither part of roles/editor nor of resourcemanager.projectIamAdmin above
+# (that one only covers a project's own ancestor IAM policy, not
+# resource-level bindings within it).
+resource "google_project_iam_member" "github_actions_run_admin" {
+  for_each = local.all_projects
+
+  project = each.value.project_id
+  role    = "roles/run.admin"
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 

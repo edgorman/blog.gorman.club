@@ -11,11 +11,11 @@ inputs:
   gcp_region:
     description: 'GCP region of both Artifact Registry repositories and the Cloud Run service'
     required: true
-  service_name:
-    description: 'Cloud Run service name (e.g. backend-prod)'
+  staging_service_name:
+    description: 'Staging Cloud Run service name to read the currently-live image from (e.g. backend-stag)'
     required: true
-  source_tag:
-    description: 'Tag identifying the staging image to promote - the commit SHA the release points at'
+  prod_service_name:
+    description: 'Production Cloud Run service name to deploy to (e.g. backend-prod)'
     required: true
   target_tag:
     description: 'Tag to give the promoted image in production - the formal release version (e.g. v1.0.0)'
@@ -56,6 +56,39 @@ runs:
       shell: bash
       run: go install github.com/google/go-containerregistry/cmd/gcrane@latest
 
+    # The staging image is promoted by whatever is actually deployed right
+    # now, not by tagging convention: services-backend only pushes a
+    # commit-SHA-tagged image when a push touches backend-related files
+    # (see the services-backend diff filter in push-commit.yaml), so a
+    # release cut from a commit that didn't (e.g. an infra-only change)
+    # would have no image under that SHA at all, even though staging is
+    # still happily running the last one that was actually built.
+    - id: staging_image
+      name: Resolve Staging Image
+      shell: bash
+      run: |
+        DESCRIBE_ARGS=(
+          "${{ inputs.staging_service_name }}"
+          --region="${{ inputs.gcp_region }}"
+          --project="${{ inputs.staging_project_id }}"
+        )
+        # gcloud has described Cloud Run services under the legacy
+        # Knative-shaped `spec.template...` path for years regardless of
+        # which API version actually created the resource; fall back to the
+        # v2 API's own `template...` shape in case a future gcloud version
+        # changes that.
+        IMAGE=$(gcloud run services describe "${DESCRIBE_ARGS[@]}" \
+          --format='value(spec.template.spec.containers[0].image)')
+        if [ -z "$IMAGE" ]; then
+          IMAGE=$(gcloud run services describe "${DESCRIBE_ARGS[@]}" \
+            --format='value(template.containers[0].image)')
+        fi
+        if [ -z "$IMAGE" ]; then
+          echo "::error::Could not resolve the currently deployed image for ${{ inputs.staging_service_name }}"
+          exit 1
+        fi
+        echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
     # Copies by digest rather than rebuilding, per the Production Releases
     # section of CLAUDE.md - production runs the identical bytes already
     # validated in staging.
@@ -63,13 +96,13 @@ runs:
       shell: bash
       run: |
         "$(go env GOPATH)/bin/gcrane" cp \
-          "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.staging_project_id }}/backend/backend:${{ inputs.source_tag }}" \
+          "${{ steps.staging_image.outputs.image }}" \
           "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.prod_project_id }}/backend/backend:${{ inputs.target_tag }}"
 
     - name: Deploy to Cloud Run
       shell: bash
       run: |
-        gcloud run deploy "${{ inputs.service_name }}" \
+        gcloud run deploy "${{ inputs.prod_service_name }}" \
           --image="${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.prod_project_id }}/backend/backend:${{ inputs.target_tag }}" \
           --region="${{ inputs.gcp_region }}" \
           --project="${{ inputs.prod_project_id }}" \
@@ -79,7 +112,7 @@ runs:
       name: Get Backend URL
       shell: bash
       run: |
-        URL=$(gcloud run services describe "${{ inputs.service_name }}" \
+        URL=$(gcloud run services describe "${{ inputs.prod_service_name }}" \
           --region="${{ inputs.gcp_region }}" \
           --project="${{ inputs.prod_project_id }}" \
           --format='value(status.url)')

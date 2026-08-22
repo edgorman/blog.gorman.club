@@ -53,6 +53,8 @@ jobs:
   # The terraform apply on blog-gorman-club-prod and the gcrane-based
   # backend image promotion CLAUDE.md describes as the other two steps of
   # this workflow are deliberately left out until infrastructure/config/prod
-  # and services/backend actually exist - same "wire it up once that part
-  # of the repo exists" rule used elsewhere (see github-file-diff and
-  # push-commit.yaml's pre-release job).
+  # (the prod Cloud Run + Artifact Registry resources) actually exists -
+  # same "wire it up once that part of the repo exists" rule used elsewhere
+  # (see github-file-diff and push-commit.yaml's pre-release job).
+  # services/backend itself now exists, but nothing builds/pushes its image
+  # yet for the same reason.

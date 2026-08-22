@@ -32,8 +32,11 @@ jobs:
   # secrets/variables — this only works once cloudflare_account_id and
   # cloudflare_api_token exist in Secret Manager (see
   # infrastructure/root/gcp_secret.tf).
-  # backend_url is left unset until the backend service exists; until then
-  # the deployed site shows the "no backend deployed yet" placeholder.
+  # backend_url is left unset until the backend service is actually deployed
+  # to Cloud Run (services/backend now exists, but the staging Artifact
+  # Registry/Cloud Run infrastructure and its build/push job do not yet);
+  # until then the deployed site shows the "no backend deployed yet"
+  # placeholder.
   services-frontend:
     needs: [diff, infrastructure-root]
     if: |

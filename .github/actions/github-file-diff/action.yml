@@ -13,6 +13,9 @@ outputs:
   services-frontend:
     description: 'Whether frontend service files changed'
     value: ${{ steps.filter.outputs.services-frontend }}
+  services-backend:
+    description: 'Whether backend service files changed'
+    value: ${{ steps.filter.outputs.services-backend }}
 
 runs:
   using: "composite"
@@ -34,6 +37,9 @@ runs:
             - '.github/actions/frontend-test/**'
             - '.github/actions/frontend-deploy/**'
 
-          # Add staging/prod (infrastructure/env) and backend service filters
-          # here once those areas of the repo exist, following the same
-          # pattern.
+          services-backend:
+            - 'services/backend/**'
+            - '.github/actions/backend-test/**'
+
+          # Add a staging/prod (infrastructure/env) filter here once that
+          # area of the repo exists, following the same pattern.

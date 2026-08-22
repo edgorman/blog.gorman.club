@@ -1,0 +1,29 @@
+name: 'Backend Test'
+description: 'Installs dependencies, lints, tests, and builds the backend service'
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: services/backend/go.mod
+
+    - name: Install Dependencies
+      shell: bash
+      working-directory: services/backend
+      run: make install
+
+    - name: Lint
+      shell: bash
+      working-directory: services/backend
+      run: make lint
+
+    - name: Test
+      shell: bash
+      working-directory: services/backend
+      run: make test
+
+    - name: Build
+      shell: bash
+      working-directory: services/backend
+      run: make build

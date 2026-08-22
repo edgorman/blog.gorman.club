@@ -53,13 +53,21 @@ resource "cloudflare_pages_domain" "frontend" {
 # ERR_SSL_VERSION_OR_CIPHER_MISMATCH. Proxying a CNAME to *.pages.dev
 # doesn't hit error 1014 (Cross-User Banned) - Cloudflare allowlists its
 # own product domains (pages.dev, workers.dev, etc.) as CNAME targets.
+#
+# The target must be the project's actual `subdomain` attribute, not
+# `name` + ".pages.dev" - *.pages.dev subdomains are unique account-wide
+# across all of Cloudflare, so if the project name is already claimed by
+# someone else's account, Cloudflare silently assigns a suffixed subdomain
+# (e.g. frontend-stag-647.pages.dev) instead. Hardcoding name+".pages.dev"
+# points the CNAME at a target with no certificate for this hostname,
+# which is another way to get ERR_SSL_VERSION_OR_CIPHER_MISMATCH.
 resource "cloudflare_dns_record" "frontend" {
   for_each = local.frontend_environments
 
   zone_id = data.cloudflare_zone.gorman_club.id
   name    = each.value.record_name
   type    = "CNAME"
-  content = "${cloudflare_pages_project.frontend[each.key].name}.pages.dev"
+  content = cloudflare_pages_project.frontend[each.key].subdomain
   proxied = true
   ttl     = 1
 }

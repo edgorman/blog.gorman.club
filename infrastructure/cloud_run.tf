@@ -28,7 +28,12 @@ resource "google_cloud_run_v2_service" "backend" {
 
   lifecycle {
     # CI deploys the real image directly; Terraform must not revert it to the placeholder above.
-    ignore_changes = [template[0].containers[0].image]
+    # client/client_version are stamped by `gcloud run deploy` itself and aren't meaningful drift.
+    ignore_changes = [
+      template[0].containers[0].image,
+      client,
+      client_version,
+    ]
   }
 }
 

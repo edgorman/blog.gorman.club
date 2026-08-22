@@ -47,16 +47,15 @@ runs:
             - 'services/backend/**'
             - '.github/actions/backend-test/**'
 
-          # infrastructure/*.tf is the shared environment-level module
-          # (applied once per environment via a different config directory
-          # below) - a change to it affects both environments' plans/applies,
-          # so it appears in both filters.
+          # infrastructure/*.tf is shared between environments, so it appears in both filters below.
           infrastructure-staging:
             - 'infrastructure/*.tf'
             - 'infrastructure/config/staging/**'
             - '.github/actions/backend-deploy/**'
+            - '.github/actions/backend-cloudrun-deploy/**'
 
           infrastructure-prod:
             - 'infrastructure/*.tf'
             - 'infrastructure/config/prod/**'
             - '.github/actions/backend-promote/**'
+            - '.github/actions/backend-cloudrun-deploy/**'

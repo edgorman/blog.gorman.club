@@ -49,13 +49,8 @@ runs:
 
           VALUE=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="${{ inputs.project_id }}")
 
-          # Register the fetched value with the runner's log masking before it
-          # is echoed anywhere else (this step's output, GITHUB_ENV, or a
-          # downstream composite action's `with:` log line). GitHub only
-          # auto-masks values sourced from the `secrets:` context or ones
-          # matching a handful of well-known token formats (e.g. GitHub
-          # PATs) - a Cloudflare API token fetched at runtime from Secret
-          # Manager matches neither, so without this it prints in plaintext.
+          # Masks the value before it's echoed anywhere: GitHub only auto-masks values from the
+          # `secrets:` context or well-known token formats, neither of which applies here.
           echo "::add-mask::$VALUE"
 
           if [ -n "$RESULT" ]; then

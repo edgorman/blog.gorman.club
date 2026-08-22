@@ -24,7 +24,7 @@ inputs:
 outputs:
   backend_url:
     description: 'Public URL of the deployed Cloud Run service'
-    value: ${{ steps.url.outputs.backend_url }}
+    value: ${{ steps.deploy.outputs.backend_url }}
 
 runs:
   using: "composite"
@@ -43,33 +43,26 @@ runs:
       shell: bash
       run: gcloud auth configure-docker "${{ inputs.gcp_region }}-docker.pkg.dev" --quiet
 
+    - id: image
+      shell: bash
+      run: echo "ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/backend:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+
     - name: Build Image
       shell: bash
       run: |
         docker build \
           --build-arg COMMIT_SHA="${{ inputs.image_tag }}" \
-          -t "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/backend:${{ inputs.image_tag }}" \
+          -t "${{ steps.image.outputs.ref }}" \
           services/backend
 
     - name: Push Image
       shell: bash
-      run: docker push "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/backend:${{ inputs.image_tag }}"
+      run: docker push "${{ steps.image.outputs.ref }}"
 
-    - name: Deploy to Cloud Run
-      shell: bash
-      run: |
-        gcloud run deploy "${{ inputs.service_name }}" \
-          --image="${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/backend:${{ inputs.image_tag }}" \
-          --region="${{ inputs.gcp_region }}" \
-          --project="${{ inputs.gcp_project_id }}" \
-          --quiet
-
-    - id: url
-      name: Get Backend URL
-      shell: bash
-      run: |
-        URL=$(gcloud run services describe "${{ inputs.service_name }}" \
-          --region="${{ inputs.gcp_region }}" \
-          --project="${{ inputs.gcp_project_id }}" \
-          --format='value(status.url)')
-        echo "backend_url=$URL" >> "$GITHUB_OUTPUT"
+    - id: deploy
+      uses: ./.github/actions/backend-cloudrun-deploy
+      with:
+        gcp_project_id: ${{ inputs.gcp_project_id }}
+        gcp_region: ${{ inputs.gcp_region }}
+        service_name: ${{ inputs.service_name }}
+        image: ${{ steps.image.outputs.ref }}

@@ -1,0 +1,43 @@
+name: 'Backend Cloud Run Deploy'
+description: 'Deploys a backend image to Cloud Run and returns its URL'
+
+inputs:
+  gcp_project_id:
+    description: 'GCP project the Cloud Run service lives in'
+    required: true
+  gcp_region:
+    description: 'GCP region of the Cloud Run service'
+    required: true
+  service_name:
+    description: 'Cloud Run service name'
+    required: true
+  image:
+    description: 'Full image reference to deploy'
+    required: true
+
+outputs:
+  backend_url:
+    description: 'Public URL of the deployed Cloud Run service'
+    value: ${{ steps.url.outputs.backend_url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Deploy to Cloud Run
+      shell: bash
+      run: |
+        gcloud run deploy "${{ inputs.service_name }}" \
+          --image="${{ inputs.image }}" \
+          --region="${{ inputs.gcp_region }}" \
+          --project="${{ inputs.gcp_project_id }}" \
+          --quiet
+
+    - id: url
+      name: Get Backend URL
+      shell: bash
+      run: |
+        URL=$(gcloud run services describe "${{ inputs.service_name }}" \
+          --region="${{ inputs.gcp_region }}" \
+          --project="${{ inputs.gcp_project_id }}" \
+          --format='value(status.url)')
+        echo "backend_url=$URL" >> "$GITHUB_OUTPUT"

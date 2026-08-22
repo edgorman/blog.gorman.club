@@ -27,19 +27,17 @@ resource "google_cloud_run_v2_service" "backend" {
   }
 
   lifecycle {
-    # CI deploys new revisions directly (backend-deploy / backend-promote
-    # composite actions) per the Staging Deployments / Production Releases
-    # flow in CLAUDE.md - Terraform owns the service's existence and config,
-    # never which image is currently live, so it must not fight those
-    # deploys by planning to revert the image back to the placeholder above.
-    ignore_changes = [template[0].containers[0].image]
+    # CI deploys the real image directly; Terraform must not revert it to the placeholder above.
+    # client/client_version are stamped by `gcloud run deploy` itself and aren't meaningful drift.
+    ignore_changes = [
+      template[0].containers[0].image,
+      client,
+      client_version,
+    ]
   }
 }
 
-# The backend is a public API the frontend calls directly from the browser
-# (see the Debug Endpoint Contract in CLAUDE.md) - it has no caller identity
-# to authenticate, so it's deliberately open rather than restricted to a
-# service-to-service invoker.
+# Public API called directly from the browser, so it's deliberately open rather than invoker-restricted.
 resource "google_cloud_run_v2_service_iam_member" "public" {
   project  = google_cloud_run_v2_service.backend.project
   location = google_cloud_run_v2_service.backend.location

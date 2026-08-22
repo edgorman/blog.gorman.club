@@ -6,9 +6,7 @@ import (
 	"os"
 )
 
-// commit is set at build time via -ldflags "-X main.commit=<sha>" (see
-// Dockerfile). Images are never rebuilt for production per CLAUDE.md, so a
-// single build's commit follows it through promotion unchanged.
+// Baked in at build time via -ldflags (see Dockerfile); images are never rebuilt for production.
 var commit = "unknown"
 
 func main() {

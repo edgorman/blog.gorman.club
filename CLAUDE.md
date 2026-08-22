@@ -53,7 +53,7 @@ Releases use plain semantic versioning — `major.minor.patch`, with no `-rc.N` 
 
 ### Staging Deployments (Push to main)
 
-Merging a pull request to `main` automatically builds backend container images and pushes them to the `blog-gorman-club-stag` Artifact Registry, tagged with the commit SHA (never the calculated version — that can still change if a developer renames the pre-release before promotion), then deploys that image to Cloud Run in the `blog-gorman-club-stag` project and updates the staging subdomain on Cloudflare Pages.
+Merging a pull request to `main` automatically builds backend container images and pushes them to the `blog-gorman-club-stag` Artifact Registry, tagged with the commit SHA (never the calculated version — that can still change if a developer renames the pre-release before promotion), then deploys that image to Cloud Run in the `blog-gorman-club-stag` project and updates the staging subdomain on Cloudflare Pages. The frontend is also built as a Docker image and pushed to its own `blog-gorman-club-stag` Artifact Registry repository, tagged with the commit SHA and `latest`; it isn't served from anywhere yet, the live site still comes from Cloudflare Pages.
 
 ### Pre-Release Generation
 
@@ -64,7 +64,7 @@ Merges to `main` calculate the next version (see Versioning above), execute a `t
 Promoting a specific pre-release tag via GitHub Actions converts it into a formal Release (e.g., `v1.0.0`) and runs, in order:
 
 1. `terraform apply` on `blog-gorman-club-prod`, applying any infrastructure changes first.
-2. Image promotion via [`gcrane`](https://github.com/google/go-containerregistry/tree/main/cmd/gcrane) — the workflow resolves the target commit SHA directly from the release tag pointer (`github.sha`), looks up that commit-SHA-tagged image in the `blog-gorman-club-stag` Artifact Registry, and copies it by digest into the `blog-gorman-club-prod` Artifact Registry, retagged with the formal release version (e.g. `v1.0.0`). Images are **never rebuilt** for production; promotion guarantees prod runs the identical bytes validated in staging.
+2. Image promotion via [`gcrane`](https://github.com/google/go-containerregistry/tree/main/cmd/gcrane) — the workflow resolves the target commit SHA directly from the release tag pointer (`github.sha`), looks up that commit-SHA-tagged image in the `blog-gorman-club-stag` Artifact Registry, and copies it by digest into the `blog-gorman-club-prod` Artifact Registry, retagged with the formal release version (e.g. `v1.0.0`). Images are **never rebuilt** for production; promotion guarantees prod runs the identical bytes validated in staging. The frontend image is promoted the same way, from its `latest` staging tag rather than a commit-SHA one, since a release may not have touched frontend files at all.
 3. Cloud Run traffic in `blog-gorman-club-prod` is bumped to the newly copied image tag, completing the release.
 
 ### Rollback Strategy

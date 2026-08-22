@@ -1,0 +1,52 @@
+name: 'Frontend Image Promote'
+description: 'Copies the frontend image from staging Artifact Registry into production by digest, retagged with the release version'
+
+inputs:
+  staging_project_id:
+    description: 'GCP project holding the source (staging) Artifact Registry repository'
+    required: true
+  prod_project_id:
+    description: 'GCP project the production Artifact Registry repository lives in'
+    required: true
+  gcp_region:
+    description: 'GCP region of both Artifact Registry repositories'
+    required: true
+  target_tag:
+    description: 'Tag to give the promoted image in production - the formal release version (e.g. v1.0.0)'
+    required: true
+  workload_identity_provider:
+    description: 'The Workload Identity Provider resource name'
+    required: true
+  service_account:
+    description: 'The Google Service Account email'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+
+    # gcrane authenticates via the ADC file google-github-actions/auth wrote above; no separate login step needed.
+    - name: Install gcrane
+      shell: bash
+      run: go install github.com/google/go-containerregistry/cmd/gcrane@latest
+
+    # Promotes whatever was most recently pushed to staging (the `latest` tag), not one tagged with
+    # github.sha - a release commit may not have touched frontend files at all.
+    - name: Promote Image
+      shell: bash
+      run: |
+        "$(go env GOPATH)/bin/gcrane" cp \
+          "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.staging_project_id }}/frontend/frontend:latest" \
+          "${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.prod_project_id }}/frontend/frontend:${{ inputs.target_tag }}"

@@ -141,6 +141,29 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
+  # Builds and pushes the frontend image to staging, tagged with the commit SHA. It isn't served
+  # anywhere yet - the site itself still deploys via services-frontend to Cloudflare Pages.
+  services-frontend-image:
+    needs: [diff, infrastructure-staging]
+    if: |
+      always() &&
+      needs.diff.outputs.services-frontend == 'true' &&
+      needs.diff.result == 'success' &&
+      (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/frontend-image-build
+        with:
+          gcp_project_id: 'blog-gorman-club-stag'
+          gcp_region: 'europe-west1'
+          image_tag: ${{ github.sha }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+
   # Runs unconditionally on every merge; the patch-bump pre-release isn't gated on which part
   # of the repo changed.
   pre-release:

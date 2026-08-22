@@ -87,3 +87,24 @@ jobs:
           secrets: ${{ steps.secrets.outputs.secrets }}
           cloudflare_project_name: 'frontend-prod'
           backend_url: ${{ needs.services-backend.outputs.backend_url }}
+
+  # Promotes whatever frontend image is currently tagged `latest` on staging, mirroring
+  # services-backend above. Runs independently of services-frontend, which deploys separately.
+  services-frontend-image:
+    needs: infrastructure-prod
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: ./.github/actions/frontend-image-promote
+        with:
+          staging_project_id: 'blog-gorman-club-stag'
+          prod_project_id: 'blog-gorman-club-prod'
+          gcp_region: 'europe-west1'
+          target_tag: ${{ github.event.release.tag_name }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}

@@ -1,3 +1,26 @@
+# Dedicated runtime identity for the backend, scoped to only what it needs (Firestore read/write)
+# rather than the project's default compute service account.
+resource "google_service_account" "backend_runtime" {
+  project      = var.gcp_project_id
+  account_id   = "backend-runtime"
+  display_name = "Backend Cloud Run runtime"
+}
+
+resource "google_project_iam_member" "backend_runtime_datastore_user" {
+  project = var.gcp_project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.backend_runtime.email}"
+}
+
+# CI needs to actAs this service account to attach it to the Cloud Run service below - not
+# covered by roles/editor, roles/resourcemanager.projectIamAdmin, or roles/run.admin
+# (infrastructure/root/github_cicd.tf).
+resource "google_service_account_iam_member" "backend_runtime_actas" {
+  service_account_id = google_service_account.backend_runtime.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:github-actions@blog-gorman-club-root.iam.gserviceaccount.com"
+}
+
 resource "google_cloud_run_v2_service" "backend" {
   depends_on = [google_project_service.run]
 
@@ -11,6 +34,8 @@ resource "google_cloud_run_v2_service" "backend" {
   }
 
   template {
+    service_account = google_service_account.backend_runtime.email
+
     containers {
       image = var.backend_initial_image
 

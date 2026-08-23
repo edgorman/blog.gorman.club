@@ -126,7 +126,7 @@ jobs:
           service_account: ${{ vars.SERVICE_ACCOUNT }}
       - uses: ./.github/actions/terraform-push-commit
         with:
-          terraform_directory: 'infrastructure'
+          terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/staging'
 
   # Builds and deploys the backend image to staging, tagged with the commit SHA. Must follow
@@ -212,7 +212,7 @@ jobs:
 
       - name: Terraform Plan (prod preview)
         shell: bash
-        working-directory: infrastructure
+        working-directory: infrastructure/env
         run: |
           terraform init \
             -backend-config="${{ github.workspace }}/infrastructure/config/prod/terraform.tfbackend"
@@ -237,7 +237,7 @@ jobs:
             echo "<summary>Show Plan</summary>"
             echo
             echo '```hcl'
-            cat infrastructure/tfplan.txt
+            cat infrastructure/env/tfplan.txt
             echo '```'
             echo
             echo "</details>"

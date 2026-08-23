@@ -8,7 +8,7 @@ updates:
       - ci
 
   - package-ecosystem: 'terraform'
-    directory: '/infrastructure'
+    directory: '/infrastructure/env'
     schedule:
       interval: 'weekly'
     labels:

@@ -76,7 +76,7 @@ jobs:
           secrets: ${{ steps.secrets.outputs.secrets }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-  # infrastructure/*.tf is shared between staging and prod, so a change to it plans against both.
+  # infrastructure/env/** is shared between staging and prod, so a change to it plans against both.
   # No sensitive vars needed, so it authenticates directly (no gcp-secret-manager).
   infrastructure-staging:
     needs: diff
@@ -95,7 +95,7 @@ jobs:
           service_account: ${{ vars.SERVICE_ACCOUNT }}
       - uses: ./.github/actions/terraform-pull-request
         with:
-          terraform_directory: 'infrastructure'
+          terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/staging'
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -116,6 +116,6 @@ jobs:
           service_account: ${{ vars.SERVICE_ACCOUNT }}
       - uses: ./.github/actions/terraform-pull-request
         with:
-          terraform_directory: 'infrastructure'
+          terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/prod'
           github_token: ${{ secrets.GITHUB_TOKEN }}

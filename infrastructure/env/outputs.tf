@@ -12,3 +12,8 @@ output "frontend_artifact_registry_repository" {
   description = "Full resource name of the frontend Artifact Registry repository"
   value       = google_artifact_registry_repository.frontend.name
 }
+
+output "firestore_database" {
+  description = "Full resource name of the Firestore database"
+  value       = google_firestore_database.database.name
+}

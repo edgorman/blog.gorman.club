@@ -31,7 +31,7 @@ jobs:
           service_account: ${{ vars.SERVICE_ACCOUNT }}
       - uses: ./.github/actions/terraform-push-commit
         with:
-          terraform_directory: 'infrastructure'
+          terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/prod'
 
   # Step 2: promote whatever image is currently live on backend-stag by digest via gcrane, not

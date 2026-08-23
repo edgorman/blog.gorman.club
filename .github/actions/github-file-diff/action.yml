@@ -49,15 +49,15 @@ runs:
             - 'services/backend/**'
             - '.github/actions/backend-test/**'
 
-          # infrastructure/*.tf is shared between environments, so it appears in both filters below.
+          # infrastructure/env/** is shared between environments, so it appears in both filters below.
           infrastructure-staging:
-            - 'infrastructure/*.tf'
+            - 'infrastructure/env/**'
             - 'infrastructure/config/staging/**'
             - '.github/actions/backend-deploy/**'
             - '.github/actions/backend-cloudrun-deploy/**'
 
           infrastructure-prod:
-            - 'infrastructure/*.tf'
+            - 'infrastructure/env/**'
             - 'infrastructure/config/prod/**'
             - '.github/actions/backend-promote/**'
             - '.github/actions/backend-cloudrun-deploy/**'

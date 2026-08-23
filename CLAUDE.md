@@ -8,7 +8,7 @@ This is a single-repository (monorepo), multi-cloud deployment strategy built on
 
 ## Repository Structure
 
-- `/infrastructure` — Centralized Terraform manifests using environment-specific variable configurations (`staging.tfvars`, `prod.tfvars`), plus a `root` subfolder for shared, manually-bootstrapped resources (see Root Environment below).
+- `/infrastructure` — Centralized Terraform manifests. The `env` subfolder holds the manifests applied once per environment (staging/prod) using environment-specific variable configurations (`staging.tfvars`, `prod.tfvars`); the `root` subfolder holds shared, manually-bootstrapped resources (see Root Environment below).
 - `/services/backend` — Golang backend service(s) packaged as Docker containers targeted for GCP Cloud Run.
 - `/services/frontend` — Conventional Vite/React single-page app deployed to Cloudflare Pages.
 - `/services/*/Makefile` — Per-service `lint` and `test` targets used by both local development and CI (to be added later).

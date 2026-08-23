@@ -81,6 +81,16 @@ resource "google_project_iam_member" "github_actions_service_account_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+# google_identity_platform_config (infrastructure/env/firebase_web.tf) needs
+# firebaseauth.configs.create/update, covered by none of the roles above.
+resource "google_project_iam_member" "github_actions_identitytoolkit_admin" {
+  for_each = local.all_projects
+
+  project = each.value.project_id
+  role    = "roles/identitytoolkit.admin"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
 # This service account lives in the root project, so Firebase/Firestore calls would otherwise bill
 # quota to root rather than the project being modified. infrastructure/env uses the provider's
 # user_project_override to redirect that, which requires serviceusage.services.use on the target.

@@ -15,6 +15,10 @@ inputs:
     description: 'Base URL of the backend service, baked in at build time as VITE_BACKEND_URL'
     required: false
     default: ''
+  firebase_config:
+    description: 'JSON-encoded Firebase web app config, baked in at build time as VITE_FIREBASE_CONFIG'
+    required: false
+    default: ''
   workload_identity_provider:
     description: 'The Workload Identity Provider resource name'
     required: true
@@ -68,6 +72,7 @@ runs:
       run: |
         docker build \
           --build-arg VITE_BACKEND_URL="${{ inputs.backend_url }}" \
+          --build-arg VITE_FIREBASE_CONFIG="${{ inputs.firebase_config }}" \
           -t "${{ steps.image.outputs.ref }}" \
           services/frontend
 

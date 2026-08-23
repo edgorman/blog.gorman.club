@@ -83,6 +83,28 @@ jobs:
           secrets_list: |
             CLOUDFLARE_API_TOKEN=cloudflare_api_token
             CLOUDFLARE_ACCOUNT_ID=cloudflare_account_id
+      # Base64-encoded so the JSON (with its embedded quotes) can pass through a build-arg safely;
+      # the frontend decodes it with atob(). Not a secret - Firebase web config is meant to ship in
+      # the client bundle, access control lives in firestore.rules instead.
+      - id: firebase
+        name: Get Firebase Web Config
+        shell: bash
+        run: |
+          TOKEN=$(gcloud auth print-access-token)
+          APP_NAME=$(curl -sf \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Goog-User-Project: blog-gorman-club-prod" \
+            "https://firebase.googleapis.com/v1beta1/projects/blog-gorman-club-prod/webApps" \
+            2>/dev/null | jq -r '.apps[0].name // empty') || true
+          CONFIG_B64=""
+          if [ -n "$APP_NAME" ]; then
+            CONFIG_B64=$(curl -sf \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "X-Goog-User-Project: blog-gorman-club-prod" \
+              "https://firebase.googleapis.com/v1beta1/${APP_NAME}/config" \
+              2>/dev/null | base64 -w0) || true
+          fi
+          echo "config=$CONFIG_B64" >> "$GITHUB_OUTPUT"
       - id: image
         uses: ./.github/actions/frontend-image-promote
         with:
@@ -90,6 +112,7 @@ jobs:
           gcp_region: 'europe-west1'
           target_tag: ${{ github.event.release.tag_name }}
           backend_url: ${{ needs.services-backend.outputs.backend_url }}
+          firebase_config: ${{ steps.firebase.outputs.config }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
       - uses: ./.github/actions/frontend-image-extract

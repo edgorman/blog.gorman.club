@@ -7,14 +7,11 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
-// User mirrors /users/{userId} in firestore.rules - a profile document keyed by the owner's
-// Firebase Auth uid.
-type User struct {
-	ID          string `json:"id" firestore:"-"`
-	DisplayName string `json:"displayName" firestore:"displayName"`
-}
-
 // Blog mirrors /blogs/{blogId} in firestore.rules.
+//
+// Reads are served to the frontend directly by the Firebase SDK, gated by those rules - this
+// service only handles writes, so that createdAt/updatedAt come from the server rather than a
+// client clock. Nothing here re-implements the rules' read condition.
 type Blog struct {
 	ID             string    `json:"id" firestore:"-"`
 	OwnerID        string    `json:"ownerId" firestore:"ownerId"`
@@ -24,24 +21,4 @@ type Blog struct {
 	AllowedUserIDs []string  `json:"allowedUserIds,omitempty" firestore:"allowedUserIds"`
 	CreatedAt      time.Time `json:"createdAt" firestore:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt" firestore:"updatedAt"`
-}
-
-// visibleTo mirrors firestore.rules' read condition for /blogs/{blogId}: the Admin SDK this
-// backend uses bypasses those rules entirely, so the same check has to be re-enforced here.
-func (b Blog) visibleTo(uid string) bool {
-	if b.Visibility == "public" {
-		return true
-	}
-	if uid == "" {
-		return false
-	}
-	if b.OwnerID == uid {
-		return true
-	}
-	for _, id := range b.AllowedUserIDs {
-		if id == uid {
-			return true
-		}
-	}
-	return false
 }

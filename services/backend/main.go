@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +15,13 @@ import (
 var commit = "unknown"
 
 func main() {
+	// run() owns the deferred cleanup; log.Fatal here would skip it via os.Exit.
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	environment := os.Getenv("ENVIRONMENT")
 	if environment == "" {
 		environment = "development"
@@ -28,25 +36,26 @@ func main() {
 
 	firestoreClient, err := firestore.NewClient(ctx, firestore.DetectProjectID)
 	if err != nil {
-		log.Fatalf("firestore client: %v", err)
+		return fmt.Errorf("firestore client: %w", err)
 	}
 	defer firestoreClient.Close()
 
 	firebaseApp, err := firebase.NewApp(ctx, nil)
 	if err != nil {
-		log.Fatalf("firebase app: %v", err)
+		return fmt.Errorf("firebase app: %w", err)
 	}
 	firebaseAuth, err := firebaseApp.Auth(ctx)
 	if err != nil {
-		log.Fatalf("firebase auth client: %v", err)
+		return fmt.Errorf("firebase auth client: %w", err)
 	}
 	verifier := &firebaseTokenVerifier{client: firebaseAuth}
 
-	users := newUserHandler(newFirestoreUserStore(firestoreClient))
 	blogs := newBlogHandler(newFirestoreBlogStore(firestoreClient))
 	debugHandler := newDebugHandler(environment, commit)
 
-	// Every users/blogs route is browser-facing and requires a verified Firebase caller.
+	// Only writes are served here - the frontend reads users and blogs directly through the
+	// Firebase SDK, gated by firestore.rules. Writes go through the server so createdAt/updatedAt
+	// are trustworthy rather than set from a client clock.
 	authed := func(h http.HandlerFunc) http.Handler {
 		return withCORS(requireAuth(verifier, h))
 	}
@@ -54,14 +63,10 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/health", withCORS(debugHandler))
 	mux.Handle("/debug", withCORS(debugHandler))
-	mux.Handle("GET /users/{id}", authed(users.Get))
-	mux.Handle("PUT /users/{id}", authed(users.Put))
-	mux.Handle("GET /blogs", authed(blogs.List))
 	mux.Handle("POST /blogs", authed(blogs.Create))
-	mux.Handle("GET /blogs/{id}", authed(blogs.Get))
 	mux.Handle("PUT /blogs/{id}", authed(blogs.Update))
 	mux.Handle("DELETE /blogs/{id}", authed(blogs.Delete))
 
 	log.Printf("backend listening on :%s (environment=%s, commit=%s)", port, environment, commit)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	return http.ListenAndServe(":"+port, mux)
 }

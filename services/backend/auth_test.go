@@ -34,8 +34,9 @@ func TestRequireAuth_MissingHeader(t *testing.T) {
 		t.Fatal("next handler should not be called without a bearer token")
 	}
 	if rec.Result().StatusCode != http.StatusUnauthorized {
-		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusUnauthorized)
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusUnauthorized)
 	}
+	decodeAPIError(t, rec)
 }
 
 func TestRequireAuth_InvalidToken(t *testing.T) {
@@ -49,8 +50,9 @@ func TestRequireAuth_InvalidToken(t *testing.T) {
 	handler(rec, req)
 
 	if rec.Result().StatusCode != http.StatusUnauthorized {
-		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusUnauthorized)
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusUnauthorized)
 	}
+	decodeAPIError(t, rec)
 }
 
 func TestRequireAuth_Valid(t *testing.T) {

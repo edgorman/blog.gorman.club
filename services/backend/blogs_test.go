@@ -28,16 +28,6 @@ func (s *fakeBlogStore) Get(ctx context.Context, id string) (Blog, error) {
 	return blog, nil
 }
 
-func (s *fakeBlogStore) List(ctx context.Context, callerUID string) ([]Blog, error) {
-	var out []Blog
-	for _, blog := range s.blogs {
-		if blog.visibleTo(callerUID) {
-			out = append(out, blog)
-		}
-	}
-	return out, nil
-}
-
 func (s *fakeBlogStore) Create(ctx context.Context, blog Blog) (Blog, error) {
 	s.nextID++
 	blog.ID = fmt.Sprintf("blog-%d", s.nextID)
@@ -58,36 +48,26 @@ func (s *fakeBlogStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func TestBlogHandler_Get_PrivateHiddenFromStranger(t *testing.T) {
-	store := newFakeBlogStore()
-	store.blogs["blog-1"] = Blog{ID: "blog-1", OwnerID: "owner", Visibility: "private"}
-	h := newBlogHandler(store)
-
-	req := httptest.NewRequest(http.MethodGet, "/blogs/blog-1", nil)
-	req.SetPathValue("id", "blog-1")
-	req = withUID(req, "stranger")
-	rec := httptest.NewRecorder()
-	h.Get(rec, req)
-
-	if rec.Result().StatusCode != http.StatusNotFound {
-		t.Errorf("status = %d, want %d (private blogs must not be distinguishable from missing ones)", rec.Result().StatusCode, http.StatusNotFound)
-	}
+func withUID(req *http.Request, uid string) *http.Request {
+	return req.WithContext(context.WithValue(req.Context(), uidContextKey, uid))
 }
 
-func TestBlogHandler_Get_PublicVisibleToAnyone(t *testing.T) {
-	store := newFakeBlogStore()
-	store.blogs["blog-1"] = Blog{ID: "blog-1", OwnerID: "owner", Visibility: "public", Title: "Hello"}
-	h := newBlogHandler(store)
+// decodeAPIError asserts the response carries a JSON error body rather than plain text, so
+// clients can parse success and failure the same way.
+func decodeAPIError(t *testing.T, rec *httptest.ResponseRecorder) apiError {
+	t.Helper()
 
-	req := httptest.NewRequest(http.MethodGet, "/blogs/blog-1", nil)
-	req.SetPathValue("id", "blog-1")
-	req = withUID(req, "stranger")
-	rec := httptest.NewRecorder()
-	h.Get(rec, req)
-
-	if rec.Result().StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	if ct := rec.Result().Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want %q", ct, "application/json")
 	}
+	var body apiError
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if body.Error == "" {
+		t.Error("error body has an empty message")
+	}
+	return body
 }
 
 func TestBlogHandler_Create_OwnerIDFromCaller(t *testing.T) {
@@ -122,8 +102,9 @@ func TestBlogHandler_Create_RejectsInvalidVisibility(t *testing.T) {
 	h.Create(rec, req)
 
 	if rec.Result().StatusCode != http.StatusBadRequest {
-		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
 	}
+	decodeAPIError(t, rec)
 }
 
 func TestBlogHandler_Update_ForbiddenForNonOwner(t *testing.T) {
@@ -139,8 +120,9 @@ func TestBlogHandler_Update_ForbiddenForNonOwner(t *testing.T) {
 	h.Update(rec, req)
 
 	if rec.Result().StatusCode != http.StatusForbidden {
-		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
 	}
+	decodeAPIError(t, rec)
 }
 
 func TestBlogHandler_Update_NotFound(t *testing.T) {
@@ -154,8 +136,9 @@ func TestBlogHandler_Update_NotFound(t *testing.T) {
 	h.Update(rec, req)
 
 	if rec.Result().StatusCode != http.StatusNotFound {
-		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
 	}
+	decodeAPIError(t, rec)
 }
 
 func TestBlogHandler_Update_PreservesOwnerAndCreatedAt(t *testing.T) {
@@ -216,8 +199,9 @@ func TestBlogHandler_Delete_ForbiddenForNonOwner(t *testing.T) {
 	h.Delete(rec, req)
 
 	if rec.Result().StatusCode != http.StatusForbidden {
-		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
 	}
+	decodeAPIError(t, rec)
 	if _, ok := store.blogs["blog-1"]; !ok {
 		t.Error("blog was deleted despite forbidden caller")
 	}
@@ -239,26 +223,5 @@ func TestBlogHandler_Delete_Owner(t *testing.T) {
 	}
 	if _, ok := store.blogs["blog-1"]; ok {
 		t.Error("blog still present after delete")
-	}
-}
-
-func TestBlogHandler_List_FiltersToVisible(t *testing.T) {
-	store := newFakeBlogStore()
-	store.blogs["public"] = Blog{ID: "public", Visibility: "public"}
-	store.blogs["mine"] = Blog{ID: "mine", OwnerID: "caller", Visibility: "private"}
-	store.blogs["others"] = Blog{ID: "others", OwnerID: "someone-else", Visibility: "private"}
-	h := newBlogHandler(store)
-
-	req := httptest.NewRequest(http.MethodGet, "/blogs", nil)
-	req = withUID(req, "caller")
-	rec := httptest.NewRecorder()
-	h.List(rec, req)
-
-	var got []Blog
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("len(got) = %d, want 2 (public + own private, not others' private)", len(got))
 	}
 }

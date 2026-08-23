@@ -19,66 +19,34 @@ func newBlogHandler(store BlogStore) *blogHandler {
 func decodeBlog(w http.ResponseWriter, r *http.Request) (Blog, bool) {
 	var blog Blog
 	if err := json.NewDecoder(r.Body).Decode(&blog); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return Blog{}, false
 	}
 	if blog.Visibility != "public" && blog.Visibility != "private" {
-		http.Error(w, `visibility must be "public" or "private"`, http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, `visibility must be "public" or "private"`)
 		return Blog{}, false
 	}
 	return blog, true
 }
 
 // requireOwnedBlog loads the blog named by the {id} path value and checks the caller owns it,
-// writing the error response and returning false otherwise. Mirrors firestore.rules' update and
-// delete conditions (`resource.data.ownerId == request.auth.uid`).
+// writing the error response and returning false otherwise. The Admin SDK used here bypasses
+// firestore.rules, so this is the enforcement point for writes that go through the API.
 func (h *blogHandler) requireOwnedBlog(w http.ResponseWriter, r *http.Request) (Blog, bool) {
 	blog, err := h.store.Get(r.Context(), r.PathValue("id"))
 	if errors.Is(err, ErrNotFound) {
-		http.Error(w, "blog not found", http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "blog not found")
 		return Blog{}, false
 	}
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return Blog{}, false
 	}
 	if blog.OwnerID != uidFromContext(r.Context()) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeError(w, http.StatusForbidden, "forbidden")
 		return Blog{}, false
 	}
 	return blog, true
-}
-
-// List returns every blog visible to the caller (see Blog.visibleTo).
-func (h *blogHandler) List(w http.ResponseWriter, r *http.Request) {
-	blogs, err := h.store.List(r.Context(), uidFromContext(r.Context()))
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, blogs)
-}
-
-// Get returns a single blog if it's visible to the caller. A private blog the caller can't see
-// responds identically to a missing one, so its existence isn't leaked.
-func (h *blogHandler) Get(w http.ResponseWriter, r *http.Request) {
-	blog, err := h.store.Get(r.Context(), r.PathValue("id"))
-	if errors.Is(err, ErrNotFound) {
-		http.Error(w, "blog not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	if !blog.visibleTo(uidFromContext(r.Context())) {
-		http.Error(w, "blog not found", http.StatusNotFound)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, blog)
 }
 
 // Create makes a new blog owned by the caller. ownerId is always taken from the verified caller,
@@ -92,7 +60,7 @@ func (h *blogHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.store.Create(r.Context(), body)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -116,7 +84,7 @@ func (h *blogHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := h.store.Update(r.Context(), body)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -131,7 +99,7 @@ func (h *blogHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.Delete(r.Context(), blog.ID); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 

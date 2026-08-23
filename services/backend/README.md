@@ -19,11 +19,22 @@ commit SHA the running image was built from, as JSON:
 
 ## Users and blogs
 
-Data is stored in Firestore (`infrastructure/env/firestore.tf` and
-`firestore.rules`). Since this service uses the Firestore Admin SDK - which
-bypasses `firestore.rules` entirely - the same access control those rules
-define is re-enforced in Go (see `Blog.visibleTo` in `model.go`, and the
-handlers in `users.go`/`blogs.go`).
+Data lives in Firestore (`infrastructure/env/firestore.tf` and
+`firestore.rules`). Responsibility is split so that no access rule is
+implemented twice:
+
+- **Reads** — the frontend queries users and blogs **directly through the
+  Firebase SDK**. `firestore.rules` is the only place the read rules
+  (public / owner / `allowedUserIds` whitelist) are expressed. This service
+  has no read endpoints, so there's no Go copy of that logic to drift.
+- **Writes** — blog writes go through this service so `createdAt` and
+  `updatedAt` come from the server rather than a spoofable client clock.
+  Because the Admin SDK used here bypasses `firestore.rules`, ownership is
+  checked in `requireOwnedBlog` — that's the enforcement point for this path,
+  not a duplicate of the read rules.
+
+User profiles have no endpoints at all: `firestore.rules` already restricts
+writes to the profile's own owner, so a server hop would add nothing.
 
 Every route below requires a valid Firebase Auth ID token as a bearer token:
 
@@ -31,15 +42,21 @@ Every route below requires a valid Firebase Auth ID token as a bearer token:
 Authorization: Bearer <firebase-id-token>
 ```
 
-| Method | Path          | Description                                                              |
-| ------ | ------------- | ------------------------------------------------------------------------- |
-| GET    | `/users/{id}` | Get a user's profile. Any signed-in caller may read any profile.          |
-| PUT    | `/users/{id}` | Create or replace a user's own profile. `id` must match the caller's uid. |
-| GET    | `/blogs`      | List blogs visible to the caller (public, owned, or whitelisted).         |
-| POST   | `/blogs`      | Create a blog. `ownerId` is always the caller, regardless of the body.    |
-| GET    | `/blogs/{id}` | Get a blog if it's visible to the caller (404 otherwise, same as missing).|
-| PUT    | `/blogs/{id}` | Replace a blog's fields. Caller must be the owner.                        |
-| DELETE | `/blogs/{id}` | Delete a blog. Caller must be the owner.                                  |
+| Method | Path          | Description                                                           |
+| ------ | ------------- | --------------------------------------------------------------------- |
+| POST   | `/blogs`      | Create a blog. `ownerId` is always the caller, regardless of the body. |
+| PUT    | `/blogs/{id}` | Replace a blog's fields. Caller must be the owner.                     |
+| DELETE | `/blogs/{id}` | Delete a blog. Caller must be the owner.                               |
+
+### Response shape
+
+Successful responses return the resource itself (or `204 No Content` for
+`DELETE`). Every non-2xx response is JSON of the same shape, so a client can
+parse success and failure the same way:
+
+```json
+{ "error": "blog not found" }
+```
 
 ## Development
 

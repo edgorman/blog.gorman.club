@@ -36,13 +36,13 @@ func requireAuth(verifier tokenVerifier, next http.HandlerFunc) http.HandlerFunc
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !ok || token == "" {
-			http.Error(w, "missing bearer token", http.StatusUnauthorized)
+			writeError(w, http.StatusUnauthorized, "missing bearer token")
 			return
 		}
 
 		uid, err := verifier.Verify(r.Context(), token)
 		if err != nil {
-			http.Error(w, "invalid token", http.StatusUnauthorized)
+			writeError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
 

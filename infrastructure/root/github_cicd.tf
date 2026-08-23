@@ -37,6 +37,36 @@ resource "google_project_iam_member" "github_actions_run_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+# google_firestore_database (infrastructure/env/firestore.tf) needs datastore.databases.create,
+# which roles/editor doesn't include.
+resource "google_project_iam_member" "github_actions_datastore_admin" {
+  for_each = local.all_projects
+
+  project = each.value.project_id
+  role    = "roles/datastore.admin"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+# google_firebase_project (infrastructure/env/firestore.tf) needs firebase.projects.update to add
+# Firebase to the project, which roles/editor doesn't include.
+resource "google_project_iam_member" "github_actions_firebase_admin" {
+  for_each = local.all_projects
+
+  project = each.value.project_id
+  role    = "roles/firebase.admin"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+# google_firebaserules_ruleset/release (infrastructure/env/firestore.tf) need
+# firebaserules.rulesets.create and firebaserules.releases.create, covered by neither role above.
+resource "google_project_iam_member" "github_actions_firebaserules_admin" {
+  for_each = local.all_projects
+
+  project = each.value.project_id
+  role    = "roles/firebaserules.admin"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
 resource "google_iam_workload_identity_pool" "github_pool" {
   project                   = var.gcp_provider_project_id
   workload_identity_pool_id = "github-pool"

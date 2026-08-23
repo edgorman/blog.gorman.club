@@ -154,9 +154,14 @@ jobs:
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
   # Runs unconditionally on every merge; the patch-bump pre-release isn't gated on which part
-  # of the repo changed. Tags the commit, lets gren (github-release-notes) draft the release
-  # from commit messages, then appends a read-only prod terraform plan so a reviewer can see
-  # infra impact before promoting.
+  # of the repo changed. Drafts the release body from commit messages since the last tag, then
+  # appends a read-only prod terraform plan so a reviewer can see infra impact before promoting.
+  #
+  # gren (github-release-notes) was tried here instead of the git-log summary below, but proved
+  # unreliable in this repo: its single-tag "use the previous tag" auto-detection pulled in the
+  # full commit history instead of just the commits since the last tag, and passing an explicit
+  # <new>..<old> range silently overwrote the *old* tag's release instead of creating the new
+  # one. Reverted to the deterministic git-log approach.
   pre-release:
     runs-on: ubuntu-latest
     permissions:
@@ -172,22 +177,27 @@ jobs:
         shell: bash
         run: |
           LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          LAST_TAG=${LAST_TAG:-v0.0.0}
           IFS='.' read -r MAJOR MINOR PATCH <<< "${LAST_TAG#v}"
-          MAJOR=${MAJOR:-0}
-          MINOR=${MINOR:-0}
-          PATCH=${PATCH:-0}
           {
             echo "version=v${MAJOR}.${MINOR}.$((PATCH + 1))"
             echo "last_tag=$LAST_TAG"
           } >> "$GITHUB_OUTPUT"
 
-      # gren attaches release notes to an existing tag - it can't create one - so the tag has
-      # to exist on the remote before gren runs.
-      - name: Tag Release
+      - id: commits
+        name: Summarize Commits Since Last Release
         shell: bash
         run: |
-          git tag "${{ steps.version.outputs.version }}" "${{ github.sha }}"
-          git push origin "${{ steps.version.outputs.version }}"
+          if git rev-parse "${{ steps.version.outputs.last_tag }}" >/dev/null 2>&1; then
+            RANGE="${{ steps.version.outputs.last_tag }}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          {
+            echo 'log<<COMMITS_EOF'
+            git log "$RANGE" --pretty='- %s (%h)'
+            echo 'COMMITS_EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -214,48 +224,29 @@ jobs:
             -out=tfplan.binary
           terraform show -no-color tfplan.binary > tfplan.txt
 
-      # gren's single-tag "use the previous tag" auto-detection doesn't reliably land on the
-      # immediately preceding tag in this repo's history, so the range is given explicitly.
-      - name: Generate Release Notes
+      - name: Write Release Notes
         shell: bash
-        env:
-          GREN_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAGS="${{ steps.version.outputs.version }}"
-          if [ -n "${{ steps.version.outputs.last_tag }}" ]; then
-            TAGS="${TAGS}..${{ steps.version.outputs.last_tag }}"
-          fi
-          npx --yes github-release-notes@0.17.3 release \
-            --tags="$TAGS" \
-            --data-source=commits \
-            --prerelease \
-            --override
+          {
+            echo "## Commits since ${{ steps.version.outputs.last_tag }}"
+            echo "${{ steps.commits.outputs.log }}"
+            echo
+            echo "### Terraform Plan for \`prod\` Environment"
+            echo
+            echo "<details>"
+            echo "<summary>Show Plan</summary>"
+            echo
+            echo '```hcl'
+            cat infrastructure/tfplan.txt
+            echo '```'
+            echo
+            echo "</details>"
+          } > RELEASE_NOTES.md
 
-      - name: Append Terraform Plan to Release Notes
-        uses: actions/github-script@v7
+      - name: Create Pre-Release
+        uses: softprops/action-gh-release@v3
         with:
-          script: |
-            const fs = require('fs');
-
-            // GitHub release body size limit (with buffer for formatting)
-            const MAX_PLAN_LENGTH = 60000;
-
-            const plan = fs.readFileSync('infrastructure/tfplan.txt', 'utf8');
-            const truncatedPlan = plan.length > MAX_PLAN_LENGTH
-              ? plan.substring(0, MAX_PLAN_LENGTH) + '\n\n... (output truncated due to length)'
-              : plan;
-
-            const { data: release } = await github.rest.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag: '${{ steps.version.outputs.version }}',
-            });
-
-            const planSection = `\n\n### Terraform Plan for \`prod\` Environment\n\n<details>\n<summary>Show Plan</summary>\n\n\`\`\`hcl\n${truncatedPlan}\n\`\`\`\n\n</details>`;
-
-            await github.rest.repos.updateRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: release.id,
-              body: release.body + planSection,
-            });
+          tag_name: ${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          body_path: RELEASE_NOTES.md

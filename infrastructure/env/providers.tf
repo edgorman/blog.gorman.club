@@ -14,10 +14,6 @@ terraform {
       source  = "hashicorp/google-beta"
       version = "7.45.0"
     }
-    time = {
-      source  = "hashicorp/time"
-      version = "0.13.1"
-    }
   }
 
   backend "gcs" {
@@ -33,4 +29,28 @@ provider "google" {
 provider "google-beta" {
   project = var.gcp_project_id
   region  = var.gcp_region
+}
+
+# CI authenticates as a service account that lives in the *root* project, so GCP attributes API
+# quota to root by default - but the Firebase/Firestore APIs are enabled on this environment's
+# project, not root. That mismatch is what produced "Firebase Management API has not been used in
+# project <root's number>" even though Terraform had just enabled it on the stag/prod project.
+#
+# user_project_override sends an X-Goog-User-Project header so quota is attributed to the project
+# actually being modified. It requires serviceusage.services.use on that project, granted in
+# infrastructure/root/github_cicd.tf. Scoped to an alias so only the resources that need it are
+# affected - enabling the APIs themselves (google_project_service) must not depend on a project
+# whose APIs aren't enabled yet.
+provider "google" {
+  alias                 = "firebase"
+  project               = var.gcp_project_id
+  region                = var.gcp_region
+  user_project_override = true
+}
+
+provider "google-beta" {
+  alias                 = "firebase"
+  project               = var.gcp_project_id
+  region                = var.gcp_region
+  user_project_override = true
 }

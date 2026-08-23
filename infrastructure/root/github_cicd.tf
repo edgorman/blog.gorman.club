@@ -67,6 +67,17 @@ resource "google_project_iam_member" "github_actions_firebaserules_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+# This service account lives in the root project, so Firebase/Firestore calls would otherwise bill
+# quota to root rather than the project being modified. infrastructure/env uses the provider's
+# user_project_override to redirect that, which requires serviceusage.services.use on the target.
+resource "google_project_iam_member" "github_actions_service_usage_consumer" {
+  for_each = local.all_projects
+
+  project = each.value.project_id
+  role    = "roles/serviceusage.serviceUsageConsumer"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
 resource "google_iam_workload_identity_pool" "github_pool" {
   project                   = var.gcp_provider_project_id
   workload_identity_pool_id = "github-pool"

@@ -172,9 +172,14 @@ jobs:
         shell: bash
         run: |
           LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
-          LAST_TAG=${LAST_TAG:-v0.0.0}
           IFS='.' read -r MAJOR MINOR PATCH <<< "${LAST_TAG#v}"
-          echo "version=v${MAJOR}.${MINOR}.$((PATCH + 1))" >> "$GITHUB_OUTPUT"
+          MAJOR=${MAJOR:-0}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
+          {
+            echo "version=v${MAJOR}.${MINOR}.$((PATCH + 1))"
+            echo "last_tag=$LAST_TAG"
+          } >> "$GITHUB_OUTPUT"
 
       # gren attaches release notes to an existing tag - it can't create one - so the tag has
       # to exist on the remote before gren runs.
@@ -209,13 +214,19 @@ jobs:
             -out=tfplan.binary
           terraform show -no-color tfplan.binary > tfplan.txt
 
+      # gren's single-tag "use the previous tag" auto-detection doesn't reliably land on the
+      # immediately preceding tag in this repo's history, so the range is given explicitly.
       - name: Generate Release Notes
         shell: bash
         env:
           GREN_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          TAGS="${{ steps.version.outputs.version }}"
+          if [ -n "${{ steps.version.outputs.last_tag }}" ]; then
+            TAGS="${TAGS}..${{ steps.version.outputs.last_tag }}"
+          fi
           npx --yes github-release-notes@0.17.3 release \
-            --tags="${{ steps.version.outputs.version }}" \
+            --tags="$TAGS" \
             --data-source=commits \
             --prerelease \
             --override

@@ -17,13 +17,18 @@ resource "google_project_service" "firebase" {
 }
 
 # Newly enabled APIs take a while to propagate; using them immediately in the same apply
-# intermittently fails with 403s.
+# intermittently fails with 403s. Each API gets its own time_sleep: once a time_sleep resource
+# exists in state, adding a new dependency to it doesn't make it wait again (depends_on changes
+# don't force recreation), so a shared sleep silently stops covering APIs enabled after the first
+# apply that created it - one bit us going from firestore/firebaserules to firebase.googleapis.com.
 resource "time_sleep" "firestore_apis" {
-  depends_on = [
-    google_project_service.firestore,
-    google_project_service.firebaserules,
-    google_project_service.firebase,
-  ]
+  depends_on = [google_project_service.firestore, google_project_service.firebaserules]
+
+  create_duration = "60s"
+}
+
+resource "time_sleep" "firebase_api" {
+  depends_on = [google_project_service.firebase]
 
   create_duration = "60s"
 }
@@ -36,7 +41,7 @@ resource "google_firebase_project" "default" {
   provider = google-beta
 
   project    = var.gcp_project_id
-  depends_on = [time_sleep.firestore_apis]
+  depends_on = [time_sleep.firebase_api]
 }
 
 resource "google_firestore_database" "database" {

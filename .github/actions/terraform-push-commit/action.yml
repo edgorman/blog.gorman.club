@@ -39,7 +39,22 @@ runs:
       shell: bash
       working-directory: ${{ inputs.terraform_directory }}
       run: |
-        terraform apply \
-          -var-file="${{ github.workspace }}/${{ inputs.config_directory }}/terraform.tfvars" \
-          -auto-approve \
-          -input=false
+        # GCP's Service Usage / Firebase Management API enablement can take longer to propagate
+        # than any fixed wait reliably covers (see infrastructure/env/firestore.tf's time_sleep
+        # resources, which handle the common case) - retry a few times on that specific transient
+        # error instead of betting on a single static sleep duration. Any other failure exits
+        # immediately without wasted retries.
+        max_attempts=3
+        for attempt in $(seq 1 "$max_attempts"); do
+          if terraform apply \
+            -var-file="${{ github.workspace }}/${{ inputs.config_directory }}/terraform.tfvars" \
+            -auto-approve \
+            -input=false | tee /tmp/tf-apply.log; then
+            exit 0
+          fi
+          if [ "$attempt" -eq "$max_attempts" ] || ! grep -qE "SERVICE_DISABLED|has not been used in project" /tmp/tf-apply.log; then
+            exit 1
+          fi
+          echo "::warning::Terraform apply hit a transient GCP API-enablement error (attempt $attempt/$max_attempts) - waiting 90s for propagation before retrying"
+          sleep 90
+        done

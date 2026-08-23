@@ -9,6 +9,11 @@ terraform {
       source  = "hashicorp/google"
       version = "7.45.0"
     }
+    # Beta-only: google_firebase_project (firestore.tf) isn't in the GA google provider yet.
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "7.45.0"
+    }
     time = {
       source  = "hashicorp/time"
       version = "0.13.1"
@@ -21,6 +26,11 @@ terraform {
 }
 
 provider "google" {
+  project = var.gcp_project_id
+  region  = var.gcp_region
+}
+
+provider "google-beta" {
   project = var.gcp_project_id
   region  = var.gcp_region
 }

@@ -18,8 +18,9 @@ type BlogStore interface {
 	List(ctx context.Context, callerUID string) ([]Blog, error)
 	// Create assigns a new ID and creation/update timestamps.
 	Create(ctx context.Context, blog Blog) (Blog, error)
-	// Update overwrites id, preserving its original CreatedAt and refreshing UpdatedAt.
-	// Returns ErrNotFound if id doesn't exist.
-	Update(ctx context.Context, id string, blog Blog) (Blog, error)
+	// Update overwrites the document at blog.ID and refreshes UpdatedAt. Callers are expected to
+	// have loaded the blog first (handlers do, to check ownership), so CreatedAt is carried over
+	// from blog rather than re-read. Writes unconditionally: last writer wins.
+	Update(ctx context.Context, blog Blog) (Blog, error)
 	Delete(ctx context.Context, id string) error
 }

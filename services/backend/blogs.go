@@ -14,8 +14,39 @@ func newBlogHandler(store BlogStore) *blogHandler {
 	return &blogHandler{store: store}
 }
 
-func isValidVisibility(v string) bool {
-	return v == "public" || v == "private"
+// decodeBlog reads and validates a blog from the request body, writing the error response and
+// returning false if it's malformed.
+func decodeBlog(w http.ResponseWriter, r *http.Request) (Blog, bool) {
+	var blog Blog
+	if err := json.NewDecoder(r.Body).Decode(&blog); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return Blog{}, false
+	}
+	if blog.Visibility != "public" && blog.Visibility != "private" {
+		http.Error(w, `visibility must be "public" or "private"`, http.StatusBadRequest)
+		return Blog{}, false
+	}
+	return blog, true
+}
+
+// requireOwnedBlog loads the blog named by the {id} path value and checks the caller owns it,
+// writing the error response and returning false otherwise. Mirrors firestore.rules' update and
+// delete conditions (`resource.data.ownerId == request.auth.uid`).
+func (h *blogHandler) requireOwnedBlog(w http.ResponseWriter, r *http.Request) (Blog, bool) {
+	blog, err := h.store.Get(r.Context(), r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		http.Error(w, "blog not found", http.StatusNotFound)
+		return Blog{}, false
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return Blog{}, false
+	}
+	if blog.OwnerID != uidFromContext(r.Context()) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return Blog{}, false
+	}
+	return blog, true
 }
 
 // List returns every blog visible to the caller (see Blog.visibleTo).
@@ -53,13 +84,8 @@ func (h *blogHandler) Get(w http.ResponseWriter, r *http.Request) {
 // Create makes a new blog owned by the caller. ownerId is always taken from the verified caller,
 // never from the request body.
 func (h *blogHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var body Blog
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	if !isValidVisibility(body.Visibility) {
-		http.Error(w, `visibility must be "public" or "private"`, http.StatusBadRequest)
+	body, ok := decodeBlog(w, r)
+	if !ok {
 		return
 	}
 	body.OwnerID = uidFromContext(r.Context())
@@ -73,38 +99,22 @@ func (h *blogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, created)
 }
 
-// Update replaces a blog's fields. Only the owner may update it, matching firestore.rules'
-// `allow update: if resource.data.ownerId == request.auth.uid`.
+// Update replaces a blog's fields. Only the owner may update it.
 func (h *blogHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	callerUID := uidFromContext(r.Context())
-
-	existing, err := h.store.Get(r.Context(), id)
-	if errors.Is(err, ErrNotFound) {
-		http.Error(w, "blog not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	if existing.OwnerID != callerUID {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	existing, ok := h.requireOwnedBlog(w, r)
+	if !ok {
 		return
 	}
 
-	var body Blog
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	body, ok := decodeBlog(w, r)
+	if !ok {
 		return
 	}
-	if !isValidVisibility(body.Visibility) {
-		http.Error(w, `visibility must be "public" or "private"`, http.StatusBadRequest)
-		return
-	}
-	body.OwnerID = callerUID
+	body.ID = existing.ID
+	body.OwnerID = existing.OwnerID
+	body.CreatedAt = existing.CreatedAt
 
-	updated, err := h.store.Update(r.Context(), id, body)
+	updated, err := h.store.Update(r.Context(), body)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -113,27 +123,14 @@ func (h *blogHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, updated)
 }
 
-// Delete removes a blog. Only the owner may delete it, matching firestore.rules'
-// `allow delete: if resource.data.ownerId == request.auth.uid`.
+// Delete removes a blog. Only the owner may delete it.
 func (h *blogHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	callerUID := uidFromContext(r.Context())
-
-	existing, err := h.store.Get(r.Context(), id)
-	if errors.Is(err, ErrNotFound) {
-		http.Error(w, "blog not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	if existing.OwnerID != callerUID {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	blog, ok := h.requireOwnedBlog(w, r)
+	if !ok {
 		return
 	}
 
-	if err := h.store.Delete(r.Context(), id); err != nil {
+	if err := h.store.Delete(r.Context(), blog.ID); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

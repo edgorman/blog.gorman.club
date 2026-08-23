@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 type fakeBlogStore struct {
@@ -38,17 +40,13 @@ func (s *fakeBlogStore) List(ctx context.Context, callerUID string) ([]Blog, err
 
 func (s *fakeBlogStore) Create(ctx context.Context, blog Blog) (Blog, error) {
 	s.nextID++
-	blog.ID = string(rune('a' + s.nextID))
+	blog.ID = fmt.Sprintf("blog-%d", s.nextID)
 	s.blogs[blog.ID] = blog
 	return blog, nil
 }
 
-func (s *fakeBlogStore) Update(ctx context.Context, id string, blog Blog) (Blog, error) {
-	if _, ok := s.blogs[id]; !ok {
-		return Blog{}, ErrNotFound
-	}
-	blog.ID = id
-	s.blogs[id] = blog
+func (s *fakeBlogStore) Update(ctx context.Context, blog Blog) (Blog, error) {
+	s.blogs[blog.ID] = blog
 	return blog, nil
 }
 
@@ -142,6 +140,47 @@ func TestBlogHandler_Update_ForbiddenForNonOwner(t *testing.T) {
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+	}
+}
+
+func TestBlogHandler_Update_NotFound(t *testing.T) {
+	h := newBlogHandler(newFakeBlogStore())
+
+	body, _ := json.Marshal(Blog{Title: "Edited", Visibility: "public"})
+	req := httptest.NewRequest(http.MethodPut, "/blogs/missing", bytes.NewReader(body))
+	req.SetPathValue("id", "missing")
+	req = withUID(req, "caller")
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	if rec.Result().StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestBlogHandler_Update_PreservesOwnerAndCreatedAt(t *testing.T) {
+	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	store := newFakeBlogStore()
+	store.blogs["blog-1"] = Blog{ID: "blog-1", OwnerID: "owner", Visibility: "public", CreatedAt: created}
+	h := newBlogHandler(store)
+
+	// A client trying to reassign ownership or backdate the post must not be able to.
+	body, _ := json.Marshal(Blog{Title: "Edited", Visibility: "public", OwnerID: "someone-else", CreatedAt: time.Time{}})
+	req := httptest.NewRequest(http.MethodPut, "/blogs/blog-1", bytes.NewReader(body))
+	req.SetPathValue("id", "blog-1")
+	req = withUID(req, "owner")
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	stored := store.blogs["blog-1"]
+	if stored.OwnerID != "owner" {
+		t.Errorf("OwnerID = %q, want %q (must ignore client-supplied ownerId)", stored.OwnerID, "owner")
+	}
+	if !stored.CreatedAt.Equal(created) {
+		t.Errorf("CreatedAt = %v, want %v (must be carried over, not taken from the body)", stored.CreatedAt, created)
 	}
 }
 

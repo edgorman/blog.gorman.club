@@ -136,18 +136,12 @@ func (s *firestoreBlogStore) Create(ctx context.Context, blog Blog) (Blog, error
 	return blog, nil
 }
 
-func (s *firestoreBlogStore) Update(ctx context.Context, id string, blog Blog) (Blog, error) {
-	existing, err := s.Get(ctx, id)
-	if err != nil {
-		return Blog{}, err
-	}
-	blog.CreatedAt = existing.CreatedAt
+func (s *firestoreBlogStore) Update(ctx context.Context, blog Blog) (Blog, error) {
 	blog.UpdatedAt = time.Now().UTC()
 
-	if _, err := s.collection().Doc(id).Set(ctx, blog); err != nil {
+	if _, err := s.collection().Doc(blog.ID).Set(ctx, blog); err != nil {
 		return Blog{}, err
 	}
-	blog.ID = id
 	return blog, nil
 }
 

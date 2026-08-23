@@ -46,16 +46,21 @@ func main() {
 	blogs := newBlogHandler(newFirestoreBlogStore(firestoreClient))
 	debugHandler := newDebugHandler(environment, commit)
 
+	// Every users/blogs route is browser-facing and requires a verified Firebase caller.
+	authed := func(h http.HandlerFunc) http.Handler {
+		return withCORS(requireAuth(verifier, h))
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle("/health", withCORS(debugHandler))
 	mux.Handle("/debug", withCORS(debugHandler))
-	mux.Handle("GET /users/{id}", withCORS(requireAuth(verifier, users.Get)))
-	mux.Handle("PUT /users/{id}", withCORS(requireAuth(verifier, users.Put)))
-	mux.Handle("GET /blogs", withCORS(requireAuth(verifier, blogs.List)))
-	mux.Handle("POST /blogs", withCORS(requireAuth(verifier, blogs.Create)))
-	mux.Handle("GET /blogs/{id}", withCORS(requireAuth(verifier, blogs.Get)))
-	mux.Handle("PUT /blogs/{id}", withCORS(requireAuth(verifier, blogs.Update)))
-	mux.Handle("DELETE /blogs/{id}", withCORS(requireAuth(verifier, blogs.Delete)))
+	mux.Handle("GET /users/{id}", authed(users.Get))
+	mux.Handle("PUT /users/{id}", authed(users.Put))
+	mux.Handle("GET /blogs", authed(blogs.List))
+	mux.Handle("POST /blogs", authed(blogs.Create))
+	mux.Handle("GET /blogs/{id}", authed(blogs.Get))
+	mux.Handle("PUT /blogs/{id}", authed(blogs.Update))
+	mux.Handle("DELETE /blogs/{id}", authed(blogs.Delete))
 
 	log.Printf("backend listening on :%s (environment=%s, commit=%s)", port, environment, commit)
 	log.Fatal(http.ListenAndServe(":"+port, mux))

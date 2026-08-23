@@ -5,9 +5,7 @@ import (
 	"time"
 )
 
-var (
-	ErrNotFound = errors.New("not found")
-)
+var ErrNotFound = errors.New("not found")
 
 // User mirrors /users/{userId} in firestore.rules - a profile document keyed by the owner's
 // Firebase Auth uid.

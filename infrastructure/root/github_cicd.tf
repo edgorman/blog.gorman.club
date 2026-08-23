@@ -67,6 +67,20 @@ resource "google_project_iam_member" "github_actions_firebaserules_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+# google_service_account_iam_member.backend_runtime_actas (infrastructure/env/cloud_run.tf) grants
+# CI actAs on a service account it just created via setIamPolicy on that service account - a
+# permission distinct from actAs itself, and covered by none of the roles above (confirmed by the
+# staging apply failing with "Permission 'iam.serviceAccounts.setIamPolicy' denied" even though
+# the same apply had just used roles/editor's implicit actAs to attach that service account to
+# Cloud Run without issue).
+resource "google_project_iam_member" "github_actions_service_account_admin" {
+  for_each = local.all_projects
+
+  project = each.value.project_id
+  role    = "roles/iam.serviceAccountAdmin"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
 # This service account lives in the root project, so Firebase/Firestore calls would otherwise bill
 # quota to root rather than the project being modified. infrastructure/env uses the provider's
 # user_project_override to redirect that, which requires serviceusage.services.use on the target.

@@ -57,7 +57,7 @@ Merging a pull request to `main` automatically builds backend container images a
 
 ### Pre-Release Generation
 
-Merges to `main` calculate the next version (see Versioning above), tag the commit, and auto-generate a GitHub Pre-Release. [`gren`](https://github.com/github-tools/github-release-notes) (`github-release-notes`) drafts the release body from commit messages since the last tag, after which a `terraform plan -lock=false` against the production environment is appended to that same entry. The plan is read-only and disables state locking so it never contends with an in-flight production `terraform apply`, and so a pre-release build on `main` can never block a promotion from applying. Multiple pre-releases can accumulate on `main` without touching production.
+Merges to `main` calculate the next version (see Versioning above), summarize commit messages since the last tag, execute a `terraform plan -lock=false` against the production environment, and auto-generate a GitHub Pre-Release. This entry includes the plan output and the commit summary. The plan is read-only and disables state locking so it never contends with an in-flight production `terraform apply`, and so a pre-release build on `main` can never block a promotion from applying. Multiple pre-releases can accumulate on `main` without touching production.
 
 ### Production Releases (Manual Promotion)
 

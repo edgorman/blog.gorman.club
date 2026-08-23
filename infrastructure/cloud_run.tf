@@ -6,6 +6,10 @@ resource "google_cloud_run_v2_service" "backend" {
   location = var.gcp_region
   ingress  = "INGRESS_TRAFFIC_ALL"
 
+  labels = {
+    managed-by = "terraform"
+  }
+
   template {
     containers {
       image = var.backend_initial_image

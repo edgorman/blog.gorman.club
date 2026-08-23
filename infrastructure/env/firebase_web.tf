@@ -1,7 +1,7 @@
 # Registers a Firebase Web App under this project, giving the frontend the (non-secret) client
 # config it needs to initialize the Firebase JS SDK for direct Firestore reads and auth.
 resource "google_firebase_web_app" "frontend" {
-  provider = google.firebase
+  provider = google-beta.firebase
 
   project      = var.gcp_project_id
   display_name = "frontend-${var.environment}"
@@ -10,7 +10,7 @@ resource "google_firebase_web_app" "frontend" {
 }
 
 data "google_firebase_web_app_config" "frontend" {
-  provider = google.firebase
+  provider = google-beta.firebase
 
   project    = var.gcp_project_id
   web_app_id = google_firebase_web_app.frontend.app_id

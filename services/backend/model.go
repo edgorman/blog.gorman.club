@@ -7,11 +7,10 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
-// Blog mirrors /blogs/{blogId} in firestore.rules.
+// Blog is a /blogs/{blogId} document.
 //
-// Reads are served to the frontend directly by the Firebase SDK, gated by those rules - this
-// service only handles writes, so that createdAt/updatedAt come from the server rather than a
-// client clock. Nothing here re-implements the rules' read condition.
+// Every read and write goes through this service: it is the only thing holding credentials for
+// the collection, so access rules live in Go (canRead, requireOwnedBlog) and nowhere else.
 type Blog struct {
 	ID             string    `json:"id" firestore:"-"`
 	OwnerID        string    `json:"ownerId" firestore:"ownerId"`

@@ -57,16 +57,6 @@ resource "google_project_iam_member" "github_actions_firebase_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# google_firebaserules_ruleset/release (infrastructure/env/firestore.tf) need
-# firebaserules.rulesets.create and firebaserules.releases.create, covered by neither role above.
-resource "google_project_iam_member" "github_actions_firebaserules_admin" {
-  for_each = local.all_projects
-
-  project = each.value.project_id
-  role    = "roles/firebaserules.admin"
-  member  = "serviceAccount:${google_service_account.github_actions.email}"
-}
-
 # google_service_account_iam_member.backend_runtime_actas (infrastructure/env/cloud_run.tf) grants
 # CI actAs on a service account it just created via setIamPolicy on that service account - a
 # permission distinct from actAs itself, and covered by none of the roles above (confirmed by the

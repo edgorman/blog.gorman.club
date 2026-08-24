@@ -19,22 +19,22 @@ commit SHA the running image was built from, as JSON:
 
 ## Users and blogs
 
-Data lives in Firestore (`infrastructure/env/firestore.tf` and
-`firestore.rules`). Responsibility is split so that no access rule is
-implemented twice:
+Data lives in Firestore (`infrastructure/env/firestore.tf`). This service is
+the only client of that database: it authenticates with the Admin SDK, no
+Firestore security rules are deployed, and the browser never talks to
+Firestore directly. Access rules therefore live in Go and nowhere else:
 
-- **Reads** — the frontend queries users and blogs **directly through the
-  Firebase SDK**. `firestore.rules` is the only place the read rules
-  (public / owner / `allowedUserIds` whitelist) are expressed. This service
-  has no read endpoints, so there's no Go copy of that logic to drift.
-- **Writes** — blog writes go through this service so `createdAt` and
-  `updatedAt` come from the server rather than a spoofable client clock.
-  Because the Admin SDK used here bypasses `firestore.rules`, ownership is
-  checked in `requireOwnedBlog` — that's the enforcement point for this path,
-  not a duplicate of the read rules.
+- **Reads** — `canRead` in `blogs.go` is the single definition of who may see
+  a post (public posts for any signed-in caller, private ones for the owner
+  or a uid in `allowedUserIds`). `GET /blogs` applies it as a Firestore query
+  so private posts are never fetched; `GET /blogs/{id}` applies it to the
+  loaded document.
+- **Writes** — `requireOwnedBlog` restricts updates and deletes to the post's
+  owner, and `createdAt`/`updatedAt` come from the server rather than a
+  spoofable client clock.
 
-User profiles have no endpoints at all: `firestore.rules` already restricts
-writes to the profile's own owner, so a server hop would add nothing.
+User profiles have no endpoints yet — the `/users` collection is currently
+unused by both this service and the frontend.
 
 Every route below requires a valid Firebase Auth ID token as a bearer token:
 
@@ -44,6 +44,8 @@ Authorization: Bearer <firebase-id-token>
 
 | Method | Path          | Description                                                           |
 | ------ | ------------- | --------------------------------------------------------------------- |
+| GET    | `/blogs`      | List the blogs the caller may read, newest first.                      |
+| GET    | `/blogs/{id}` | Fetch a single blog. Caller must be allowed to read it.                |
 | POST   | `/blogs`      | Create a blog. `ownerId` is always the caller, regardless of the body. |
 | PUT    | `/blogs/{id}` | Replace a blog's fields. Caller must be the owner.                     |
 | DELETE | `/blogs/{id}` | Delete a blog. Caller must be the owner.                               |

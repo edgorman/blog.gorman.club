@@ -53,9 +53,8 @@ func run() error {
 	blogs := newBlogHandler(newFirestoreBlogStore(firestoreClient))
 	debugHandler := newDebugHandler(environment, commit)
 
-	// Only writes are served here - the frontend reads users and blogs directly through the
-	// Firebase SDK, gated by firestore.rules. Writes go through the server so createdAt/updatedAt
-	// are trustworthy rather than set from a client clock.
+	// Every blog route requires a verified caller: this service holds the only credentials for
+	// the collection, so it is where read and write access is decided.
 	authed := func(h http.HandlerFunc) http.Handler {
 		return withCORS(requireAuth(verifier, h))
 	}
@@ -63,6 +62,8 @@ func run() error {
 	mux := http.NewServeMux()
 	mux.Handle("/health", withCORS(debugHandler))
 	mux.Handle("/debug", withCORS(debugHandler))
+	mux.Handle("GET /blogs", authed(blogs.List))
+	mux.Handle("GET /blogs/{id}", authed(blogs.Get))
 	mux.Handle("POST /blogs", authed(blogs.Create))
 	mux.Handle("PUT /blogs/{id}", authed(blogs.Update))
 	mux.Handle("DELETE /blogs/{id}", authed(blogs.Delete))

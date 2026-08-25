@@ -5,14 +5,18 @@
  * only, and reused as the bearer credential on backend requests, which verify it per request.
  * Nothing here is trusted by the backend - the identity it acts on comes from re-verifying the
  * same token against Google's keys.
+ *
+ * auto_select lets Google re-issue a credential on page load without a click, if the browser
+ * still has a Google session and prior consent for this app - the credential itself still only
+ * lives in memory, so a refresh re-requests it rather than reading anything back from storage.
+ * signOut calls disableAutoSelect(), so an explicit sign-out is not silently undone by the next
+ * page load.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { GoogleCredentialResponse } from '../types/google'
 
 const SCRIPT_ELEMENT_ID = 'google-identity-services'
 const AUTH_PROVIDER = 'google'
-
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
 export interface GoogleUser {
   id: string
@@ -49,6 +53,10 @@ export interface UseGoogleAuthResult {
 }
 
 export function useGoogleAuth(): UseGoogleAuthResult {
+  // Read per call rather than once at module scope, so tests can stub it per case; Vite inlines
+  // the real value at build time either way, so this has no effect on production behaviour.
+  const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+
   const [user, setUser] = useState<GoogleUser | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [credentialError, setCredentialError] = useState<string | null>(null)
@@ -79,6 +87,7 @@ export function useGoogleAuth(): UseGoogleAuthResult {
       window.google.accounts.id.initialize({
         client_id: CLIENT_ID,
         callback: handleCredentialResponse,
+        auto_select: true,
       })
       initialized.current = true
       setReady(true)
@@ -93,7 +102,7 @@ export function useGoogleAuth(): UseGoogleAuthResult {
     const script = document.getElementById(SCRIPT_ELEMENT_ID)
     script?.addEventListener('load', initialize)
     return () => script?.removeEventListener('load', initialize)
-  }, [handleCredentialResponse])
+  }, [CLIENT_ID, handleCredentialResponse])
 
   const renderButton = useCallback((element: HTMLElement) => {
     if (!window.google || !initialized.current) return
@@ -105,8 +114,9 @@ export function useGoogleAuth(): UseGoogleAuthResult {
     })
   }, [])
 
-  // There is no server-side session, so signing out is purely local: drop the credential and stop
-  // Google from silently re-selecting the same account. A refresh also clears the signed-in state.
+  // There is no server-side session, so signing out is purely local: drop the credential and
+  // stop Google from silently re-selecting the same account on the next page load, which is what
+  // auto_select would otherwise do.
   const signOut = useCallback(() => {
     window.google?.accounts.id.disableAutoSelect()
     setUser(null)

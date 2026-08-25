@@ -51,10 +51,11 @@ func run() error {
 	verifier := &firebaseTokenVerifier{client: firebaseAuth}
 
 	blogs := newBlogHandler(newFirestoreBlogStore(firestoreClient))
+	users := newUserHandler(newFirestoreUserStore(firestoreClient))
 	debugHandler := newDebugHandler(environment, commit)
 
-	// Every blog route requires a verified caller: this service holds the only credentials for
-	// the collection, so it is where read and write access is decided.
+	// Every blog and user route requires a verified caller: this service holds the only
+	// credentials for those collections, so it is where read and write access is decided.
 	authed := func(h http.HandlerFunc) http.Handler {
 		return withCORS(requireAuth(verifier, h))
 	}
@@ -67,6 +68,9 @@ func run() error {
 	mux.Handle("POST /blogs", authed(blogs.Create))
 	mux.Handle("PUT /blogs/{id}", authed(blogs.Update))
 	mux.Handle("DELETE /blogs/{id}", authed(blogs.Delete))
+	mux.Handle("GET /users/{id}", authed(users.Get))
+	mux.Handle("PUT /users/{id}", authed(users.Put))
+	mux.Handle("DELETE /users/{id}", authed(users.Delete))
 
 	log.Printf("backend listening on :%s (environment=%s, commit=%s)", port, environment, commit)
 	return http.ListenAndServe(":"+port, mux)

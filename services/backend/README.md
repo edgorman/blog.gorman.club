@@ -33,8 +33,10 @@ Firestore directly. Access rules therefore live in Go and nowhere else:
   owner, and `createdAt`/`updatedAt` come from the server rather than a
   spoofable client clock.
 
-User profiles have no endpoints yet — the `/users` collection is currently
-unused by both this service and the frontend.
+Profiles in `/users/{userId}` are keyed by the owner's Firebase Auth uid, so
+there is no server-assigned ID to hand out and a profile is written with `PUT`
+rather than `POST`. Any signed-in caller may read a profile; `requireSelf`
+restricts writes to the profile's own owner.
 
 Every route below requires a valid Firebase Auth ID token as a bearer token:
 
@@ -49,11 +51,14 @@ Authorization: Bearer <firebase-id-token>
 | POST   | `/blogs`      | Create a blog. `ownerId` is always the caller, regardless of the body. |
 | PUT    | `/blogs/{id}` | Replace a blog's fields. Caller must be the owner.                     |
 | DELETE | `/blogs/{id}` | Delete a blog. Caller must be the owner.                               |
+| GET    | `/users/{id}` | Fetch a profile. Readable by any signed-in caller.                     |
+| PUT    | `/users/{id}` | Create or replace your own profile. `id` must be the caller's uid.     |
+| DELETE | `/users/{id}` | Delete your own profile. `id` must be the caller's uid.                |
 
 ### Response shape
 
-Successful responses return the resource itself (or `204 No Content` for
-`DELETE`). Every non-2xx response is JSON of the same shape, so a client can
+Successful responses return the resource itself (`201 Created` the first time
+a profile is `PUT`, `200 OK` thereafter; `204 No Content` for `DELETE`). Every non-2xx response is JSON of the same shape, so a client can
 parse success and failure the same way:
 
 ```json

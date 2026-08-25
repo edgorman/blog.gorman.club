@@ -96,3 +96,52 @@ func (s *firestoreBlogStore) Delete(ctx context.Context, id string) error {
 	_, err := s.collection().Doc(id).Delete(ctx)
 	return err
 }
+
+const usersCollection = "users"
+
+type firestoreUserStore struct {
+	client *firestore.Client
+}
+
+func newFirestoreUserStore(client *firestore.Client) *firestoreUserStore {
+	return &firestoreUserStore{client: client}
+}
+
+func (s *firestoreUserStore) collection() *firestore.CollectionRef {
+	return s.client.Collection(usersCollection)
+}
+
+func (s *firestoreUserStore) Get(ctx context.Context, id string) (User, error) {
+	doc, err := s.collection().Doc(id).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, err
+	}
+
+	var user User
+	if err := doc.DataTo(&user); err != nil {
+		return User{}, err
+	}
+	user.ID = doc.Ref.ID
+	return user, nil
+}
+
+func (s *firestoreUserStore) Put(ctx context.Context, user User) (User, error) {
+	now := time.Now().UTC()
+	if user.CreatedAt.IsZero() {
+		user.CreatedAt = now
+	}
+	user.UpdatedAt = now
+
+	if _, err := s.collection().Doc(user.ID).Set(ctx, user); err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
+func (s *firestoreUserStore) Delete(ctx context.Context, id string) error {
+	_, err := s.collection().Doc(id).Delete(ctx)
+	return err
+}

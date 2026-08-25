@@ -1,0 +1,3 @@
+# Build output: `make build` writes bin/backend, `go build ./...` writes ./backend.
+/bin/
+/backend

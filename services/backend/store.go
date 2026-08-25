@@ -18,3 +18,15 @@ type BlogStore interface {
 	Update(ctx context.Context, blog Blog) (Blog, error)
 	Delete(ctx context.Context, id string) error
 }
+
+// UserStore persists /users/{userId} documents.
+type UserStore interface {
+	// Get returns ErrNotFound if id doesn't exist.
+	Get(ctx context.Context, id string) (User, error)
+	// Put writes the document at user.ID, creating it if absent, and refreshes UpdatedAt.
+	// CreatedAt is taken from user - handlers carry it over from the existing profile and leave
+	// it zero for a new one, in which case implementations set it. Writes unconditionally: last
+	// writer wins.
+	Put(ctx context.Context, user User) (User, error)
+	Delete(ctx context.Context, id string) error
+}

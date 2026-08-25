@@ -90,6 +90,9 @@ jobs:
           gcp_region: 'europe-west1'
           target_tag: ${{ github.event.release.tag_name }}
           backend_url: ${{ needs.services-backend.outputs.backend_url }}
+          firebase_api_key: ${{ vars.FIREBASE_API_KEY_PROD }}
+          firebase_auth_domain: ${{ vars.FIREBASE_AUTH_DOMAIN_PROD }}
+          firebase_project_id: 'blog-gorman-club-prod'
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
       - uses: ./.github/actions/frontend-image-extract

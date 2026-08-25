@@ -15,6 +15,18 @@ inputs:
     description: 'Base URL of the backend service, baked in at build time as VITE_BACKEND_URL'
     required: false
     default: ''
+  firebase_api_key:
+    description: 'Firebase web API key, baked in as VITE_FIREBASE_API_KEY. Not a secret for web apps.'
+    required: false
+    default: ''
+  firebase_auth_domain:
+    description: 'Firebase auth domain, baked in as VITE_FIREBASE_AUTH_DOMAIN'
+    required: false
+    default: ''
+  firebase_project_id:
+    description: 'Firebase/GCP project ID, baked in as VITE_FIREBASE_PROJECT_ID'
+    required: false
+    default: ''
   workload_identity_provider:
     description: 'The Workload Identity Provider resource name'
     required: true
@@ -68,6 +80,9 @@ runs:
       run: |
         docker build \
           --build-arg VITE_BACKEND_URL="${{ inputs.backend_url }}" \
+          --build-arg VITE_FIREBASE_API_KEY="${{ inputs.firebase_api_key }}" \
+          --build-arg VITE_FIREBASE_AUTH_DOMAIN="${{ inputs.firebase_auth_domain }}" \
+          --build-arg VITE_FIREBASE_PROJECT_ID="${{ inputs.firebase_project_id }}" \
           -t "${{ steps.image.outputs.ref }}" \
           services/frontend
 

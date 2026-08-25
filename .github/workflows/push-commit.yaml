@@ -73,6 +73,9 @@ jobs:
           gcp_region: 'europe-west1'
           image_tag: ${{ github.sha }}
           backend_url: ${{ steps.backend.outputs.backend_url }}
+          firebase_api_key: ${{ vars.FIREBASE_API_KEY_STAG }}
+          firebase_auth_domain: ${{ vars.FIREBASE_AUTH_DOMAIN_STAG }}
+          firebase_project_id: 'blog-gorman-club-stag'
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
       - uses: ./.github/actions/frontend-image-extract

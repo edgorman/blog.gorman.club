@@ -1,22 +1,22 @@
-import { useMemo, useState } from 'react'
-import type { User as AuthUser } from 'firebase/auth'
+import { useMemo } from 'react'
 import { HealthCheck } from './components/HealthCheck'
 import { SignIn } from './components/SignIn'
 import { Profile } from './components/Profile'
 import { Blogs } from './components/Blogs'
+import { useGoogleAuth } from './hooks/useGoogleAuth'
 import { createApi } from './lib/api'
 import './App.css'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
 
 function App() {
-  const [user, setUser] = useState<AuthUser | null>(null)
+  const { user, authHeaders, error, ready, renderButton, signOut } = useGoogleAuth()
 
-  // Rebuilt whenever the signed-in user changes so the token getter always closes over the
-  // current user; getIdToken() returns a fresh token, refreshing it when it has expired.
+  // Rebuilt when the credential changes, so requests always carry the current one. There is no
+  // refresh: the credential lasts as long as the page does, and signing out clears it.
   const api = useMemo(
-    () => (user && BACKEND_URL ? createApi(BACKEND_URL, () => user.getIdToken()) : null),
-    [user],
+    () => (user && BACKEND_URL ? createApi(BACKEND_URL, authHeaders) : null),
+    [user, authHeaders],
   )
 
   return (
@@ -25,12 +25,18 @@ function App() {
       <p>Engineering console for the backend API.</p>
 
       <HealthCheck />
-      <SignIn user={user} onUserChange={setUser} />
+      <SignIn
+        user={user}
+        error={error}
+        ready={ready}
+        renderButton={renderButton}
+        signOut={signOut}
+      />
 
       {api && user ? (
         <>
-          <Profile api={api} uid={user.uid} />
-          <Blogs api={api} uid={user.uid} />
+          <Profile api={api} uid={user.id} />
+          <Blogs api={api} uid={user.id} />
         </>
       ) : (
         <section className="panel">

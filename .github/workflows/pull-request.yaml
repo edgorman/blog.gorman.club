@@ -97,6 +97,10 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/staging'
+          # Supplied by CI rather than per-environment tfvars: one client ID, defined in
+          # infrastructure/root, serves every environment.
+          secrets: |
+            TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
   infrastructure-prod:
@@ -118,4 +122,8 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/prod'
+          # Supplied by CI rather than per-environment tfvars: one client ID, defined in
+          # infrastructure/root, serves every environment.
+          secrets: |
+            TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
           github_token: ${{ secrets.GITHUB_TOKEN }}

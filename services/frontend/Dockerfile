@@ -11,14 +11,10 @@ COPY . .
 ARG VITE_BACKEND_URL=""
 ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 
-# Firebase Auth config - the app uses Firebase only to mint the ID token the backend verifies,
-# never to reach Firestore. The API key is not a secret for web apps (see src/lib/firebase.ts).
-ARG VITE_FIREBASE_API_KEY=""
-ARG VITE_FIREBASE_AUTH_DOMAIN=""
-ARG VITE_FIREBASE_PROJECT_ID=""
-ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY
-ENV VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN
-ENV VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID
+# Google Sign-In client ID. Not a secret - it identifies the app, and the backend only accepts
+# ID tokens minted for this same client ID (see src/hooks/useGoogleAuth.ts).
+ARG VITE_GOOGLE_CLIENT_ID=""
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 
 RUN npm run build
 

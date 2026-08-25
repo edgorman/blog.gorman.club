@@ -24,3 +24,9 @@ variable "backend_initial_image" {
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
+
+variable "google_client_id" {
+  description = "Google OAuth 2.0 client ID the backend verifies Google Sign-In ID tokens against. Defined once in infrastructure/root (see its google_client_id variable) and passed in here as TF_VAR_google_client_id by CI, rather than being duplicated per environment."
+  type        = string
+  default     = ""
+}

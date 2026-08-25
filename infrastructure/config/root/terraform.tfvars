@@ -6,6 +6,10 @@ gcp_projects            = ["stag", "prod"]
 github_repository_owner = "edgorman"
 github_repository_name  = "blog.gorman.club"
 
+# google_client_id is created by hand once (Google Cloud Console > Credentials > OAuth client ID,
+# in the root project) and set here; see services/frontend/README.md.
+# google_client_id = "....apps.googleusercontent.com"
+
 # the following are sensitive/unknown initially and thus have no defualt
 # github_provider_token
 # cloudflare_account_id

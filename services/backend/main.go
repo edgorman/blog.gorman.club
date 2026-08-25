@@ -56,12 +56,12 @@ func run() error {
 	// Every blog and user route requires a verified caller: this service holds the only
 	// credentials for those collections, so it is where read and write access is decided.
 	authed := func(h http.HandlerFunc) http.Handler {
-		return withCORS(requireAuth(verifier, h))
+		return requireAuth(verifier, h)
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/health", withCORS(debugHandler))
-	mux.Handle("/debug", withCORS(debugHandler))
+	mux.Handle("/health", debugHandler)
+	mux.Handle("/debug", debugHandler)
 	mux.Handle("GET /blogs", authed(blogs.List))
 	mux.Handle("GET /blogs/{id}", authed(blogs.Get))
 	mux.Handle("POST /blogs", authed(blogs.Create))
@@ -71,6 +71,10 @@ func run() error {
 	mux.Handle("PUT /users/{id}", authed(users.Put))
 	mux.Handle("DELETE /users/{id}", authed(users.Delete))
 
+	// CORS wraps the whole mux, not individual routes: every route below is registered under a
+	// specific method (e.g. "GET /blogs"), so an OPTIONS preflight matches none of them and
+	// ServeMux itself would 405 it before a per-route wrapper ever ran. Wrapping here intercepts
+	// OPTIONS ahead of that method-based routing.
 	log.Printf("backend listening on :%s (environment=%s, commit=%s)", port, environment, commit)
-	return http.ListenAndServe(":"+port, mux)
+	return http.ListenAndServe(":"+port, withCORS(mux))
 }

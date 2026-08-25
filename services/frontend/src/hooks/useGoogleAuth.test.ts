@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { decodeCredentialForTest } from './useGoogleAuth'
+import { renderHook } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { decodeCredentialForTest, useGoogleAuth } from './useGoogleAuth'
 
 /** Builds a JWT-shaped string whose payload is base64url-encoded, as Google issues. */
 function credential(payload: Record<string, unknown>): string {
@@ -42,5 +43,41 @@ describe('decodeCredential', () => {
     const user = decodeCredentialForTest(credential({ sub: '1', email: 'a@b.c', name }))
 
     expect(user.name).toBe(name)
+  })
+})
+
+describe('useGoogleAuth', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    delete window.google
+  })
+
+  // auto_select is what lets a page reload stay signed in (Google reissues a credential
+  // silently if the browser still has a session and prior consent) - a regression here would
+  // silently undo that without any other test noticing.
+  it('initialises Google Identity Services with auto_select enabled', () => {
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    const initialize = vi.fn()
+    window.google = { accounts: { id: { initialize, renderButton: vi.fn(), disableAutoSelect: vi.fn() } } }
+
+    renderHook(() => useGoogleAuth())
+
+    expect(initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ auto_select: true }),
+    )
+  })
+
+  // Signing out must suppress that same silent reissue, or "sign out" wouldn't stick past a reload.
+  it('disables auto-select on sign out', () => {
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    const disableAutoSelect = vi.fn()
+    window.google = {
+      accounts: { id: { initialize: vi.fn(), renderButton: vi.fn(), disableAutoSelect } },
+    }
+
+    const { result } = renderHook(() => useGoogleAuth())
+    result.current.signOut()
+
+    expect(disableAutoSelect).toHaveBeenCalled()
   })
 })

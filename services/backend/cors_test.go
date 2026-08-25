@@ -59,3 +59,26 @@ func TestWithCORS_Preflight(t *testing.T) {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
 	}
 }
+
+// Every route in main.go is registered under a specific method (e.g. "GET /blogs"), which means
+// an OPTIONS preflight matches none of them - ServeMux itself returns 405 before any per-route
+// wrapper runs. withCORS must therefore wrap the whole mux, not individual routes, so it
+// intercepts OPTIONS ahead of that method-based routing. This guards against reintroducing the
+// per-route wiring that regressed to exactly that 405.
+func TestWithCORS_PreflightAgainstMethodSpecificMux(t *testing.T) {
+	t.Setenv("CORS_ALLOWED_ORIGIN", "https://blog.gorman.club")
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /blogs", func(w http.ResponseWriter, r *http.Request) {})
+	mux.HandleFunc("POST /blogs", func(w http.ResponseWriter, r *http.Request) {})
+
+	handler := withCORS(mux)
+
+	req := httptest.NewRequest(http.MethodOptions, "/blogs", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Result().StatusCode != http.StatusNoContent {
+		t.Errorf("status = %d, want %d (preflight must not reach the method-specific mux)", rec.Result().StatusCode, http.StatusNoContent)
+	}
+}

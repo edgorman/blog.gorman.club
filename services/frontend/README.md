@@ -30,7 +30,11 @@ string as the bearer credential on every backend request, alongside an
 against Google's public keys, so nothing the browser decodes is trusted.
 
 Because there is no server-side session, signing out is purely client-side
-(clear local state, `disableAutoSelect()`), and a refresh signs you out.
+(clear local state, `disableAutoSelect()`). A refresh re-requests a credential
+rather than reading one back from storage; `auto_select` lets Google reissue
+one silently if the browser still has a Google session and prior consent for
+this app, so in practice a refresh keeps you signed in unless you explicitly
+signed out.
 
 ### 1. Create an OAuth 2.0 client ID
 

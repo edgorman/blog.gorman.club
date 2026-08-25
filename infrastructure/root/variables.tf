@@ -56,3 +56,9 @@ variable "cloudflare_api_token" {
   type        = string
   sensitive   = true
 }
+
+variable "google_client_id" {
+  description = "Google OAuth 2.0 client ID for Google Sign-In (see https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid). Defined once here and propagated via the GOOGLE_CLIENT_ID GitHub Actions variable to both the backend (infrastructure/env, as TF_VAR_google_client_id) and the frontend Docker build (VITE_GOOGLE_CLIENT_ID) for every environment. Not a secret: it identifies the app, and a token is only accepted if it was minted for it."
+  type        = string
+  default     = ""
+}

@@ -13,11 +13,19 @@ type fakeVerifier struct {
 	err error
 }
 
-func (f fakeVerifier) Verify(ctx context.Context, idToken string) (string, error) {
+func (f fakeVerifier) Verify(ctx context.Context, idToken string) (caller, error) {
 	if f.err != nil {
-		return "", f.err
+		return caller{}, f.err
 	}
-	return f.uid, nil
+	return caller{UID: f.uid, Email: "user@example.com", Name: "User"}, nil
+}
+
+// authedRequest builds a request carrying both headers a verified call needs.
+func authedRequest(token string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "/blogs", nil)
+	req.Header.Set(authorizationHeader, bearerPrefix+token)
+	req.Header.Set(authorizationProviderHeader, string(providerGoogle))
+	return req
 }
 
 func TestRequireAuth_MissingHeader(t *testing.T) {
@@ -44,10 +52,8 @@ func TestRequireAuth_InvalidToken(t *testing.T) {
 		t.Fatal("next handler should not be called for an invalid token")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/blogs", nil)
-	req.Header.Set("Authorization", "Bearer bad-token")
 	rec := httptest.NewRecorder()
-	handler(rec, req)
+	handler(rec, authedRequest("bad-token"))
 
 	if rec.Result().StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusUnauthorized)
@@ -61,15 +67,96 @@ func TestRequireAuth_Valid(t *testing.T) {
 		gotUID = uidFromContext(r.Context())
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/blogs", nil)
-	req.Header.Set("Authorization", "Bearer good-token")
 	rec := httptest.NewRecorder()
-	handler(rec, req)
+	handler(rec, authedRequest("good-token"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
 	if gotUID != "user-1" {
 		t.Errorf("uidFromContext = %q, want %q", gotUID, "user-1")
+	}
+}
+
+// A request that doesn't name a provider can't be dispatched, and one naming an unsupported
+// provider is a gap in this service rather than a bad credential - so neither is a 401.
+func TestRequireAuth_MissingProviderHeader(t *testing.T) {
+	handler := requireAuth(fakeVerifier{uid: "user-1"}, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called without a provider header")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/blogs", nil)
+	req.Header.Set(authorizationHeader, bearerPrefix+"good-token")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Result().StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
+	}
+	decodeAPIError(t, rec)
+}
+
+func TestRequireAuth_UnsupportedProvider(t *testing.T) {
+	handler := requireAuth(fakeVerifier{uid: "user-1"}, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called for an unsupported provider")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/blogs", nil)
+	req.Header.Set(authorizationHeader, bearerPrefix+"good-token")
+	req.Header.Set(authorizationProviderHeader, "facebook")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Result().StatusCode != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotImplemented)
+	}
+	decodeAPIError(t, rec)
+}
+
+func TestRequireAuth_MalformedAuthorizationHeader(t *testing.T) {
+	handler := requireAuth(fakeVerifier{uid: "user-1"}, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called for a malformed header")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/blogs", nil)
+	req.Header.Set(authorizationHeader, "Basic dXNlcjpwYXNz")
+	req.Header.Set(authorizationProviderHeader, string(providerGoogle))
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Result().StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
+	}
+	decodeAPIError(t, rec)
+}
+
+// An unconfigured deployment is a 500: the operator is at fault, not the caller, and returning
+// 401 would send people off debugging their own sign-in.
+func TestRequireAuth_UnconfiguredIsServerError(t *testing.T) {
+	handler := requireAuth(&googleTokenVerifier{clientID: ""}, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called when auth is unconfigured")
+	})
+
+	rec := httptest.NewRecorder()
+	handler(rec, authedRequest("any-token"))
+
+	if rec.Result().StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusInternalServerError)
+	}
+	decodeAPIError(t, rec)
+}
+
+// The identity handlers authorize against must come from the verified token, not the request.
+func TestRequireAuth_CallerComesFromVerifiedToken(t *testing.T) {
+	var got caller
+	handler := requireAuth(fakeVerifier{uid: "user-1"}, func(w http.ResponseWriter, r *http.Request) {
+		got = callerFromContext(r.Context())
+	})
+
+	rec := httptest.NewRecorder()
+	handler(rec, authedRequest("good-token"))
+
+	if got.UID != "user-1" || got.Email != "user@example.com" || got.Name != "User" {
+		t.Errorf("caller = %+v, want the verifier's payload", got)
 	}
 }

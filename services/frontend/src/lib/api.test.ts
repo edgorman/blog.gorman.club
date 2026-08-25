@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, createApi } from './api'
 
-const getToken = () => Promise.resolve('test-token')
+const authHeaders = { Authorization: 'Bearer test-token', 'Authorization-Provider': 'google' }
 
 function mockFetch(response: Partial<Response>) {
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, ...response })
@@ -12,21 +12,22 @@ function mockFetch(response: Partial<Response>) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('createApi', () => {
-  it('sends the bearer token and trims a trailing slash from the base URL', async () => {
+  it('sends the auth headers and trims a trailing slash from the base URL', async () => {
     const fetchMock = mockFetch({ json: () => Promise.resolve([]) })
 
-    await createApi('https://api.example.com/', getToken).listBlogs()
+    await createApi('https://api.example.com/', authHeaders).listBlogs()
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('https://api.example.com/blogs')
     expect(init.method).toBe('GET')
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
+    expect((init.headers as Record<string, string>)['Authorization-Provider']).toBe('google')
   })
 
   it('serialises a JSON body for writes', async () => {
     const fetchMock = mockFetch({ status: 201, json: () => Promise.resolve({ id: 'blog-1' }) })
 
-    await createApi('https://api.example.com', getToken).createBlog({
+    await createApi('https://api.example.com', authHeaders).createBlog({
       title: 'Hello',
       visibility: 'public',
     })
@@ -44,7 +45,7 @@ describe('createApi', () => {
     })
 
     await expect(
-      createApi('https://api.example.com', getToken).deleteBlog('blog-1'),
+      createApi('https://api.example.com', authHeaders).deleteBlog('blog-1'),
     ).resolves.toBeUndefined()
   })
 
@@ -56,7 +57,7 @@ describe('createApi', () => {
       json: () => Promise.resolve({ error: 'user not found' }),
     })
 
-    const error = await createApi('https://api.example.com', getToken)
+    const error = await createApi('https://api.example.com', authHeaders)
       .getUser('missing')
       .catch((e: unknown) => e)
 
@@ -68,7 +69,7 @@ describe('createApi', () => {
   it('falls back to the status when the error body is not JSON', async () => {
     mockFetch({ ok: false, status: 502, json: () => Promise.reject(new Error('not json')) })
 
-    const error = await createApi('https://api.example.com', getToken)
+    const error = await createApi('https://api.example.com', authHeaders)
       .listBlogs()
       .catch((e: unknown) => e)
 

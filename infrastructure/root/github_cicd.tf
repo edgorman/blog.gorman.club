@@ -127,3 +127,12 @@ resource "github_actions_variable" "service_account" {
   variable_name = "SERVICE_ACCOUNT"
   value         = google_service_account.github_actions.email
 }
+
+# Read by both workflows: passed to infrastructure/env as TF_VAR_google_client_id (the backend's
+# token audience) and baked into the frontend build as VITE_GOOGLE_CLIENT_ID. One client ID,
+# with authorized origins for every environment, rather than one per environment.
+resource "github_actions_variable" "google_client_id" {
+  repository    = var.github_repository_name
+  variable_name = "GOOGLE_CLIENT_ID"
+  value         = var.google_client_id
+}

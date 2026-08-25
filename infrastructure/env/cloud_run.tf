@@ -52,6 +52,11 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "CORS_ALLOWED_ORIGIN"
         value = var.backend_cors_origin
       }
+
+      env {
+        name  = "GOOGLE_CLIENT_ID"
+        value = var.google_client_id
+      }
     }
   }
 

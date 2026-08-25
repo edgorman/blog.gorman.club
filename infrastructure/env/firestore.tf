@@ -3,8 +3,11 @@ resource "google_project_service" "firestore" {
   service = "firestore.googleapis.com"
 }
 
-# Firebase is what issues the ID tokens the backend verifies (services/backend/auth.go), so the
-# project has to be a Firebase project even though nothing here uses the client SDKs.
+# Vestigial: Firebase was needed when the security rules and Firebase Auth were in use. Sign-in
+# is now Google Identity Services verified directly by the backend (services/backend/auth.go),
+# and Firestore itself needs none of this. Left in place because Firebase cannot be un-added from
+# a project, so removing these resources only drops them from state; worth a deliberate cleanup
+# rather than a drive-by one.
 resource "google_project_service" "firebase" {
   project = var.gcp_project_id
   service = "firebase.googleapis.com"

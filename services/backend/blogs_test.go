@@ -62,7 +62,7 @@ func (s *fakeBlogStore) Delete(ctx context.Context, id string) error {
 }
 
 func withUID(req *http.Request, uid string) *http.Request {
-	return req.WithContext(context.WithValue(req.Context(), uidContextKey, uid))
+	return req.WithContext(context.WithValue(req.Context(), callerContextKey, caller{UID: uid}))
 }
 
 // decodeAPIError asserts the response carries a JSON error body rather than plain text, so

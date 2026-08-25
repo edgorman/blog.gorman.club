@@ -1,69 +1,43 @@
-import { useEffect, useState } from 'react'
-import {
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut,
-  type User as AuthUser,
-} from 'firebase/auth'
-import { firebaseConfigured, getFirebaseAuth } from '../lib/firebase'
+import { GoogleSignInButton } from './GoogleSignInButton'
+import type { UseGoogleAuthResult } from '../hooks/useGoogleAuth'
 
-interface Props {
-  user: AuthUser | null
-  onUserChange: (user: AuthUser | null) => void
-}
+type Props = Pick<UseGoogleAuthResult, 'user' | 'error' | 'ready' | 'renderButton' | 'signOut'>
 
-/** Sign-in panel. Firebase Auth is only used to mint the ID token the backend verifies. */
-export function SignIn({ user, onUserChange }: Props) {
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!firebaseConfigured) return
-    return onAuthStateChanged(getFirebaseAuth(), onUserChange)
-  }, [onUserChange])
-
-  if (!firebaseConfigured) {
-    return (
-      <section className="panel" data-state="unconfigured">
-        <h2>Sign in</h2>
-        <p>
-          Firebase is not configured for this build. Set <code>VITE_FIREBASE_API_KEY</code>,{' '}
-          <code>VITE_FIREBASE_AUTH_DOMAIN</code> and <code>VITE_FIREBASE_PROJECT_ID</code> (see
-          the frontend README).
-        </p>
-      </section>
-    )
-  }
-
-  const handleSignIn = () => {
-    setError(null)
-    signInWithPopup(getFirebaseAuth(), new GoogleAuthProvider()).catch((e: unknown) =>
-      setError(e instanceof Error ? e.message : 'Sign-in failed'),
-    )
-  }
-
+/**
+ * Sign-in panel. Google Identity Services renders the button itself, so this only hosts it and
+ * shows what the returned credential says about the caller.
+ */
+export function SignIn({ user, error, ready, renderButton, signOut }: Props) {
   return (
-    <section className="panel">
+    <section className="panel" data-state={error ? 'unconfigured' : undefined}>
       <h2>Sign in</h2>
+
       {user ? (
         <>
           <dl>
-            <dt>uid</dt>
+            <dt>id</dt>
             <dd>
-              <code>{user.uid}</code>
+              <code>{user.id}</code>
             </dd>
             <dt>email</dt>
-            <dd>{user.email ?? '—'}</dd>
+            <dd>{user.email}</dd>
+            <dt>name</dt>
+            <dd>{user.name}</dd>
           </dl>
-          <button onClick={() => void signOut(getFirebaseAuth())}>Sign out</button>
+          <div className="actions">
+            <button onClick={signOut}>Sign out</button>
+          </div>
         </>
       ) : (
         <>
-          <p>Signed out. The API rejects every request without a valid ID token.</p>
-          <button onClick={handleSignIn}>Sign in with Google</button>
+          <p>
+            {error
+              ? error
+              : 'Signed out. The API rejects every request without a valid Google ID token.'}
+          </p>
+          {!error && <GoogleSignInButton ready={ready} onRender={renderButton} />}
         </>
       )}
-      {error && <p role="alert">{error}</p>}
     </section>
   )
 }

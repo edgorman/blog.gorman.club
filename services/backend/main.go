@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"cloud.google.com/go/firestore"
-	firebase "firebase.google.com/go/v4"
 )
 
 // Baked in at build time via -ldflags (see Dockerfile); images are never rebuilt for production.
@@ -32,6 +31,14 @@ func run() error {
 		port = "8080"
 	}
 
+	// OAuth 2.0 client ID the frontend signs in with; ID tokens are only accepted if they were
+	// minted for it. Unset means authentication is unconfigured, and every authenticated request
+	// fails with a 500 rather than silently accepting anything.
+	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
+	if googleClientID == "" {
+		log.Print("warning: GOOGLE_CLIENT_ID is unset, so no request can authenticate")
+	}
+
 	ctx := context.Background()
 
 	firestoreClient, err := firestore.NewClient(ctx, firestore.DetectProjectID)
@@ -40,15 +47,7 @@ func run() error {
 	}
 	defer firestoreClient.Close()
 
-	firebaseApp, err := firebase.NewApp(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("firebase app: %w", err)
-	}
-	firebaseAuth, err := firebaseApp.Auth(ctx)
-	if err != nil {
-		return fmt.Errorf("firebase auth client: %w", err)
-	}
-	verifier := &firebaseTokenVerifier{client: firebaseAuth}
+	verifier := &googleTokenVerifier{clientID: googleClientID}
 
 	blogs := newBlogHandler(newFirestoreBlogStore(firestoreClient))
 	users := newUserHandler(newFirestoreUserStore(firestoreClient))

@@ -1,7 +1,7 @@
 /**
- * Client for the backend API (see /services/backend). Every endpoint requires a Firebase ID
- * token as a bearer token; callers pass a getToken function so a fresh token is fetched per
- * request rather than a stale one being cached here.
+ * Client for the backend API (see /services/backend). Every endpoint requires the Google ID
+ * token as a bearer credential plus an Authorization-Provider header; callers pass the header
+ * map from useGoogleAuth rather than this module knowing about any auth provider.
  */
 
 export interface Blog {
@@ -34,11 +34,11 @@ export class ApiError extends Error {
   }
 }
 
-export type GetToken = () => Promise<string>
+export type AuthHeaders = Record<string, string>
 
 async function request<T>(
   baseUrl: string,
-  getToken: GetToken,
+  authHeaders: AuthHeaders,
   method: string,
   path: string,
   body?: unknown,
@@ -46,7 +46,7 @@ async function request<T>(
   const response = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, {
     method,
     headers: {
-      Authorization: `Bearer ${await getToken()}`,
+      ...authHeaders,
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -65,19 +65,19 @@ async function request<T>(
   return response.json() as Promise<T>
 }
 
-export function createApi(baseUrl: string, getToken: GetToken) {
+export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
   return {
-    listBlogs: () => request<Blog[]>(baseUrl, getToken, 'GET', '/blogs'),
-    getBlog: (id: string) => request<Blog>(baseUrl, getToken, 'GET', `/blogs/${id}`),
-    createBlog: (blog: Partial<Blog>) => request<Blog>(baseUrl, getToken, 'POST', '/blogs', blog),
+    listBlogs: () => request<Blog[]>(baseUrl, authHeaders, 'GET', '/blogs'),
+    getBlog: (id: string) => request<Blog>(baseUrl, authHeaders, 'GET', `/blogs/${id}`),
+    createBlog: (blog: Partial<Blog>) => request<Blog>(baseUrl, authHeaders, 'POST', '/blogs', blog),
     updateBlog: (id: string, blog: Partial<Blog>) =>
-      request<Blog>(baseUrl, getToken, 'PUT', `/blogs/${id}`, blog),
-    deleteBlog: (id: string) => request<void>(baseUrl, getToken, 'DELETE', `/blogs/${id}`),
+      request<Blog>(baseUrl, authHeaders, 'PUT', `/blogs/${id}`, blog),
+    deleteBlog: (id: string) => request<void>(baseUrl, authHeaders, 'DELETE', `/blogs/${id}`),
 
-    getUser: (id: string) => request<User>(baseUrl, getToken, 'GET', `/users/${id}`),
+    getUser: (id: string) => request<User>(baseUrl, authHeaders, 'GET', `/users/${id}`),
     putUser: (id: string, user: Partial<User>) =>
-      request<User>(baseUrl, getToken, 'PUT', `/users/${id}`, user),
-    deleteUser: (id: string) => request<void>(baseUrl, getToken, 'DELETE', `/users/${id}`),
+      request<User>(baseUrl, authHeaders, 'PUT', `/users/${id}`, user),
+    deleteUser: (id: string) => request<void>(baseUrl, authHeaders, 'DELETE', `/users/${id}`),
   }
 }
 

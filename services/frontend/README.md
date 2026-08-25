@@ -9,7 +9,7 @@ cross-cloud routing, CORS, and token verification all work.
 
 - **Backend status** — calls `/debug` (the Debug Endpoint Contract described
   in `CLAUDE.md`) on page load.
-- **Sign in** — Google sign-in via Firebase Auth, showing the resulting uid.
+- **Sign in** — Google Sign-In, showing the id, email, and name the credential asserts.
 - **Your profile** — `GET`/`PUT`/`DELETE /users/{id}` for the signed-in caller.
 - **Blogs** — list, create, update, and delete against `/blogs`, with write
   buttons shown only for posts the caller owns.
@@ -18,33 +18,57 @@ Every panel degrades to an explanatory message rather than an error when its
 configuration is missing, so the page is still useful before anything is
 deployed.
 
-## Firebase Auth
+## Google Sign-In
 
-Firebase is used **only** to mint the ID token the backend verifies. No
-Firestore access happens in the browser — there are no security rules
-deployed, and every read and write goes through the API. Nothing here imports
-`firebase/firestore`.
+Sign-in uses [Google Identity Services](https://developers.google.com/identity/gsi/web/guides/overview)
+(GSI). There is no login endpoint and no session: `index.html` loads the GSI
+client library, `src/hooks/useGoogleAuth.ts` initialises it and renders the
+button, and on sign-in Google hands back a signed JWT credential. The hook
+decodes that credential client-side **for display only** and reuses the raw
+string as the bearer credential on every backend request, alongside an
+`Authorization-Provider: google` header. The backend re-verifies it per request
+against Google's public keys, so nothing the browser decodes is trusted.
 
-The web API key is not a secret (access is governed by the backend, not by
-hiding it), so the config below lives in GitHub Actions *variables* rather
-than Secret Manager. Values are baked in at build time, like
-`VITE_BACKEND_URL`.
+Because there is no server-side session, signing out is purely client-side
+(clear local state, `disableAutoSelect()`), and a refresh signs you out.
 
-One-time setup per environment, in the Firebase console for
-`blog-gorman-club-stag` / `blog-gorman-club-prod`:
+### 1. Create an OAuth 2.0 client ID
 
-1. Register a Web App and copy its `apiKey` and `authDomain`.
-2. Enable the Google sign-in provider under **Authentication → Sign-in method**.
-3. Add the site's domain under **Authentication → Settings → Authorized domains**.
-4. Set the repository variables `FIREBASE_API_KEY_STAG` /
-   `FIREBASE_AUTH_DOMAIN_STAG` (and the `_PROD` pair). The project ID is
-   passed by the workflows directly.
+Follow [Get your Google API client ID](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid):
 
-Steps 1-3 are console-only because enabling a sign-in provider through
-Terraform requires Identity Platform rather than the Firebase Auth free tier.
+1. Open the [credentials page](https://console.cloud.google.com/apis/credentials)
+   for the **`blog-gorman-club-root`** project — the client ID is defined once in
+   `infrastructure/root` and reused by every environment, so it belongs there
+   rather than in the stag/prod projects.
+2. Configure the OAuth consent screen if you haven't already.
+3. **Create Credentials → OAuth client ID → Web application**.
+4. Add every frontend URL that renders the button under **Authorized JavaScript
+   origins**: `http://localhost:5173` for local dev, plus the staging and
+   production site URLs.
+5. Leave **Authorized redirect URIs** empty — GSI's ID-token flow returns the
+   credential straight to the page's JS callback, with no server-side redirect.
+6. Copy the **Client ID**. The client secret is not needed.
 
-For local development, put the same values in `services/frontend/.env.local`
-(already gitignored by Vite's defaults).
+### 2. Configure it
+
+Set `google_client_id` in `infrastructure/config/root/terraform.tfvars` and
+apply `infrastructure/root`. That apply writes it into the `GOOGLE_CLIENT_ID`
+GitHub Actions variable, and CI takes it from there for both environments with
+no further per-environment configuration:
+
+- the frontend Docker build gets it as `VITE_GOOGLE_CLIENT_ID`;
+- `infrastructure/env` gets it as `TF_VAR_google_client_id`, which becomes the
+  backend Cloud Run service's `GOOGLE_CLIENT_ID` — the audience it verifies
+  tokens against.
+
+For local development, put `VITE_GOOGLE_CLIENT_ID` in
+`services/frontend/.env.local` and set `GOOGLE_CLIENT_ID` in the backend's
+environment, using the same client ID (with `http://localhost:5173` among its
+authorized origins).
+
+If the client ID is unset, the frontend shows a "not configured" message
+instead of a button, and the backend answers any authenticated request with a
+`500` rather than accepting it.
 
 ## Development
 
@@ -66,9 +90,7 @@ sitting in Artifact Registry, and a rollback can redeploy that image's files wit
 | Env var                     | Description                                              |
 | ---------------------------- | --------------------------------------------------------- |
 | `VITE_BACKEND_URL`           | Base URL of the backend service. Unset in local dev; set automatically in CI from the deployed Cloud Run service's URL. |
-| `VITE_FIREBASE_API_KEY`      | Firebase web API key. Not a secret; see above.            |
-| `VITE_FIREBASE_AUTH_DOMAIN`  | Firebase auth domain, e.g. `blog-gorman-club-stag.firebaseapp.com`. |
-| `VITE_FIREBASE_PROJECT_ID`   | Firebase/GCP project ID for the environment.              |
+| `VITE_GOOGLE_CLIENT_ID`      | Google OAuth 2.0 client ID. Not a secret; see above.      |
 
-All four are baked into the bundle at build time — the frontend has no runtime
+Both are baked into the bundle at build time — the frontend has no runtime
 configuration.

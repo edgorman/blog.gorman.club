@@ -33,16 +33,36 @@ Firestore directly. Access rules therefore live in Go and nowhere else:
   owner, and `createdAt`/`updatedAt` come from the server rather than a
   spoofable client clock.
 
-Profiles in `/users/{userId}` are keyed by the owner's Firebase Auth uid, so
+Profiles in `/users/{userId}` are keyed by the owner's Google account ID, so
 there is no server-assigned ID to hand out and a profile is written with `PUT`
 rather than `POST`. Any signed-in caller may read a profile; `requireSelf`
 restricts writes to the profile's own owner.
 
-Every route below requires a valid Firebase Auth ID token as a bearer token:
+Every route below requires a Google Sign-In credential. The frontend sends the
+ID token Google issued, plus a header naming the provider that issued it:
 
 ```
-Authorization: Bearer <firebase-id-token>
+Authorization: Bearer <google-id-token>
+Authorization-Provider: google
 ```
+
+`requireAuth` (`auth.go`) verifies the token per request against Google's
+public keys, checking signature, expiry, audience (`GOOGLE_CLIENT_ID`) and
+issuer, and puts the resulting identity — id, email, name, all from the signed
+payload — in the request context. Nothing the client sends about itself is
+trusted.
+
+Failures are distinguished so the cause is obvious from the status alone:
+
+| Status | Meaning                                                                 |
+| ------ | ------------------------------------------------------------------------ |
+| `401`  | No credential, or one that failed verification.                           |
+| `400`  | Headers missing or malformed — the caller didn't ask properly.            |
+| `501`  | A provider this service doesn't implement.                                |
+| `500`  | `GOOGLE_CLIENT_ID` is unset, so the deployment can't verify anything.     |
+
+Adding another provider means extending `authProvider` and the switch in
+`requireAuth`, not restructuring the flow.
 
 | Method | Path          | Description                                                           |
 | ------ | ------------- | --------------------------------------------------------------------- |
@@ -83,6 +103,7 @@ make build     # builds bin/backend
 | `PORT`                 | Port to listen on. Defaults to `8080` (Cloud Run sets this itself).        |
 | `ENVIRONMENT`          | Deployment environment reported by `/debug` (e.g. `stag`, `prod`). Defaults to `development`. |
 | `CORS_ALLOWED_ORIGIN`  | Origin allowed to call this API from a browser (the frontend's URL). Unset disables CORS headers entirely. |
+| `GOOGLE_CLIENT_ID`     | OAuth 2.0 client ID that ID tokens must be minted for. Set by Terraform from the `GOOGLE_CLIENT_ID` GitHub Actions variable; unset means no request can authenticate. |
 
 `commit` is not an env var — it's baked into the binary at build time (see
 `Dockerfile`), since the same image is promoted unmodified from staging to

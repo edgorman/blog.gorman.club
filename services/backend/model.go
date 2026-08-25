@@ -22,7 +22,8 @@ type Blog struct {
 	UpdatedAt      time.Time `json:"updatedAt" firestore:"updatedAt"`
 }
 
-// User is a /users/{userId} profile document, keyed by the owner's Firebase Auth uid. There is no
+// User is a /users/{userId} profile document, keyed by the owner's Google account ID (the `sub`
+// claim of their ID token, see auth.go). There is no
 // server-assigned ID to hand out, so profiles are written with PUT /users/{id} rather than POSTed.
 //
 // Any signed-in caller may read a profile; only its owner may write one (requireSelf).

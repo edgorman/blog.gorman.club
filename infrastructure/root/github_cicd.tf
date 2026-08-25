@@ -57,8 +57,13 @@ resource "google_project_iam_member" "github_actions_firebase_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# google_firebaserules_ruleset/release (infrastructure/env/firestore.tf) need
-# firebaserules.rulesets.create and firebaserules.releases.create, covered by neither role above.
+# Retained only to tear the Firestore rules down. The ruleset/release resources are gone from
+# infrastructure/env, so the next environment apply destroys them - and this root apply runs
+# first (infrastructure-staging needs infrastructure-root in push-commit.yaml), so dropping the
+# grant here in the same commit would pull the permission before the delete that needs it.
+# roles/editor may well cover firebaserules.rulesets.delete/releases.delete, but #34 added this
+# role on the assumption that it doesn't, and a 403 mid-teardown would leave the rules deployed
+# with the grant already gone. Remove in a follow-up once the destroy has landed.
 resource "google_project_iam_member" "github_actions_firebaserules_admin" {
   for_each = local.all_projects
 

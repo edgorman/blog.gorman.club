@@ -51,11 +51,11 @@ func run() error {
 	verifier := &firebaseTokenVerifier{client: firebaseAuth}
 
 	blogs := newBlogHandler(newFirestoreBlogStore(firestoreClient))
+	users := newUserHandler(newFirestoreUserStore(firestoreClient))
 	debugHandler := newDebugHandler(environment, commit)
 
-	// Only writes are served here - the frontend reads users and blogs directly through the
-	// Firebase SDK, gated by firestore.rules. Writes go through the server so createdAt/updatedAt
-	// are trustworthy rather than set from a client clock.
+	// Every blog and user route requires a verified caller: this service holds the only
+	// credentials for those collections, so it is where read and write access is decided.
 	authed := func(h http.HandlerFunc) http.Handler {
 		return withCORS(requireAuth(verifier, h))
 	}
@@ -63,9 +63,14 @@ func run() error {
 	mux := http.NewServeMux()
 	mux.Handle("/health", withCORS(debugHandler))
 	mux.Handle("/debug", withCORS(debugHandler))
+	mux.Handle("GET /blogs", authed(blogs.List))
+	mux.Handle("GET /blogs/{id}", authed(blogs.Get))
 	mux.Handle("POST /blogs", authed(blogs.Create))
 	mux.Handle("PUT /blogs/{id}", authed(blogs.Update))
 	mux.Handle("DELETE /blogs/{id}", authed(blogs.Delete))
+	mux.Handle("GET /users/{id}", authed(users.Get))
+	mux.Handle("PUT /users/{id}", authed(users.Put))
+	mux.Handle("DELETE /users/{id}", authed(users.Delete))
 
 	log.Printf("backend listening on :%s (environment=%s, commit=%s)", port, environment, commit)
 	return http.ListenAndServe(":"+port, mux)

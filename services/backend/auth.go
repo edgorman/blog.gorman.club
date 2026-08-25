@@ -30,8 +30,8 @@ func (v *firebaseTokenVerifier) Verify(ctx context.Context, idToken string) (str
 }
 
 // requireAuth verifies the bearer token in the Authorization header and stores the caller's uid
-// in the request context, rejecting the request otherwise. This is what lets handlers enforce
-// the same request.auth.uid-based checks firestore.rules defines for direct client access.
+// in the request context, rejecting the request otherwise. Handlers authorize against that uid,
+// so every route below it can assume the caller has been identified.
 func requireAuth(verifier tokenVerifier, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")

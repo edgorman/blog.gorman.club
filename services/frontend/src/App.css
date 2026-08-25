@@ -32,3 +32,103 @@ main {
 .health-check[data-phase='error'] {
   border-color: #cf222e;
 }
+
+main {
+  max-width: 48rem;
+}
+
+.panel {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  border: 1px solid #d0d7de;
+  border-radius: 0.5rem;
+  text-align: left;
+}
+
+.panel[data-state='unconfigured'] {
+  border-style: dashed;
+}
+
+.panel h2 {
+  margin-top: 0;
+}
+
+.panel dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 1rem;
+  margin: 1rem 0 0;
+}
+
+.panel dt {
+  font-weight: 600;
+}
+
+.panel dd {
+  margin: 0;
+}
+
+.panel label {
+  display: block;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.panel input,
+.panel textarea,
+.panel select {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.4rem;
+  font: inherit;
+  font-weight: 400;
+  border: 1px solid #d0d7de;
+  border-radius: 0.25rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.actions button {
+  padding: 0.4rem 0.9rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.status {
+  color: #57606a;
+  font-size: 0.9rem;
+}
+
+.blog-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.blog-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid #d0d7de;
+}
+
+.blog-list p {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+}
+
+.tag {
+  display: inline-block;
+  padding: 0 0.4rem;
+  margin-left: 0.25rem;
+  font-size: 0.75rem;
+  color: #57606a;
+  border: 1px solid #d0d7de;
+  border-radius: 1rem;
+}

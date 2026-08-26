@@ -1,5 +1,4 @@
 # WIF identity GitHub Actions uses to authenticate to GCP without a long-lived JSON key.
-# Repository settings themselves are managed separately by .github/settings.yml.
 
 resource "google_service_account" "github_actions" {
   project      = var.gcp_provider_project_id
@@ -7,8 +6,7 @@ resource "google_service_account" "github_actions" {
   display_name = "GitHub Actions Service Account"
 }
 
-# Granted per-project, individually, on root + every environment — never a
-# broad org-level or folder-level grant.
+# Granted per-project on root and every environment, never org- or folder-wide.
 resource "google_project_iam_member" "github_actions_editor" {
   for_each = local.all_projects
 
@@ -17,8 +15,7 @@ resource "google_project_iam_member" "github_actions_editor" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# roles/editor excludes IAM management; this lets CI manage each project's own IAM policy (needed since
-# this root's own applies manage IAM bindings). Doesn't cover resource-level policies - granted below.
+# roles/editor excludes IAM management, which this root's own applies need.
 resource "google_project_iam_member" "github_actions_iam_admin" {
   for_each = local.all_projects
 
@@ -27,8 +24,7 @@ resource "google_project_iam_member" "github_actions_iam_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Cloud Run's public-invoker binding (infrastructure/cloud_run.tf) needs run.services.setIamPolicy,
-# covered by neither role above.
+# The public-invoker binding in env/cloud_run.tf needs run.services.setIamPolicy.
 resource "google_project_iam_member" "github_actions_run_admin" {
   for_each = local.all_projects
 
@@ -37,8 +33,7 @@ resource "google_project_iam_member" "github_actions_run_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# google_firestore_database (infrastructure/env/firestore.tf) needs datastore.databases.create,
-# which roles/editor doesn't include.
+# google_firestore_database needs datastore.databases.create, which roles/editor omits.
 resource "google_project_iam_member" "github_actions_datastore_admin" {
   for_each = local.all_projects
 
@@ -47,8 +42,7 @@ resource "google_project_iam_member" "github_actions_datastore_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# google_firebase_project (infrastructure/env/firestore.tf) needs firebase.projects.update to add
-# Firebase to the project, which roles/editor doesn't include.
+# google_firebase_project needs firebase.projects.update, which roles/editor omits.
 resource "google_project_iam_member" "github_actions_firebase_admin" {
   for_each = local.all_projects
 
@@ -57,12 +51,8 @@ resource "google_project_iam_member" "github_actions_firebase_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# google_service_account_iam_member.backend_runtime_actas (infrastructure/env/cloud_run.tf) grants
-# CI actAs on a service account it just created via setIamPolicy on that service account - a
-# permission distinct from actAs itself, and covered by none of the roles above (confirmed by the
-# staging apply failing with "Permission 'iam.serviceAccounts.setIamPolicy' denied" even though
-# the same apply had just used roles/editor's implicit actAs to attach that service account to
-# Cloud Run without issue).
+# backend_runtime_actas in env/cloud_run.tf needs iam.serviceAccounts.setIamPolicy, which is
+# distinct from actAs itself and covered by none of the roles above.
 resource "google_project_iam_member" "github_actions_service_account_admin" {
   for_each = local.all_projects
 
@@ -71,9 +61,8 @@ resource "google_project_iam_member" "github_actions_service_account_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# This service account lives in the root project, so Firebase/Firestore calls would otherwise bill
-# quota to root rather than the project being modified. infrastructure/env uses the provider's
-# user_project_override to redirect that, which requires serviceusage.services.use on the target.
+# Required by env/providers.tf's user_project_override, which redirects API quota off the root
+# project this service account lives in.
 resource "google_project_iam_member" "github_actions_service_usage_consumer" {
   for_each = local.all_projects
 
@@ -114,8 +103,7 @@ resource "google_service_account_iam_member" "github_actions_wic" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github_pool.name}/attribute.repository/${var.github_repository_owner}/${var.github_repository_name}"
 }
 
-# Wire the resulting provider path and service account email into GitHub
-# Actions repository variables so workflows never hardcode them.
+# Wired into Actions repository variables so workflows never hardcode them.
 resource "github_actions_variable" "workload_identity_provider" {
   repository    = var.github_repository_name
   variable_name = "WORKLOAD_IDENTITY_PROVIDER"
@@ -128,9 +116,8 @@ resource "github_actions_variable" "service_account" {
   value         = google_service_account.github_actions.email
 }
 
-# Read by both workflows: passed to infrastructure/env as TF_VAR_google_client_id (the backend's
-# token audience) and baked into the frontend build as VITE_GOOGLE_CLIENT_ID. One client ID,
-# with authorized origins for every environment, rather than one per environment.
+# One client ID for every environment: passed to infrastructure/env as TF_VAR_google_client_id and
+# baked into the frontend build as VITE_GOOGLE_CLIENT_ID.
 resource "github_actions_variable" "google_client_id" {
   repository    = var.github_repository_name
   variable_name = "GOOGLE_CLIENT_ID"

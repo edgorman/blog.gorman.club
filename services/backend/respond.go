@@ -5,8 +5,7 @@ import (
 	"net/http"
 )
 
-// apiError is the body of every non-2xx response, so clients can parse success and failure the
-// same way instead of getting JSON on success and text/plain on error.
+// apiError is the body of every non-2xx response, so clients parse success and failure the same way.
 type apiError struct {
 	Error string `json:"error"`
 }

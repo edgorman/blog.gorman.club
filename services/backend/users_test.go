@@ -41,8 +41,7 @@ func (s *fakeUserStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// userRequest builds a request whose {id} path value and caller uid are set explicitly, so tests
-// can exercise both the owner and non-owner cases.
+// userRequest sets the {id} path value and caller uid explicitly, to cover owner and non-owner.
 func userRequest(method, id, uid string, body []byte) *http.Request {
 	var req *http.Request
 	if body == nil {

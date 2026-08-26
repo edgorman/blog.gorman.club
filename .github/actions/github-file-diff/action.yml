@@ -49,7 +49,7 @@ runs:
             - 'services/backend/**'
             - '.github/actions/backend-test/**'
 
-          # infrastructure/env/** is shared between environments, so it appears in both filters below.
+          # infrastructure/env/** is shared, so it appears in both filters below.
           infrastructure-staging:
             - 'infrastructure/env/**'
             - 'infrastructure/config/staging/**'

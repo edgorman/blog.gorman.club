@@ -12,8 +12,7 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
 function App() {
   const { user, authHeaders, error, ready, renderButton, signOut } = useGoogleAuth()
 
-  // Rebuilt when the credential changes, so requests always carry the current one. There is no
-  // refresh: the credential lasts as long as the page does, and signing out clears it.
+  // Rebuilt when the credential changes, so requests always carry the current one.
   const api = useMemo(
     () => (user && BACKEND_URL ? createApi(BACKEND_URL, authHeaders) : null),
     [user, authHeaders],

@@ -51,11 +51,8 @@ runs:
       shell: bash
       run: echo "ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/frontend/frontend:${{ inputs.target_tag }}" >> "$GITHUB_OUTPUT"
 
-    # Unlike the backend, VITE_BACKEND_URL is baked into the frontend at build time, so its image
-    # can't be copied by digest between environments the way the backend's is - a staging build has
-    # staging's backend URL compiled in. Instead, each release's prod image is built once, here, and
-    # only once: a rollback re-promotes a tag that already exists from when it first went out, so the
-    # build is skipped entirely and the existing (correctly-baked) image is reused as-is.
+    # VITE_BACKEND_URL is baked in at build time, so a staging image can't be copied by digest the
+    # way the backend's is - each release builds its prod image once here, and a rollback reuses it.
     - id: existing
       name: Check for Existing Image
       shell: bash

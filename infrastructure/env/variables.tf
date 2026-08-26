@@ -26,7 +26,7 @@ variable "backend_initial_image" {
 }
 
 variable "google_client_id" {
-  description = "Google OAuth 2.0 client ID the backend verifies Google Sign-In ID tokens against. Defined once in infrastructure/root (see its google_client_id variable) and passed in here as TF_VAR_google_client_id by CI, rather than being duplicated per environment."
+  description = "Google OAuth 2.0 client ID the backend verifies ID tokens against. Defined once in infrastructure/root and passed in by CI as TF_VAR_google_client_id."
   type        = string
   default     = ""
 }

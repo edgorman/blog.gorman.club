@@ -1,7 +1,6 @@
 /**
- * Client for the backend API (see /services/backend). Every endpoint requires the Google ID
- * token as a bearer credential plus an Authorization-Provider header; callers pass the header
- * map from useGoogleAuth rather than this module knowing about any auth provider.
+ * Client for the backend API (see /services/backend). Callers pass the header map from
+ * useGoogleAuth, so this module knows nothing about any auth provider.
  */
 
 export interface Blog {
@@ -32,6 +31,11 @@ export class ApiError extends Error {
     this.name = 'ApiError'
     this.status = status
   }
+}
+
+/** Message to show for a rejected request, falling back when it isn't an Error. */
+export function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
 }
 
 export type AuthHeaders = Record<string, string>
@@ -68,7 +72,6 @@ async function request<T>(
 export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
   return {
     listBlogs: () => request<Blog[]>(baseUrl, authHeaders, 'GET', '/blogs'),
-    getBlog: (id: string) => request<Blog>(baseUrl, authHeaders, 'GET', `/blogs/${id}`),
     createBlog: (blog: Partial<Blog>) => request<Blog>(baseUrl, authHeaders, 'POST', '/blogs', blog),
     updateBlog: (id: string, blog: Partial<Blog>) =>
       request<Blog>(baseUrl, authHeaders, 'PUT', `/blogs/${id}`, blog),

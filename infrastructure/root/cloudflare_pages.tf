@@ -1,6 +1,5 @@
-# Pages projects + custom domains for the frontend, one pair per environment. Project names must match
-# cloudflare_project_name in push-commit.yaml / promote-release.yaml. Assumes the gorman.club zone already
-# exists (nameservers pointed at Cloudflare manually, same as the root GCP project below).
+# Pages projects and custom domains, one pair per environment; names must match the
+# cloudflare_project_name inputs in push-commit.yaml / promote-release.yaml.
 data "cloudflare_zone" "gorman_club" {
   filter = {
     name = "gorman.club"
@@ -8,7 +7,7 @@ data "cloudflare_zone" "gorman_club" {
 }
 
 locals {
-  # record_name is the DNS record name relative to the zone; cloudflare_pages_domain only takes the full hostname.
+  # record_name is relative to the zone; cloudflare_pages_domain takes the full hostname.
   frontend_environments = {
     stag = { hostname = "staging.blog.${data.cloudflare_zone.gorman_club.name}", record_name = "staging.blog" }
     prod = { hostname = "blog.${data.cloudflare_zone.gorman_club.name}", record_name = "blog" }
@@ -31,10 +30,8 @@ resource "cloudflare_pages_domain" "frontend" {
   name         = each.value.hostname
 }
 
-# cloudflare_pages_domain validates the hostname but doesn't create the routing DNS record itself.
-# Must be proxied (Universal SSL is only presented on proxied records) and use the project's actual
-# `subdomain` (not name+".pages.dev", which Cloudflare may suffix if the name is already claimed) -
-# otherwise HTTPS fails with ERR_SSL_VERSION_OR_CIPHER_MISMATCH.
+# cloudflare_pages_domain validates the hostname but doesn't create the routing record. It must be
+# proxied and point at the project's actual `subdomain`, or HTTPS fails with a cipher mismatch.
 resource "cloudflare_dns_record" "frontend" {
   for_each = local.frontend_environments
 

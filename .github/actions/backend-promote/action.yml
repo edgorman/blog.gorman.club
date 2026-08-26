@@ -35,8 +35,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - id: auth
-      name: Authenticate to Google Cloud
+    - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v2
       with:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
@@ -49,13 +48,13 @@ runs:
       with:
         go-version: '1.24'
 
-    # gcrane authenticates via the ADC file google-github-actions/auth wrote above; no separate login step needed.
+    # gcrane authenticates via the ADC file google-github-actions/auth wrote above.
     - name: Install gcrane
       shell: bash
       run: go install github.com/google/go-containerregistry/cmd/gcrane@latest
 
-    # Resolves whatever image is actually deployed to staging right now, not by SHA tag - a
-    # release cut from a backend-untouched commit has no image under that SHA at all.
+    # Resolves what is deployed to staging now, since a release cut from a backend-untouched
+    # commit has no image under its SHA at all.
     - id: staging_image
       name: Resolve Staging Image
       shell: bash
@@ -65,8 +64,7 @@ runs:
           --region="${{ inputs.gcp_region }}"
           --project="${{ inputs.staging_project_id }}"
         )
-        # gcloud describes services under the legacy Knative `spec.template...` path;
-        # fall back to the v2 `template...` shape in case that changes.
+        # gcloud uses the legacy Knative path; fall back to the v2 shape in case that changes.
         IMAGE=$(gcloud run services describe "${DESCRIBE_ARGS[@]}" \
           --format='value(spec.template.spec.containers[0].image)')
         if [ -z "$IMAGE" ]; then
@@ -83,7 +81,7 @@ runs:
       shell: bash
       run: echo "ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.prod_project_id }}/backend/backend:${{ inputs.target_tag }}" >> "$GITHUB_OUTPUT"
 
-    # Copies by digest rather than rebuilding, so production runs the identical bytes validated in staging.
+    # Copies by digest, so production runs the identical bytes validated in staging.
     - name: Promote Image
       shell: bash
       run: |

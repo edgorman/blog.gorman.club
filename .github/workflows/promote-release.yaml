@@ -1,6 +1,6 @@
 name: 'Promote Release'
 
-# Fires when a pre-release is promoted to a formal Release, or an older release is re-promoted for rollback.
+# Fires when a pre-release is promoted to a Release, or an older one is re-promoted to roll back.
 on:
   release:
     types: [released]
@@ -13,8 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Step 1: infra applies before any service is touched. Runs unconditionally (human-triggered,
-  # and applies are idempotent), unlike push-commit.yaml's diff-gated applies.
+  # Step 1: infra applies before any service is touched, unconditionally - applies are idempotent.
   infrastructure-prod:
     runs-on: ubuntu-latest
     permissions:
@@ -33,13 +32,12 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/prod'
-          # Supplied by CI rather than per-environment tfvars: one client ID, defined in
-          # infrastructure/root, serves every environment.
+          # One client ID, defined in infrastructure/root, serves every environment.
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
 
-  # Step 2: promote whatever image is currently live on backend-stag by digest via gcrane, not
-  # one tagged with github.sha - a release commit may not have touched backend files at all.
+  # Step 2: promote whatever image is live on backend-stag by digest, since a release commit may
+  # not have touched the backend at all.
   services-backend:
     needs: infrastructure-prod
     runs-on: ubuntu-latest
@@ -64,10 +62,8 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
-  # Step 3: ensures a frontend image exists for this release - built fresh only if this is a new
-  # release; a rollback re-promotion reuses the one already pushed here, skipping the build
-  # entirely - then deploys its exact static files to Cloudflare Pages. Depends on services-backend
-  # so a new build bakes in the just-promoted backend URL.
+  # Step 3: build this release's frontend image only if it doesn't exist yet (a rollback reuses
+  # the one already pushed), then deploy its static files. Needs the just-promoted backend URL.
   services-frontend:
     needs: [infrastructure-prod, services-backend]
     runs-on: ubuntu-latest

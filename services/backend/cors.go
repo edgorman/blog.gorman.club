@@ -5,7 +5,8 @@ import (
 	"os"
 )
 
-// withCORS allows the frontend's origin (CORS_ALLOWED_ORIGIN, which differs per environment) to call this API from the browser.
+// withCORS allows the frontend's origin (CORS_ALLOWED_ORIGIN, which differs per environment) to
+// call this API from the browser.
 func withCORS(next http.Handler) http.Handler {
 	origin := os.Getenv("CORS_ALLOWED_ORIGIN")
 

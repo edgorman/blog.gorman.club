@@ -31,8 +31,7 @@ func decodeUser(w http.ResponseWriter, r *http.Request) (User, bool) {
 }
 
 // requireSelf checks the {id} path value is the caller's own uid, writing the error response and
-// returning false otherwise. Profiles are keyed by uid, so ownership is the path itself - no
-// lookup needed, unlike a blog's ownerId field.
+// returning false otherwise.
 func requireSelf(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id := r.PathValue("id")
 	if id != uidFromContext(r.Context()) {
@@ -71,17 +70,16 @@ func (h *userHandler) Put(w http.ResponseWriter, r *http.Request) {
 	}
 	body.ID = id
 
-	// A client must not be able to backdate its profile, so createdAt is carried over from the
-	// stored document; left zero for a new profile, which is what the store stamps.
 	existing, err := h.store.Get(r.Context(), id)
 	created := errors.Is(err, ErrNotFound)
-	switch {
-	case err == nil:
-		body.CreatedAt = existing.CreatedAt
-	case created:
-	default:
+	if err != nil && !created {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+	if !created {
+		// A client must not be able to backdate its profile, so createdAt comes from the stored
+		// document; a new profile leaves it zero for the store to stamp.
+		body.CreatedAt = existing.CreatedAt
 	}
 
 	saved, err := h.store.Put(r.Context(), body)
@@ -90,11 +88,11 @@ func (h *userHandler) Put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	status := http.StatusOK
 	if created {
-		writeJSON(w, http.StatusCreated, saved)
-		return
+		status = http.StatusCreated
 	}
-	writeJSON(w, http.StatusOK, saved)
+	writeJSON(w, status, saved)
 }
 
 // Delete removes the caller's own profile. Only the owner may delete it.
@@ -104,8 +102,8 @@ func (h *userHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Firestore deletes are idempotent, so a missing profile is looked up rather than silently
-	// reported as deleted - same 404 a client gets from GET.
+	// Firestore deletes are idempotent, so a missing profile is looked up first to give the same
+	// 404 a client gets from GET.
 	if _, err := h.store.Get(r.Context(), id); errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "user not found")
 		return

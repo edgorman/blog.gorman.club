@@ -16,8 +16,7 @@ terraform {
     }
   }
 
-  # Blank: the first apply runs against local state (Makefile's `init` target) since the bucket
-  # doesn't exist yet; state is migrated in afterward.
+  # Blank because the bucket doesn't exist on the first apply; see the Makefile's `init` target.
   backend "gcs" {
     bucket = ""
   }
@@ -29,15 +28,14 @@ provider "google" {
   zone    = var.gcp_provider_zone
 }
 
-# Only writes the WORKLOAD_IDENTITY_PROVIDER / SERVICE_ACCOUNT Actions variables (github_cicd.tf);
-# repository settings are managed separately by .github/settings.yml.
+# Only writes the Actions variables in github_cicd.tf; repository settings live in
+# .github/settings.yml.
 provider "github" {
   owner = var.github_repository_owner
   token = var.github_provider_token
 }
 
-# Manages Pages projects + custom domains (cloudflare_pages.tf); wrangler pushes builds into
-# these same projects separately (see frontend-deploy).
+# Manages Pages projects and domains; wrangler pushes builds into them separately.
 provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }

@@ -31,9 +31,7 @@ func run() error {
 		port = "8080"
 	}
 
-	// OAuth 2.0 client ID the frontend signs in with; ID tokens are only accepted if they were
-	// minted for it. Unset means authentication is unconfigured, and every authenticated request
-	// fails with a 500 rather than silently accepting anything.
+	// The OAuth 2.0 client ID ID tokens must be minted for; unset means no request can authenticate.
 	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
 	if googleClientID == "" {
 		log.Print("warning: GOOGLE_CLIENT_ID is unset, so no request can authenticate")
@@ -53,8 +51,8 @@ func run() error {
 	users := newUserHandler(newFirestoreUserStore(firestoreClient))
 	debugHandler := newDebugHandler(environment, commit)
 
-	// Every blog and user route requires a verified caller: this service holds the only
-	// credentials for those collections, so it is where read and write access is decided.
+	// This service holds the only credentials for the blog and user collections, so every one of
+	// their routes requires a verified caller.
 	authed := func(h http.HandlerFunc) http.Handler {
 		return requireAuth(verifier, h)
 	}
@@ -71,10 +69,8 @@ func run() error {
 	mux.Handle("PUT /users/{id}", authed(users.Put))
 	mux.Handle("DELETE /users/{id}", authed(users.Delete))
 
-	// CORS wraps the whole mux, not individual routes: every route below is registered under a
-	// specific method (e.g. "GET /blogs"), so an OPTIONS preflight matches none of them and
-	// ServeMux itself would 405 it before a per-route wrapper ever ran. Wrapping here intercepts
-	// OPTIONS ahead of that method-based routing.
+	// CORS wraps the whole mux rather than individual routes: routes are registered under a
+	// specific method, so ServeMux would 405 an OPTIONS preflight before a per-route wrapper ran.
 	log.Printf("backend listening on :%s (environment=%s, commit=%s)", port, environment, commit)
 	return http.ListenAndServe(":"+port, withCORS(mux))
 }

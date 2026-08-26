@@ -27,9 +27,8 @@ jobs:
         with:
           branch_ref: ${{ github.ref_name }}
 
-  # Builds the frontend image once, tagged with the commit SHA and `latest`, pushes it to staging
-  # Artifact Registry, then deploys those exact static files to Cloudflare Pages - one build feeds
-  # both, so the live staging site is never rebuilt separately from the stored image.
+  # One build feeds both Artifact Registry and Cloudflare Pages, so the live staging site is never
+  # rebuilt separately from the stored image.
   services-frontend:
     needs: [diff, infrastructure-root, infrastructure-staging, services-backend]
     if: |
@@ -54,9 +53,8 @@ jobs:
           secrets_list: |
             CLOUDFLARE_API_TOKEN=cloudflare_api_token
             CLOUDFLARE_ACCOUNT_ID=cloudflare_account_id
-      # Reuses gcp-secret-manager's WIF auth/Cloud SDK setup rather than authenticating again.
-      # Looked up directly since services-backend's output is unavailable when that job is
-      # skipped; falls back to empty if the service doesn't exist yet.
+      # Looked up directly (reusing gcp-secret-manager's auth) since services-backend's output is
+      # unavailable when that job is skipped.
       - id: backend
         name: Get Backend URL
         shell: bash
@@ -109,9 +107,7 @@ jobs:
           config_directory: 'infrastructure/config/root'
           secrets: ${{ steps.secrets.outputs.secrets }}
 
-  # Provisions the backend's Artifact Registry + Cloud Run for staging. No sensitive vars,
-  # so it authenticates directly (no gcp-secret-manager). Waits on infrastructure-root so any
-  # new IAM grants or baseline API enablement it applies land before this project is touched.
+  # Waits on infrastructure-root so any IAM grants or API enablement it applies land first.
   infrastructure-staging:
     needs: [diff, infrastructure-root]
     if: |
@@ -134,13 +130,11 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/staging'
-          # Supplied by CI rather than per-environment tfvars: one client ID, defined in
-          # infrastructure/root, serves every environment.
+          # One client ID, defined in infrastructure/root, serves every environment.
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
 
-  # Builds and deploys the backend image to staging, tagged with the commit SHA. Must follow
-  # infrastructure-staging so the target resources exist.
+  # Must follow infrastructure-staging so the target resources exist.
   services-backend:
     needs: [diff, infrastructure-staging]
     if: |
@@ -163,15 +157,8 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
-  # Runs unconditionally on every merge; the patch-bump pre-release isn't gated on which part
-  # of the repo changed. Drafts the release body from commit messages since the last tag, then
-  # appends a read-only prod terraform plan so a reviewer can see infra impact before promoting.
-  #
-  # gren (github-release-notes) was tried here instead of the git-log summary below, but proved
-  # unreliable in this repo: its single-tag "use the previous tag" auto-detection pulled in the
-  # full commit history instead of just the commits since the last tag, and passing an explicit
-  # <new>..<old> range silently overwrote the *old* tag's release instead of creating the new
-  # one. Reverted to the deterministic git-log approach.
+  # Runs on every merge, since the patch-bump pre-release isn't gated on what changed. Drafts the
+  # body from commits since the last tag, plus a read-only prod plan showing the infra impact.
   pre-release:
     runs-on: ubuntu-latest
     permissions:

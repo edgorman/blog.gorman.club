@@ -21,8 +21,7 @@ runs:
       run: echo "${{ inputs.secrets }}" >> "$GITHUB_ENV"
 
     # --branch=main is required: wrangler infers production vs. preview from GITHUB_REF_NAME, which
-    # is the release tag (not "main") when triggered by promote-release.yaml's `release` event.
-    # Without it, wrangler silently deploys as Preview instead of Production.
+    # is the release tag on a `release` event, and would silently deploy as Preview.
     - name: Deploy to Cloudflare Pages
       uses: cloudflare/wrangler-action@v3
       with:

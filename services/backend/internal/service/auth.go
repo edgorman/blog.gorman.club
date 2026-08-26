@@ -1,14 +1,14 @@
-package main
+package service
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 
-	"google.golang.org/api/idtoken"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
 // The credential is opaque and the provider header says how to verify it, so adding a provider
@@ -27,56 +27,10 @@ type contextKey int
 
 const callerContextKey contextKey = 0
 
-// caller is the verified identity behind a request, taken entirely from the provider's signed
-// token payload.
-type caller struct {
-	UID   string
-	Email string
-	Name  string
-}
-
-// tokenVerifier checks a provider-issued ID token and returns the identity it asserts.
-type tokenVerifier interface {
-	Verify(ctx context.Context, idToken string) (caller, error)
-}
-
-// googleTokenVerifier validates Google Identity Services credentials against clientID, the OAuth
-// 2.0 client ID the frontend signs in with.
-type googleTokenVerifier struct {
-	clientID string
-}
-
-// Google mints ID tokens with either issuer.
-var googleIssuers = []string{"accounts.google.com", "https://accounts.google.com"}
-
-var errAuthNotConfigured = errors.New("google authentication is not configured")
-
-func (v *googleTokenVerifier) Verify(ctx context.Context, token string) (caller, error) {
-	if v.clientID == "" {
-		return caller{}, errAuthNotConfigured
-	}
-
-	// Validate checks the signature, expiry, and audience; the issuer is checked below.
-	payload, err := idtoken.Validate(ctx, token, v.clientID)
-	if err != nil {
-		return caller{}, err
-	}
-	if !slices.Contains(googleIssuers, payload.Issuer) {
-		return caller{}, fmt.Errorf("unexpected issuer %q", payload.Issuer)
-	}
-
-	email, _ := payload.Claims["email"].(string)
-	name, _ := payload.Claims["name"].(string)
-	if name == "" {
-		name = email
-	}
-	return caller{UID: payload.Subject, Email: email, Name: name}, nil
-}
-
 // requireAuth verifies the request's credential and stores the resulting identity in the context,
 // so every handler below it can assume the caller has been verified. A malformed request is a 400
 // rather than a 401: the caller didn't fail to authenticate, they failed to ask properly.
-func requireAuth(verifier tokenVerifier, next http.HandlerFunc) http.HandlerFunc {
+func requireAuth(verifier repository.TokenVerifier, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authorization := r.Header.Get(authorizationHeader)
 		if authorization == "" {
@@ -102,8 +56,8 @@ func requireAuth(verifier tokenVerifier, next http.HandlerFunc) http.HandlerFunc
 			return
 		}
 
-		identity, err := verifier.Verify(r.Context(), token)
-		if errors.Is(err, errAuthNotConfigured) {
+		caller, err := verifier.Verify(r.Context(), token)
+		if errors.Is(err, repository.ErrAuthNotConfigured) {
 			// A deployment problem, not the caller's fault.
 			writeError(w, http.StatusInternalServerError, "authentication is not configured")
 			return
@@ -113,13 +67,13 @@ func requireAuth(verifier tokenVerifier, next http.HandlerFunc) http.HandlerFunc
 			return
 		}
 
-		next(w, r.WithContext(context.WithValue(r.Context(), callerContextKey, identity)))
+		next(w, r.WithContext(context.WithValue(r.Context(), callerContextKey, caller)))
 	}
 }
 
-func callerFromContext(ctx context.Context) caller {
-	identity, _ := ctx.Value(callerContextKey).(caller)
-	return identity
+func callerFromContext(ctx context.Context) entity.Caller {
+	caller, _ := ctx.Value(callerContextKey).(entity.Caller)
+	return caller
 }
 
 // uidFromContext returns the caller's provider-issued user ID, which is what ownership is

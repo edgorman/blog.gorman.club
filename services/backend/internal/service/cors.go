@@ -1,15 +1,10 @@
-package main
+package service
 
-import (
-	"net/http"
-	"os"
-)
+import "net/http"
 
-// withCORS allows the frontend's origin (CORS_ALLOWED_ORIGIN, which differs per environment) to
-// call this API from the browser.
-func withCORS(next http.Handler) http.Handler {
-	origin := os.Getenv("CORS_ALLOWED_ORIGIN")
-
+// withCORS allows the frontend's origin (which differs per environment) to call this API from the
+// browser. An empty origin disables the headers entirely.
+func withCORS(origin string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)

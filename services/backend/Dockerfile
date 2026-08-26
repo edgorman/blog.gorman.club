@@ -8,7 +8,7 @@ RUN go mod download
 COPY . .
 
 ARG COMMIT_SHA=unknown
-RUN CGO_ENABLED=0 go build -ldflags "-X main.commit=${COMMIT_SHA}" -o /out/backend .
+RUN CGO_ENABLED=0 go build -ldflags "-X main.commit=${COMMIT_SHA}" -o /out/backend ./cmd/backend
 
 # distroless/static: no shell or package manager for a compromised process to use.
 FROM gcr.io/distroless/static-debian12:nonroot

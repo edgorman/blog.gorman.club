@@ -29,12 +29,29 @@ string as the bearer credential on every backend request, alongside an
 `Authorization-Provider: google` header. The backend re-verifies it per request
 against Google's public keys, so nothing the browser decodes is trusted.
 
-Because there is no server-side session, signing out is purely client-side
-(clear local state, `disableAutoSelect()`). A refresh re-requests a credential
-rather than reading one back from storage; `auto_select` lets Google reissue
-one silently if the browser still has a Google session and prior consent for
-this app, so in practice a refresh keeps you signed in unless you explicitly
-signed out.
+There is no server-side session, so staying signed in across a reload is
+handled in two layers:
+
+1. **The credential is cached in `sessionStorage`** and restored on mount if it
+   hasn't expired. This is the deterministic path — it doesn't depend on
+   Google's session state at all. `sessionStorage` rather than `localStorage`
+   so the credential dies with the tab, keeping the window in which an XSS bug
+   could read it as small as possible while still surviving a reload. An
+   expired entry is discarded rather than restored, since the backend would
+   reject it and the UI would look signed in while every request 401s.
+2. **`prompt()` asks Google to reissue one** when nothing valid was restored (a
+   new tab, or the cached credential aged out). With `auto_select` that is
+   silent where Google permits it — which needs a single active Google
+   session, prior consent, and under FedCM no more than one sign-in attempt in
+   the preceding 10 minutes. Where it isn't permitted, One Tap appears and the
+   rendered button remains as the explicit fallback.
+
+`prompt()` is what makes `auto_select` do anything: it's a One Tap setting, so
+initialising with `auto_select` while only ever calling `renderButton()` leaves
+it inert.
+
+Signing out clears the cache and calls `disableAutoSelect()`, so an explicit
+sign-out isn't undone by either layer on the next load.
 
 ### 1. Create an OAuth 2.0 client ID
 

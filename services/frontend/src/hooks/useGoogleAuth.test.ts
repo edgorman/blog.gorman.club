@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decodeCredentialForTest, useGoogleAuth } from './useGoogleAuth'
 
@@ -46,38 +46,125 @@ describe('decodeCredential', () => {
   })
 })
 
+const STORAGE_KEY = 'blog.gorman.club:google-credential'
+
+/** A credential expiring the given number of seconds from now. */
+function credentialExpiringIn(seconds: number): string {
+  return credential({
+    sub: '1',
+    email: 'ed@example.com',
+    name: 'Ed',
+    exp: Math.floor(Date.now() / 1000) + seconds,
+  })
+}
+
+function stubGoogle() {
+  const id = {
+    initialize: vi.fn(),
+    renderButton: vi.fn(),
+    prompt: vi.fn(),
+    disableAutoSelect: vi.fn(),
+  }
+  window.google = { accounts: { id } }
+  return id
+}
+
 describe('useGoogleAuth', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
+    sessionStorage.clear()
     delete window.google
   })
 
-  // auto_select is what lets a page reload stay signed in (Google reissues a credential
-  // silently if the browser still has a session and prior consent) - a regression here would
-  // silently undo that without any other test noticing.
-  it('initialises Google Identity Services with auto_select enabled', () => {
+  // auto_select only applies to the One Tap flow, so initialising with it but never calling
+  // prompt() leaves it inert - which is exactly the bug that made a refresh sign the user out.
+  it('initialises with auto_select and prompts when there is nothing to restore', () => {
     vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
-    const initialize = vi.fn()
-    window.google = { accounts: { id: { initialize, renderButton: vi.fn(), disableAutoSelect: vi.fn() } } }
+    const id = stubGoogle()
 
     renderHook(() => useGoogleAuth())
 
-    expect(initialize).toHaveBeenCalledWith(
-      expect.objectContaining({ auto_select: true }),
-    )
+    expect(id.initialize).toHaveBeenCalledWith(expect.objectContaining({ auto_select: true }))
+    expect(id.prompt).toHaveBeenCalled()
   })
 
-  // Signing out must suppress that same silent reissue, or "sign out" wouldn't stick past a reload.
-  it('disables auto-select on sign out', () => {
+  // The deterministic half of staying signed in: the cached credential is what survives a reload,
+  // rather than depending on Google choosing to reissue one.
+  it('restores an unexpired cached credential on mount', () => {
     vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
-    const disableAutoSelect = vi.fn()
-    window.google = {
-      accounts: { id: { initialize: vi.fn(), renderButton: vi.fn(), disableAutoSelect } },
-    }
+    sessionStorage.setItem(STORAGE_KEY, credentialExpiringIn(3600))
+    const id = stubGoogle()
 
     const { result } = renderHook(() => useGoogleAuth())
-    result.current.signOut()
 
-    expect(disableAutoSelect).toHaveBeenCalled()
+    expect(result.current.user).toEqual({ id: '1', email: 'ed@example.com', name: 'Ed' })
+    expect(result.current.authHeaders.Authorization).toMatch(/^Bearer /)
+    // Already signed in, so One Tap must not be put in front of the user.
+    expect(id.prompt).not.toHaveBeenCalled()
+  })
+
+  // Restoring an expired credential would render a signed-in UI whose every request 401s.
+  it('discards an expired cached credential and prompts instead', () => {
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    sessionStorage.setItem(STORAGE_KEY, credentialExpiringIn(-60))
+    const id = stubGoogle()
+
+    const { result } = renderHook(() => useGoogleAuth())
+
+    expect(result.current.user).toBeNull()
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull()
+    expect(id.prompt).toHaveBeenCalled()
+  })
+
+  // A credential with no exp can't be reasoned about, so it is treated as unusable.
+  it('discards a cached credential with no expiry', () => {
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    sessionStorage.setItem(STORAGE_KEY, credential({ sub: '1', email: 'ed@example.com' }))
+    stubGoogle()
+
+    const { result } = renderHook(() => useGoogleAuth())
+
+    expect(result.current.user).toBeNull()
+  })
+
+  // Garbage in storage must not take the whole app down on load.
+  it('survives a corrupt cached credential', () => {
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    sessionStorage.setItem(STORAGE_KEY, 'not-a-jwt')
+    stubGoogle()
+
+    const { result } = renderHook(() => useGoogleAuth())
+
+    expect(result.current.user).toBeNull()
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+
+  it('caches the credential Google hands back so the next load can restore it', () => {
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    const id = stubGoogle()
+    const issued = credentialExpiringIn(3600)
+
+    const { result } = renderHook(() => useGoogleAuth())
+    const config = id.initialize.mock.calls[0][0] as {
+      callback: (response: { credential: string }) => void
+    }
+    act(() => config.callback({ credential: issued }))
+
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBe(issued)
+    expect(result.current.user?.email).toBe('ed@example.com')
+  })
+
+  // Sign-out has to clear both halves, or the next load would restore what was just signed out of.
+  it('clears the cache and disables auto-select on sign out', () => {
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    sessionStorage.setItem(STORAGE_KEY, credentialExpiringIn(3600))
+    const id = stubGoogle()
+
+    const { result } = renderHook(() => useGoogleAuth())
+    act(() => result.current.signOut())
+
+    expect(id.disableAutoSelect).toHaveBeenCalled()
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull()
+    expect(result.current.user).toBeNull()
   })
 })

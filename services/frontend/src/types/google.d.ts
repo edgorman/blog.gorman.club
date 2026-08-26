@@ -32,6 +32,11 @@ declare global {
         id: {
           initialize: (config: GoogleIdConfiguration) => void
           renderButton: (parent: HTMLElement, options: GoogleButtonConfiguration) => void
+          /**
+           * Shows the One Tap prompt. This is also what makes `auto_select` apply: it is a One
+           * Tap setting, so a page that only calls renderButton() never consults it.
+           */
+          prompt: () => void
           disableAutoSelect: () => void
         }
       }

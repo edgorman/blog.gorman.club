@@ -1,21 +1,19 @@
 import { useEffect, useState } from 'react'
-import type { Api, Blog } from '../lib/api'
+import { errorMessage, type Api, type Blog } from '../lib/api'
 
 interface Props {
   api: Api
   uid: string
 }
 
-const EMPTY = { title: '', content: '', visibility: 'public' as const }
+type Draft = Pick<Blog, 'title' | 'content' | 'visibility'>
+
+const EMPTY: Draft = { title: '', content: '', visibility: 'public' }
 
 /** Exercises the full /blogs surface: list, create, update, delete. */
 export function Blogs({ api, uid }: Props) {
   const [blogs, setBlogs] = useState<Blog[]>([])
-  const [draft, setDraft] = useState<{
-    title: string
-    content: string
-    visibility: 'public' | 'private'
-  }>(EMPTY)
+  const [draft, setDraft] = useState<Draft>(EMPTY)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [status, setStatus] = useState('Loading…')
 
@@ -26,16 +24,14 @@ export function Blogs({ api, uid }: Props) {
         setBlogs(list)
         setStatus(`${list.length} readable blog${list.length === 1 ? '' : 's'}`)
       })
-      .catch((e: unknown) => setStatus(e instanceof Error ? e.message : 'Failed to list blogs'))
+      .catch((e: unknown) => setStatus(errorMessage(e, 'Failed to list blogs')))
   }
 
   useEffect(reload, [api])
 
   const submit = () => {
     setStatus('Saving…')
-    const request = editingId
-      ? api.updateBlog(editingId, draft)
-      : api.createBlog(draft)
+    const request = editingId ? api.updateBlog(editingId, draft) : api.createBlog(draft)
 
     request
       .then(() => {
@@ -43,7 +39,7 @@ export function Blogs({ api, uid }: Props) {
         setEditingId(null)
         reload()
       })
-      .catch((e: unknown) => setStatus(e instanceof Error ? e.message : 'Save failed'))
+      .catch((e: unknown) => setStatus(errorMessage(e, 'Save failed')))
   }
 
   const remove = (id: string) => {
@@ -51,7 +47,7 @@ export function Blogs({ api, uid }: Props) {
     api
       .deleteBlog(id)
       .then(reload)
-      .catch((e: unknown) => setStatus(e instanceof Error ? e.message : 'Delete failed'))
+      .catch((e: unknown) => setStatus(errorMessage(e, 'Delete failed')))
   }
 
   const edit = (blog: Blog) => {
@@ -80,9 +76,7 @@ export function Blogs({ api, uid }: Props) {
         Visibility
         <select
           value={draft.visibility}
-          onChange={(e) =>
-            setDraft({ ...draft, visibility: e.target.value as 'public' | 'private' })
-          }
+          onChange={(e) => setDraft({ ...draft, visibility: e.target.value as Draft['visibility'] })}
         >
           <option value="public">public</option>
           <option value="private">private</option>

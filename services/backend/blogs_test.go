@@ -65,8 +65,7 @@ func withUID(req *http.Request, uid string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), callerContextKey, caller{UID: uid}))
 }
 
-// decodeAPIError asserts the response carries a JSON error body rather than plain text, so
-// clients can parse success and failure the same way.
+// decodeAPIError asserts the response carries a JSON error body rather than plain text.
 func decodeAPIError(t *testing.T, rec *httptest.ResponseRecorder) apiError {
 	t.Helper()
 

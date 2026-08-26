@@ -1,5 +1,4 @@
-# Stores the GitHub PAT so CI can re-apply this module after the one-time manual bootstrap
-# (read back via the gcp-secret-manager composite action as TF_VAR_github_provider_token).
+# Stores the GitHub PAT so CI can re-apply this module after the one-time manual bootstrap.
 resource "google_secret_manager_secret" "github_provider_token" {
   project   = var.gcp_provider_project_id
   secret_id = "github_provider_token"
@@ -21,8 +20,8 @@ resource "google_secret_manager_secret_iam_member" "github_actions_secret_access
   member    = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Same bootstrap pattern as github_provider_token above. Unlike it, these are never written to GitHub
-# Actions secrets/variables - push-commit.yaml's frontend deploy job reads them from Secret Manager directly.
+# Same bootstrap pattern, except workflows read these from Secret Manager directly rather than
+# from a GitHub Actions secret.
 resource "google_secret_manager_secret" "cloudflare_account_id" {
   project   = var.gcp_provider_project_id
   secret_id = "cloudflare_account_id"

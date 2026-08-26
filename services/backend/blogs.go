@@ -30,10 +30,8 @@ func decodeBlog(w http.ResponseWriter, r *http.Request) (Blog, bool) {
 	return blog, true
 }
 
-// canRead reports whether uid may read blog: public posts are readable by any signed-in caller,
-// private ones only by their owner or a whitelisted uid. This is the single definition of read
-// access - firestoreBlogStore.List runs the same predicate as a Firestore query so that private
-// posts are never fetched in the first place.
+// canRead is the single definition of read access: public posts are readable by any signed-in
+// caller, private ones only by their owner or a whitelisted uid.
 func canRead(blog Blog, uid string) bool {
 	if blog.Visibility == "public" || blog.OwnerID == uid {
 		return true
@@ -42,8 +40,7 @@ func canRead(blog Blog, uid string) bool {
 }
 
 // requireOwnedBlog loads the blog named by the {id} path value and checks the caller owns it,
-// writing the error response and returning false otherwise. This service holds the only
-// credentials for the collection, so it is the enforcement point for every write.
+// writing the error response and returning false otherwise.
 func (h *blogHandler) requireOwnedBlog(w http.ResponseWriter, r *http.Request) (Blog, bool) {
 	blog, err := h.store.Get(r.Context(), r.PathValue("id"))
 	if errors.Is(err, ErrNotFound) {
@@ -95,8 +92,8 @@ func (h *blogHandler) Get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, blog)
 }
 
-// Create makes a new blog owned by the caller. ownerId is always taken from the verified caller,
-// never from the request body.
+// Create makes a new blog owned by the caller, taking ownerId from the verified caller rather
+// than the request body.
 func (h *blogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	body, ok := decodeBlog(w, r)
 	if !ok {

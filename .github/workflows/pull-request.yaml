@@ -76,8 +76,7 @@ jobs:
           secrets: ${{ steps.secrets.outputs.secrets }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-  # infrastructure/env/** is shared between staging and prod, so a change to it plans against both.
-  # No sensitive vars needed, so it authenticates directly (no gcp-secret-manager).
+  # infrastructure/env/** is shared, so a change to it plans against both environments.
   infrastructure-staging:
     needs: diff
     if: needs.diff.outputs.infrastructure-staging == 'true'
@@ -97,8 +96,7 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/staging'
-          # Supplied by CI rather than per-environment tfvars: one client ID, defined in
-          # infrastructure/root, serves every environment.
+          # One client ID, defined in infrastructure/root, serves every environment.
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -122,8 +120,7 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/prod'
-          # Supplied by CI rather than per-environment tfvars: one client ID, defined in
-          # infrastructure/root, serves every environment.
+          # One client ID, defined in infrastructure/root, serves every environment.
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
           github_token: ${{ secrets.GITHUB_TOKEN }}

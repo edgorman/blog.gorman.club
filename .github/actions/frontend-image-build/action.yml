@@ -53,8 +53,7 @@ runs:
         echo "repo=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/frontend/frontend" >> "$GITHUB_OUTPUT"
         echo "ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/frontend/frontend:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
 
-    # Also tagged `latest` as a convenient floating pointer to what's currently on staging;
-    # nothing promotes from it - see frontend-image-promote for why prod builds its own image.
+    # `latest` is a floating pointer to what's on staging; nothing promotes from it.
     - name: Build Image
       shell: bash
       run: |

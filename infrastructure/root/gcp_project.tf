@@ -1,5 +1,5 @@
-# Root project is created manually out-of-band (no Terraform identity exists yet to create it with);
-# this import brings it under management. Staging/prod are created directly by Terraform.
+# The root project is created by hand (nothing exists yet to create it with) and imported here;
+# staging/prod are created by Terraform.
 resource "google_project" "root_project" {
   name       = "${var.gcp_project_prefix} root"
   project_id = var.gcp_provider_project_id
@@ -28,7 +28,7 @@ locals {
   )
 }
 
-# Baseline APIs shared by root and every environment; app-specific APIs are enabled per-environment instead.
+# Baseline APIs shared by every project; app-specific ones are enabled per-environment.
 resource "google_project_service" "project_services" {
   for_each = {
     for pair in setproduct(keys(local.all_projects), [

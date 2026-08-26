@@ -10,29 +10,15 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const blogsCollection = "blogs"
-
 type firestoreBlogStore struct {
-	client *firestore.Client
+	blogs *firestore.CollectionRef
 }
 
 func newFirestoreBlogStore(client *firestore.Client) *firestoreBlogStore {
-	return &firestoreBlogStore{client: client}
+	return &firestoreBlogStore{blogs: client.Collection("blogs")}
 }
 
-func (s *firestoreBlogStore) collection() *firestore.CollectionRef {
-	return s.client.Collection(blogsCollection)
-}
-
-func (s *firestoreBlogStore) Get(ctx context.Context, id string) (Blog, error) {
-	doc, err := s.collection().Doc(id).Get(ctx)
-	if status.Code(err) == codes.NotFound {
-		return Blog{}, ErrNotFound
-	}
-	if err != nil {
-		return Blog{}, err
-	}
-
+func toBlog(doc *firestore.DocumentSnapshot) (Blog, error) {
 	var blog Blog
 	if err := doc.DataTo(&blog); err != nil {
 		return Blog{}, err
@@ -41,11 +27,22 @@ func (s *firestoreBlogStore) Get(ctx context.Context, id string) (Blog, error) {
 	return blog, nil
 }
 
-// List runs canRead's predicate as a Firestore OR query, so a caller never fetches a private
-// post they aren't on. Sorting happens here rather than in the query because ordering a
-// disjunction by createdAt would need a composite index for each of its branches.
+func (s *firestoreBlogStore) Get(ctx context.Context, id string) (Blog, error) {
+	doc, err := s.blogs.Doc(id).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return Blog{}, ErrNotFound
+	}
+	if err != nil {
+		return Blog{}, err
+	}
+	return toBlog(doc)
+}
+
+// List runs canRead's predicate as a Firestore OR query, so a caller never fetches a private post
+// they aren't on. Sorting happens here because ordering a disjunction by createdAt would need a
+// composite index for each of its branches.
 func (s *firestoreBlogStore) List(ctx context.Context, uid string) ([]Blog, error) {
-	docs, err := s.collection().WhereEntity(firestore.OrFilter{
+	docs, err := s.blogs.WhereEntity(firestore.OrFilter{
 		Filters: []firestore.EntityFilter{
 			firestore.PropertyFilter{Path: "visibility", Operator: "==", Value: "public"},
 			firestore.PropertyFilter{Path: "ownerId", Operator: "==", Value: uid},
@@ -58,11 +55,10 @@ func (s *firestoreBlogStore) List(ctx context.Context, uid string) ([]Blog, erro
 
 	blogs := make([]Blog, 0, len(docs))
 	for _, doc := range docs {
-		var blog Blog
-		if err := doc.DataTo(&blog); err != nil {
+		blog, err := toBlog(doc)
+		if err != nil {
 			return nil, err
 		}
-		blog.ID = doc.Ref.ID
 		blogs = append(blogs, blog)
 	}
 	slices.SortFunc(blogs, func(a, b Blog) int { return b.CreatedAt.Compare(a.CreatedAt) })
@@ -75,7 +71,7 @@ func (s *firestoreBlogStore) Create(ctx context.Context, blog Blog) (Blog, error
 	blog.CreatedAt = now
 	blog.UpdatedAt = now
 
-	ref := s.collection().NewDoc()
+	ref := s.blogs.NewDoc()
 	if _, err := ref.Set(ctx, blog); err != nil {
 		return Blog{}, err
 	}
@@ -86,33 +82,27 @@ func (s *firestoreBlogStore) Create(ctx context.Context, blog Blog) (Blog, error
 func (s *firestoreBlogStore) Update(ctx context.Context, blog Blog) (Blog, error) {
 	blog.UpdatedAt = time.Now().UTC()
 
-	if _, err := s.collection().Doc(blog.ID).Set(ctx, blog); err != nil {
+	if _, err := s.blogs.Doc(blog.ID).Set(ctx, blog); err != nil {
 		return Blog{}, err
 	}
 	return blog, nil
 }
 
 func (s *firestoreBlogStore) Delete(ctx context.Context, id string) error {
-	_, err := s.collection().Doc(id).Delete(ctx)
+	_, err := s.blogs.Doc(id).Delete(ctx)
 	return err
 }
 
-const usersCollection = "users"
-
 type firestoreUserStore struct {
-	client *firestore.Client
+	users *firestore.CollectionRef
 }
 
 func newFirestoreUserStore(client *firestore.Client) *firestoreUserStore {
-	return &firestoreUserStore{client: client}
-}
-
-func (s *firestoreUserStore) collection() *firestore.CollectionRef {
-	return s.client.Collection(usersCollection)
+	return &firestoreUserStore{users: client.Collection("users")}
 }
 
 func (s *firestoreUserStore) Get(ctx context.Context, id string) (User, error) {
-	doc, err := s.collection().Doc(id).Get(ctx)
+	doc, err := s.users.Doc(id).Get(ctx)
 	if status.Code(err) == codes.NotFound {
 		return User{}, ErrNotFound
 	}
@@ -135,13 +125,13 @@ func (s *firestoreUserStore) Put(ctx context.Context, user User) (User, error) {
 	}
 	user.UpdatedAt = now
 
-	if _, err := s.collection().Doc(user.ID).Set(ctx, user); err != nil {
+	if _, err := s.users.Doc(user.ID).Set(ctx, user); err != nil {
 		return User{}, err
 	}
 	return user, nil
 }
 
 func (s *firestoreUserStore) Delete(ctx context.Context, id string) error {
-	_, err := s.collection().Doc(id).Delete(ctx)
+	_, err := s.users.Doc(id).Delete(ctx)
 	return err
 }

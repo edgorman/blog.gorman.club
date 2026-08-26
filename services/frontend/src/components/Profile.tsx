@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ApiError, type Api, type User } from '../lib/api'
+import { ApiError, errorMessage, type Api, type User } from '../lib/api'
 
 interface Props {
   api: Api
@@ -28,7 +28,7 @@ export function Profile({ api, uid }: Props) {
           setStatus('No profile yet - saving creates one (201).')
           return
         }
-        setStatus(e instanceof Error ? e.message : 'Failed to load profile')
+        setStatus(errorMessage(e, 'Failed to load profile'))
       })
   }
 
@@ -42,7 +42,7 @@ export function Profile({ api, uid }: Props) {
         setProfile(user)
         setStatus('Saved')
       })
-      .catch((e: unknown) => setStatus(e instanceof Error ? e.message : 'Save failed'))
+      .catch((e: unknown) => setStatus(errorMessage(e, 'Save failed')))
   }
 
   const remove = () => {
@@ -55,7 +55,7 @@ export function Profile({ api, uid }: Props) {
         setBio('')
         setStatus('Deleted')
       })
-      .catch((e: unknown) => setStatus(e instanceof Error ? e.message : 'Delete failed'))
+      .catch((e: unknown) => setStatus(errorMessage(e, 'Delete failed')))
   }
 
   return (

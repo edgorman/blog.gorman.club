@@ -5,14 +5,8 @@ export interface HealthStatus {
   commit: string
 }
 
-/**
- * Calls the backend's Debug Endpoint Contract (see CLAUDE.md), which every
- * backend service exposes at `/health` or `/debug` once deployed.
- */
-export async function fetchHealth(
-  baseUrl: string,
-  signal?: AbortSignal,
-): Promise<HealthStatus> {
+/** Calls the backend's Debug Endpoint Contract (see CLAUDE.md). */
+export async function fetchHealth(baseUrl: string, signal?: AbortSignal): Promise<HealthStatus> {
   const response = await fetch(`${baseUrl.replace(/\/$/, '')}/debug`, { signal })
 
   if (!response.ok) {

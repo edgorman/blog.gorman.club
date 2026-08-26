@@ -78,8 +78,7 @@ func TestRequireAuth_Valid(t *testing.T) {
 	}
 }
 
-// A request that doesn't name a provider can't be dispatched, and one naming an unsupported
-// provider is a gap in this service rather than a bad credential - so neither is a 401.
+// Neither an unnamed nor an unsupported provider is a failed credential, so neither is a 401.
 func TestRequireAuth_MissingProviderHeader(t *testing.T) {
 	handler := requireAuth(fakeVerifier{uid: "user-1"}, func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("next handler should not be called without a provider header")
@@ -130,8 +129,7 @@ func TestRequireAuth_MalformedAuthorizationHeader(t *testing.T) {
 	decodeAPIError(t, rec)
 }
 
-// An unconfigured deployment is a 500: the operator is at fault, not the caller, and returning
-// 401 would send people off debugging their own sign-in.
+// An unconfigured deployment is a 500: the operator is at fault, not the caller.
 func TestRequireAuth_UnconfiguredIsServerError(t *testing.T) {
 	handler := requireAuth(&googleTokenVerifier{clientID: ""}, func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("next handler should not be called when auth is unconfigured")

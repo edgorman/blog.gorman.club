@@ -23,8 +23,7 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - id: auth
-      name: Authenticate to Google Cloud
+    - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v2
       with:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
@@ -37,33 +36,21 @@ runs:
       name: Fetch Secrets
       shell: bash
       run: |
-        RESULT=""
-        while IFS= read -r line || [[ -n "$line" ]]; do
-          if [[ -z "$line" ]]; then continue; fi
-
-          # Expected format: ENV_VAR=SECRET_NAME
-          KEY=$(echo "$line" | cut -d'=' -f1)
-          SECRET_NAME=$(echo "$line" | cut -d'=' -f2)
+        RESULT=()
+        # Each line is ENV_VAR=SECRET_NAME.
+        while IFS='=' read -r KEY SECRET_NAME; do
+          [ -n "$KEY" ] || continue
 
           echo "Fetching secret: $SECRET_NAME for $KEY"
-
           VALUE=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="${{ inputs.project_id }}")
 
-          # Masks the value before it's echoed anywhere: GitHub only auto-masks values from the
-          # `secrets:` context or well-known token formats, neither of which applies here.
+          # GitHub only auto-masks the `secrets:` context, so mask before the value is echoed anywhere.
           echo "::add-mask::$VALUE"
-
-          if [ -n "$RESULT" ]; then
-            RESULT="$RESULT"$'\n'"$KEY=$VALUE"
-          else
-            RESULT="$KEY=$VALUE"
-          fi
-        done <<EOF
-        ${{ inputs.secrets_list }}
-        EOF
+          RESULT+=("$KEY=$VALUE")
+        done <<< "${{ inputs.secrets_list }}"
 
         {
           echo "formatted_secrets<<SECRETS_EOF"
-          echo "$RESULT"
+          if [ ${#RESULT[@]} -gt 0 ]; then printf '%s\n' "${RESULT[@]}"; fi
           echo "SECRETS_EOF"
         } >> "$GITHUB_OUTPUT"

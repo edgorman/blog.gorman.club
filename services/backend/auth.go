@@ -5,15 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"google.golang.org/api/idtoken"
 )
 
-// Header names and the provider dispatch value, following the Authorization /
-// Authorization-Provider convention: the credential itself is opaque, and the provider header
-// says how to verify it. Adding a second provider means extending authProvider and the switch in
-// requireAuth, not restructuring the flow.
+// The credential is opaque and the provider header says how to verify it, so adding a provider
+// means extending authProvider and the switch in requireAuth.
 const (
 	authorizationHeader         = "Authorization"
 	authorizationProviderHeader = "Authorization-Provider"
@@ -28,8 +27,8 @@ type contextKey int
 
 const callerContextKey contextKey = 0
 
-// caller is the verified identity behind a request. Every field comes from the provider's signed
-// token payload, never from anything else the client sent.
+// caller is the verified identity behind a request, taken entirely from the provider's signed
+// token payload.
 type caller struct {
 	UID   string
 	Email string
@@ -41,14 +40,13 @@ type tokenVerifier interface {
 	Verify(ctx context.Context, idToken string) (caller, error)
 }
 
-// googleTokenVerifier validates Google Identity Services credentials: signature against Google's
-// public keys, plus audience and issuer. clientID is the OAuth 2.0 client ID the frontend signs
-// in with - a token minted for a different client must not be accepted here.
+// googleTokenVerifier validates Google Identity Services credentials against clientID, the OAuth
+// 2.0 client ID the frontend signs in with.
 type googleTokenVerifier struct {
 	clientID string
 }
 
-// Google mints ID tokens with either issuer, so both are valid.
+// Google mints ID tokens with either issuer.
 var googleIssuers = []string{"accounts.google.com", "https://accounts.google.com"}
 
 var errAuthNotConfigured = errors.New("google authentication is not configured")
@@ -63,7 +61,7 @@ func (v *googleTokenVerifier) Verify(ctx context.Context, token string) (caller,
 	if err != nil {
 		return caller{}, err
 	}
-	if !contains(googleIssuers, payload.Issuer) {
+	if !slices.Contains(googleIssuers, payload.Issuer) {
 		return caller{}, fmt.Errorf("unexpected issuer %q", payload.Issuer)
 	}
 
@@ -75,21 +73,9 @@ func (v *googleTokenVerifier) Verify(ctx context.Context, token string) (caller,
 	return caller{UID: payload.Subject, Email: email, Name: name}, nil
 }
 
-func contains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
-}
-
-// requireAuth verifies the credential on the request and stores the resulting identity in the
-// context, rejecting the request otherwise. Handlers authorize against that identity, so every
-// route below it can assume the caller has been verified.
-//
-// A malformed request (missing or unparseable headers) is a 400 rather than a 401: the caller
-// didn't fail to authenticate, they failed to ask properly.
+// requireAuth verifies the request's credential and stores the resulting identity in the context,
+// so every handler below it can assume the caller has been verified. A malformed request is a 400
+// rather than a 401: the caller didn't fail to authenticate, they failed to ask properly.
 func requireAuth(verifier tokenVerifier, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authorization := r.Header.Get(authorizationHeader)
@@ -136,8 +122,8 @@ func callerFromContext(ctx context.Context) caller {
 	return identity
 }
 
-// uidFromContext returns just the caller's stable provider-issued user ID, which is what
-// ownership is recorded against.
+// uidFromContext returns the caller's provider-issued user ID, which is what ownership is
+// recorded against.
 func uidFromContext(ctx context.Context) string {
 	return callerFromContext(ctx).UID
 }

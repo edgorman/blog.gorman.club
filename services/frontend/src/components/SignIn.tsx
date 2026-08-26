@@ -3,10 +3,7 @@ import type { UseGoogleAuthResult } from '../hooks/useGoogleAuth'
 
 type Props = Pick<UseGoogleAuthResult, 'user' | 'error' | 'ready' | 'renderButton' | 'signOut'>
 
-/**
- * Sign-in panel. Google Identity Services renders the button itself, so this only hosts it and
- * shows what the returned credential says about the caller.
- */
+/** Sign-in panel: Google renders the button itself, so this hosts it and shows the credential. */
 export function SignIn({ user, error, ready, renderButton, signOut }: Props) {
   return (
     <section className="panel" data-state={error ? 'unconfigured' : undefined}>

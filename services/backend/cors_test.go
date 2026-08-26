@@ -60,11 +60,8 @@ func TestWithCORS_Preflight(t *testing.T) {
 	}
 }
 
-// Every route in main.go is registered under a specific method (e.g. "GET /blogs"), which means
-// an OPTIONS preflight matches none of them - ServeMux itself returns 405 before any per-route
-// wrapper runs. withCORS must therefore wrap the whole mux, not individual routes, so it
-// intercepts OPTIONS ahead of that method-based routing. This guards against reintroducing the
-// per-route wiring that regressed to exactly that 405.
+// Routes are registered under a specific method, so ServeMux 405s an OPTIONS preflight before any
+// per-route wrapper runs - withCORS must wrap the whole mux to intercept it first.
 func TestWithCORS_PreflightAgainstMethodSpecificMux(t *testing.T) {
 	t.Setenv("CORS_ALLOWED_ORIGIN", "https://blog.gorman.club")
 

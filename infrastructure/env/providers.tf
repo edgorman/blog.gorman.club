@@ -1,6 +1,5 @@
-# Environment-level root, applied once per environment (staging/prod) - distinct from infrastructure/root, which
-# provisions the shared bootstrap resources (projects, state buckets, WIF) these environments run in. Its state
-# bucket already exists (created by infrastructure/root), so no local-state bootstrap is needed here.
+# Applied once per environment (staging/prod), against a state bucket infrastructure/root already
+# created - so unlike that root, this one needs no local-state bootstrap.
 terraform {
   required_version = "1.15.8"
 
@@ -31,16 +30,10 @@ provider "google-beta" {
   region  = var.gcp_region
 }
 
-# CI authenticates as a service account that lives in the *root* project, so GCP attributes API
-# quota to root by default - but the Firebase/Firestore APIs are enabled on this environment's
-# project, not root. That mismatch is what produced "Firebase Management API has not been used in
-# project <root's number>" even though Terraform had just enabled it on the stag/prod project.
-#
-# user_project_override sends an X-Goog-User-Project header so quota is attributed to the project
-# actually being modified. It requires serviceusage.services.use on that project, granted in
-# infrastructure/root/github_cicd.tf. Scoped to an alias so only the resources that need it are
-# affected - enabling the APIs themselves (google_project_service) must not depend on a project
-# whose APIs aren't enabled yet.
+# CI's service account lives in the root project, so GCP bills Firebase/Firestore quota to root
+# rather than the project whose APIs are actually enabled; user_project_override redirects it (and
+# needs serviceusage.services.use, granted in infrastructure/root/github_cicd.tf). Kept on an alias
+# so enabling the APIs themselves doesn't depend on a project whose APIs aren't enabled yet.
 provider "google" {
   alias                 = "firebase"
   project               = var.gcp_project_id

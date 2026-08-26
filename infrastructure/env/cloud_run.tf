@@ -1,5 +1,4 @@
-# Dedicated runtime identity for the backend, scoped to only what it needs (Firestore read/write)
-# rather than the project's default compute service account.
+# Dedicated runtime identity scoped to Firestore alone, not the default compute service account.
 resource "google_service_account" "backend_runtime" {
   project      = var.gcp_project_id
   account_id   = "backend-runtime"
@@ -12,9 +11,7 @@ resource "google_project_iam_member" "backend_runtime_datastore_user" {
   member  = "serviceAccount:${google_service_account.backend_runtime.email}"
 }
 
-# CI needs to actAs this service account to attach it to the Cloud Run service below - not
-# covered by roles/editor, roles/resourcemanager.projectIamAdmin, or roles/run.admin
-# (infrastructure/root/github_cicd.tf).
+# CI needs actAs to attach this service account below; no role in github_cicd.tf covers it.
 resource "google_service_account_iam_member" "backend_runtime_actas" {
   service_account_id = google_service_account.backend_runtime.name
   role               = "roles/iam.serviceAccountUser"
@@ -61,8 +58,7 @@ resource "google_cloud_run_v2_service" "backend" {
   }
 
   lifecycle {
-    # CI deploys the real image directly; Terraform must not revert it to the placeholder above.
-    # client/client_version are stamped by `gcloud run deploy` itself and aren't meaningful drift.
+    # CI deploys the real image, and gcloud stamps client/client_version - neither is real drift.
     ignore_changes = [
       template[0].containers[0].image,
       client,

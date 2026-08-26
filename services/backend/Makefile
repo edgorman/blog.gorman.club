@@ -20,4 +20,4 @@ test: ## Runs the test suite
 	go test ./... -cover
 
 build: ## Builds the production binary
-	CGO_ENABLED=0 go build -o bin/backend .
+	CGO_ENABLED=0 go build -o bin/backend ./cmd/backend

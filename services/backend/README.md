@@ -17,6 +17,36 @@ commit SHA the running image was built from, as JSON:
 }
 ```
 
+## Layout
+
+```
+cmd/backend/          Entrypoint: reads config, builds adapters, hands them to the service
+internal/
+  entity/             Domain types and their rules - no I/O, no HTTP, no persistence tags
+  repository/         Interfaces for everything external, plus ErrNotFound
+    firestore/        Firestore implementations of BlogRepository and UserRepository
+    google/           Google Identity Services implementation of TokenVerifier
+  service/            HTTP server: routes, middleware, and logic spanning more than one entity
+```
+
+Dependencies point inward: `service` and `repository` both know `entity`, `entity` knows nothing
+else, and only `cmd/backend` knows which concrete adapters exist. Swapping Firestore for another
+store means adding a folder under `repository/` and changing one line in `cmd/backend`.
+
+Validation lives on the entities as setters (`SetDisplayName`, `SetVisibility`, ...) that trim,
+check, and only then apply, so a rejected value is never half-written. The HTTP layer decodes into
+a request struct holding only the client-settable fields and applies it through those setters -
+which is why `ownerId` and `createdAt` cannot be spoofed: they are not part of the request shape at
+all.
+
+`Validate` runs those same setters against a copy and additionally requires the server-set identity
+(`Blog.OwnerID`, `User.ID`). Repositories call it before every write and return without touching
+the datastore if it fails, so the rules hold for any entity, however it was assembled.
+
+Entities carry `json` tags only. Firestore's field names live on separate document structs in
+`repository/firestore`, which also keeps the document body free of the ID that Firestore already
+stores as the document key.
+
 ## Users and blogs
 
 Data lives in Firestore (`infrastructure/env/firestore.tf`). This service is
@@ -24,11 +54,10 @@ the only client of that database: it authenticates with the Admin SDK, no
 Firestore security rules are deployed, and the browser never talks to
 Firestore directly. Access rules therefore live in Go and nowhere else:
 
-- **Reads** — `canRead` in `blogs.go` is the single definition of who may see
-  a post (public posts for any signed-in caller, private ones for the owner
-  or a uid in `allowedUserIds`). `GET /blogs` applies it as a Firestore query
-  so private posts are never fetched; `GET /blogs/{id}` applies it to the
-  loaded document.
+- **Reads** — `Blog.CanBeReadBy` is the single definition of who may see a post
+  (public posts for any signed-in caller, private ones for the owner or a uid
+  in `allowedUserIds`). `GET /blogs` applies it as a Firestore query so private
+  posts are never fetched; `GET /blogs/{id}` applies it to the loaded document.
 - **Writes** — `requireOwnedBlog` restricts updates and deletes to the post's
   owner, and `createdAt`/`updatedAt` come from the server rather than a
   spoofable client clock.
@@ -46,7 +75,7 @@ Authorization: Bearer <google-id-token>
 Authorization-Provider: google
 ```
 
-`requireAuth` (`auth.go`) verifies the token per request against Google's
+`requireAuth` (`internal/service/auth.go`) verifies the token per request against Google's
 public keys, checking signature, expiry, audience (`GOOGLE_CLIENT_ID`) and
 issuer, and puts the resulting identity — id, email, name, all from the signed
 payload — in the request context. Nothing the client sends about itself is
@@ -62,7 +91,8 @@ Failures are distinguished so the cause is obvious from the status alone:
 | `500`  | `GOOGLE_CLIENT_ID` is unset, so the deployment can't verify anything.     |
 
 Adding another provider means extending `authProvider` and the switch in
-`requireAuth`, not restructuring the flow.
+`requireAuth`, plus a new implementation of `repository.TokenVerifier` alongside
+`repository/google` - not restructuring the flow.
 
 | Method | Path          | Description                                                           |
 | ------ | ------------- | --------------------------------------------------------------------- |
@@ -94,7 +124,7 @@ make test      # go test ./... -cover
 make build     # builds bin/backend
 ```
 
-`go run .` starts the server directly on `:8080`.
+`go run ./cmd/backend` starts the server directly on `:8080`.
 
 ## Configuration
 
@@ -105,6 +135,6 @@ make build     # builds bin/backend
 | `CORS_ALLOWED_ORIGIN`  | Origin allowed to call this API from a browser (the frontend's URL). Unset disables CORS headers entirely. |
 | `GOOGLE_CLIENT_ID`     | OAuth 2.0 client ID that ID tokens must be minted for. Set by Terraform from the `GOOGLE_CLIENT_ID` GitHub Actions variable; unset means no request can authenticate. |
 
-`commit` is not an env var — it's baked into the binary at build time (see
-`Dockerfile`), since the same image is promoted unmodified from staging to
-production.
+`commit` is not an env var — it's baked into the binary at build time via
+`-ldflags "-X main.commit=..."` (see `Dockerfile`), since the same image is
+promoted unmodified from staging to production.

@@ -55,9 +55,11 @@ Firestore security rules are deployed, and the browser never talks to
 Firestore directly. Access rules therefore live in Go and nowhere else:
 
 - **Reads** — `Blog.CanBeReadBy` is the single definition of who may see a post
-  (public posts for any signed-in caller, private ones for the owner or a uid
-  in `allowedUserIds`). `GET /blogs` applies it as a Firestore query so private
-  posts are never fetched; `GET /blogs/{id}` applies it to the loaded document.
+  (public posts for anyone, signed in or not; private ones for the owner or a
+  uid in `allowedUserIds`). `GET /blogs` applies it as a Firestore query so
+  private posts are never fetched; `GET /blogs/{id}` applies it to the loaded
+  document. Both routes run `optionalAuth`: a signed-in caller's own private
+  and whitelisted posts are included, but no credential is required.
 - **Writes** — `requireOwnedBlog` restricts updates and deletes to the post's
   owner, and `createdAt`/`updatedAt` come from the server rather than a
   spoofable client clock.
@@ -67,25 +69,32 @@ there is no server-assigned ID to hand out and a profile is written with `PUT`
 rather than `POST`. Any signed-in caller may read a profile; `requireSelf`
 restricts writes to the profile's own owner.
 
-Every route below requires a Google Sign-In credential. The frontend sends the
-ID token Google issued, plus a header naming the provider that issued it:
+Every route below except `GET /blogs` and `GET /blogs/{id}` requires a Google
+Sign-In credential — those two run `optionalAuth` instead of `requireAuth`, so
+an anonymous request is answered as far as public posts allow rather than
+rejected. A signed-in caller sends the ID token Google issued, plus a header
+naming the provider that issued it:
 
 ```
 Authorization: Bearer <google-id-token>
 Authorization-Provider: google
 ```
 
-`requireAuth` (`internal/service/auth.go`) verifies the token per request against Google's
-public keys, checking signature, expiry, audience (`GOOGLE_CLIENT_ID`) and
-issuer, and puts the resulting identity — id, email, name, all from the signed
-payload — in the request context. Nothing the client sends about itself is
-trusted.
+`requireAuth` and `optionalAuth` (`internal/service/auth.go`) share the same
+verification: signature, expiry, audience (`GOOGLE_CLIENT_ID`) and issuer are
+checked against Google's public keys, and the resulting identity — id, email,
+name, all from the signed payload — goes into the request context. They differ
+only in how they treat a request with no `Authorization` header at all:
+`requireAuth` rejects it, `optionalAuth` lets it through as the zero identity,
+which `Blog.CanBeReadBy` already treats as seeing only public posts. Either
+way, nothing the client sends about itself is trusted, and a credential that
+*is* present but invalid is rejected the same way by both.
 
 Failures are distinguished so the cause is obvious from the status alone:
 
 | Status | Meaning                                                                 |
 | ------ | ------------------------------------------------------------------------ |
-| `401`  | No credential, or one that failed verification.                           |
+| `401`  | A route that requires one got no credential, or one that failed verification. |
 | `400`  | Headers missing or malformed — the caller didn't ask properly.            |
 | `501`  | A provider this service doesn't implement.                                |
 | `500`  | `GOOGLE_CLIENT_ID` is unset, so the deployment can't verify anything.     |
@@ -96,8 +105,8 @@ Adding another provider means extending `authProvider` and the switch in
 
 | Method | Path          | Description                                                           |
 | ------ | ------------- | --------------------------------------------------------------------- |
-| GET    | `/blogs`      | List the blogs the caller may read, newest first.                      |
-| GET    | `/blogs/{id}` | Fetch a single blog. Caller must be allowed to read it.                |
+| GET    | `/blogs`      | List the blogs the caller may read, newest first. No credential required. |
+| GET    | `/blogs/{id}` | Fetch a single blog. Caller must be allowed to read it; no credential required for a public one. |
 | POST   | `/blogs`      | Create a blog. `ownerId` is always the caller, regardless of the body. |
 | PUT    | `/blogs/{id}` | Replace a blog's fields. Caller must be the owner.                     |
 | DELETE | `/blogs/{id}` | Delete a blog. Caller must be the owner.                               |

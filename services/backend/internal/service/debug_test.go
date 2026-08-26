@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 )
 
 func TestDebug(t *testing.T) {
@@ -57,13 +59,12 @@ func TestHandler_DebugRoutesAreUnauthenticated(t *testing.T) {
 	}
 }
 
-// Every blog and user route sits behind requireAuth.
-func TestHandler_DataRoutesRequireAuth(t *testing.T) {
+// Every write, and every read of a resource with no public form (a profile), sits behind
+// requireAuth.
+func TestHandler_WriteAndProfileRoutesRequireAuth(t *testing.T) {
 	s := newTestService(nil, nil)
 
 	for _, tt := range []struct{ method, path string }{
-		{http.MethodGet, "/blogs"},
-		{http.MethodGet, "/blogs/blog-1"},
 		{http.MethodPost, "/blogs"},
 		{http.MethodPut, "/blogs/blog-1"},
 		{http.MethodDelete, "/blogs/blog-1"},
@@ -79,5 +80,61 @@ func TestHandler_DataRoutesRequireAuth(t *testing.T) {
 				t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusUnauthorized)
 			}
 		})
+	}
+}
+
+// GET /blogs and GET /blogs/{id} admit anonymous callers - they 401 only for a credential that is
+// present but invalid, never merely absent.
+func TestHandler_BlogReadRoutesAdmitAnonymousCallers(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.blogs["public"] = entity.Blog{ID: "public", OwnerID: "owner", Visibility: entity.VisibilityPublic}
+	s := newTestService(repo, nil)
+
+	for _, tt := range []struct{ method, path string }{
+		{http.MethodGet, "/blogs"},
+		{http.MethodGet, "/blogs/public"},
+	} {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, nil))
+
+			if rec.Result().StatusCode != http.StatusOK {
+				t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+			}
+		})
+	}
+}
+
+// An anonymous GET /blogs/{id} for a private post is a 403, the same outcome a signed-in caller
+// who isn't the owner or on the whitelist gets - not a 401, since no credential was required.
+func TestHandler_AnonymousCallerCannotReadPrivateBlog(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.blogs["private"] = entity.Blog{ID: "private", OwnerID: "owner", Visibility: entity.VisibilityPrivate}
+	s := newTestService(repo, nil)
+
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/blogs/private", nil))
+
+	if rec.Result().StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+	}
+}
+
+// An anonymous GET /blogs never surfaces a private post, even one owned by nobody's uid ("").
+func TestHandler_AnonymousListOnlyReturnsPublicBlogs(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.blogs["public"] = entity.Blog{ID: "public", OwnerID: "owner", Visibility: entity.VisibilityPublic}
+	repo.blogs["private"] = entity.Blog{ID: "private", OwnerID: "owner", Visibility: entity.VisibilityPrivate}
+	s := newTestService(repo, nil)
+
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/blogs", nil))
+
+	var got []entity.Blog
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "public" {
+		t.Errorf("got %v, want only the public blog", got)
 	}
 }

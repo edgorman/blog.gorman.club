@@ -2,9 +2,11 @@ package entity
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBlog_SetVisibility(t *testing.T) {
@@ -106,6 +108,29 @@ func TestBlog_SetAllowedUserIDs(t *testing.T) {
 	}
 }
 
+// De-duplication is quadratic, so the size check has to come first: cleaning an unbounded list
+// before rejecting it lets a caller burn arbitrary CPU on a request that fails anyway. A huge
+// input must be refused in constant time rather than after the scan.
+func TestSetAllowedUserIDs_RejectsOversizedInputWithoutScanningIt(t *testing.T) {
+	huge := make([]string, 200_000)
+	for i := range huge {
+		huge[i] = fmt.Sprintf("uid-%d", i)
+	}
+
+	var blog Blog
+	done := make(chan error, 1)
+	go func() { done <- blog.SetAllowedUserIDs(huge) }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("SetAllowedUserIDs = nil for an oversized list, want a ValidationError")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("SetAllowedUserIDs did not reject an oversized list promptly - it is scanning the input before checking its size")
+	}
+}
+
 func TestBlog_CanBeReadBy(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -139,15 +164,20 @@ func TestBlog_IsOwnedBy_EmptyUIDNeverMatches(t *testing.T) {
 }
 
 func TestBlog_Validate(t *testing.T) {
-	valid := Blog{Title: "Hello", Content: "Body", Visibility: VisibilityPublic}
+	valid := Blog{OwnerID: "owner", Title: "Hello", Content: "Body", Visibility: VisibilityPublic}
 	if err := valid.Validate(); err != nil {
 		t.Errorf("Validate = %v, want no error", err)
 	}
 
-	if err := (Blog{Visibility: "everyone"}).Validate(); err == nil {
+	if err := (Blog{OwnerID: "owner", Visibility: "everyone"}).Validate(); err == nil {
 		t.Error("Validate with a bad visibility = nil, want an error")
 	}
-	if err := (Blog{Title: strings.Repeat("a", MaxTitleLength+1), Visibility: VisibilityPublic}).Validate(); err == nil {
+	if err := (Blog{OwnerID: "owner", Title: strings.Repeat("a", MaxTitleLength+1), Visibility: VisibilityPublic}).Validate(); err == nil {
 		t.Error("Validate with an overlong title = nil, want an error")
+	}
+
+	// An ownerless blog is unwritable by anyone, so it must never reach a repository.
+	if err := (Blog{Visibility: VisibilityPublic}).Validate(); err == nil {
+		t.Error("Validate with no owner = nil, want an error")
 	}
 }

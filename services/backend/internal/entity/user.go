@@ -47,9 +47,14 @@ func (u *User) SetBio(bio string) error {
 	return nil
 }
 
-// Validate reports whether every field holds a value the setters above would accept, so the rules
-// are defined once and checked the same way whichever entry point a value arrived through.
+// Validate reports whether the profile is in a storable state: the id is present, and every other
+// field holds a value the setters above would accept. Repositories call it before each write, so a
+// profile assembled outside the HTTP layer cannot sidestep the rules.
 func (u User) Validate() error {
+	if u.ID == "" {
+		return ValidationError{Field: "id", Message: "is required"}
+	}
+
 	candidate := u
 	if err := candidate.SetDisplayName(u.DisplayName); err != nil {
 		return err

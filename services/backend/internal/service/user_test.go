@@ -174,6 +174,22 @@ func TestPutUser_TrimsDisplayName(t *testing.T) {
 	}
 }
 
+// The body is decoded before the profile is looked up, so malformed input costs no datastore read.
+func TestPutUser_MalformedBodySkipsTheLookup(t *testing.T) {
+	repo := newFakeUserRepository()
+	s := newTestService(nil, repo)
+
+	rec := httptest.NewRecorder()
+	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", []byte("not json")))
+
+	if rec.Result().StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
+	}
+	if repo.gets != 0 {
+		t.Errorf("repository Get calls = %d, want 0 for a malformed body", repo.gets)
+	}
+}
+
 func TestDeleteUser_Owner(t *testing.T) {
 	repo := newFakeUserRepository()
 	repo.users["caller"] = entity.User{ID: "caller", DisplayName: "Ed"}

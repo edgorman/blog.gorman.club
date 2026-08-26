@@ -44,6 +44,9 @@ func (r *fakeBlogRepository) List(_ context.Context, uid string) ([]entity.Blog,
 }
 
 func (r *fakeBlogRepository) Create(_ context.Context, blog entity.Blog) (entity.Blog, error) {
+	if err := blog.Validate(); err != nil {
+		return entity.Blog{}, err
+	}
 	r.nextID++
 	blog.ID = fmt.Sprintf("blog-%d", r.nextID)
 	r.blogs[blog.ID] = blog
@@ -51,6 +54,9 @@ func (r *fakeBlogRepository) Create(_ context.Context, blog entity.Blog) (entity
 }
 
 func (r *fakeBlogRepository) Update(_ context.Context, blog entity.Blog) (entity.Blog, error) {
+	if err := blog.Validate(); err != nil {
+		return entity.Blog{}, err
+	}
 	r.blogs[blog.ID] = blog
 	return blog, nil
 }
@@ -63,9 +69,11 @@ func (r *fakeBlogRepository) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-// fakeUserRepository is an in-memory repository.UserRepository.
+// fakeUserRepository is an in-memory repository.UserRepository. gets counts lookups so a test can
+// assert a handler did not reach the datastore.
 type fakeUserRepository struct {
 	users map[string]entity.User
+	gets  int
 }
 
 func newFakeUserRepository() *fakeUserRepository {
@@ -73,6 +81,7 @@ func newFakeUserRepository() *fakeUserRepository {
 }
 
 func (r *fakeUserRepository) Get(_ context.Context, id string) (entity.User, error) {
+	r.gets++
 	user, ok := r.users[id]
 	if !ok {
 		return entity.User{}, repository.ErrNotFound
@@ -81,6 +90,9 @@ func (r *fakeUserRepository) Get(_ context.Context, id string) (entity.User, err
 }
 
 func (r *fakeUserRepository) Put(_ context.Context, user entity.User) (entity.User, error) {
+	if err := user.Validate(); err != nil {
+		return entity.User{}, err
+	}
 	now := time.Now().UTC()
 	if user.CreatedAt.IsZero() {
 		user.CreatedAt = now

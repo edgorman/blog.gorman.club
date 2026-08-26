@@ -71,6 +71,10 @@ func (r *UserRepository) Get(ctx context.Context, id string) (entity.User, error
 }
 
 func (r *UserRepository) Put(ctx context.Context, user entity.User) (entity.User, error) {
+	if err := user.Validate(); err != nil {
+		return entity.User{}, err
+	}
+
 	now := time.Now().UTC()
 	if user.CreatedAt.IsZero() {
 		user.CreatedAt = now

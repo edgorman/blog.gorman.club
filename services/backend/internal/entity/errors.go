@@ -11,3 +11,8 @@ type ValidationError struct {
 func (e ValidationError) Error() string {
 	return fmt.Sprintf("%s %s", e.Field, e.Message)
 }
+
+// lengthMessage is the shared wording for every "too long" rule.
+func lengthMessage(max int) string {
+	return fmt.Sprintf("must be %d characters or fewer", max)
+}

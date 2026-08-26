@@ -112,6 +112,10 @@ func (r *BlogRepository) List(ctx context.Context, uid string) ([]entity.Blog, e
 }
 
 func (r *BlogRepository) Create(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
+	if err := blog.Validate(); err != nil {
+		return entity.Blog{}, err
+	}
+
 	now := time.Now().UTC()
 	blog.CreatedAt = now
 	blog.UpdatedAt = now
@@ -125,6 +129,10 @@ func (r *BlogRepository) Create(ctx context.Context, blog entity.Blog) (entity.B
 }
 
 func (r *BlogRepository) Update(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
+	if err := blog.Validate(); err != nil {
+		return entity.Blog{}, err
+	}
+
 	blog.UpdatedAt = time.Now().UTC()
 
 	if _, err := r.blogs.Doc(blog.ID).Set(ctx, blogToDocument(blog)); err != nil {

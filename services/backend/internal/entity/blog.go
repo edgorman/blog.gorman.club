@@ -78,6 +78,15 @@ func (b *Blog) SetVisibility(visibility Visibility) error {
 // SetAllowedUserIDs validates and applies the whitelist of uids that may read a private blog,
 // dropping blanks and duplicates.
 func (b *Blog) SetAllowedUserIDs(uids []string) error {
+	// Bounded before the loop, not after it: de-duplication is quadratic, so cleaning first would
+	// let a caller spend arbitrary CPU on a request that is rejected anyway.
+	if len(uids) > MaxAllowedUsers {
+		return ValidationError{
+			Field:   "allowedUserIds",
+			Message: fmt.Sprintf("must hold %d entries or fewer", MaxAllowedUsers),
+		}
+	}
+
 	cleaned := make([]string, 0, len(uids))
 	for _, uid := range uids {
 		trimmed := strings.TrimSpace(uid)
@@ -85,12 +94,6 @@ func (b *Blog) SetAllowedUserIDs(uids []string) error {
 			continue
 		}
 		cleaned = append(cleaned, trimmed)
-	}
-	if len(cleaned) > MaxAllowedUsers {
-		return ValidationError{
-			Field:   "allowedUserIds",
-			Message: fmt.Sprintf("must hold %d entries or fewer", MaxAllowedUsers),
-		}
 	}
 
 	if len(cleaned) == 0 {
@@ -101,9 +104,14 @@ func (b *Blog) SetAllowedUserIDs(uids []string) error {
 	return nil
 }
 
-// Validate reports whether every field holds a value the setters above would accept, so the rules
-// are defined once and checked the same way whichever entry point a value arrived through.
+// Validate reports whether the blog is in a storable state: the server-set owner is present, and
+// every other field holds a value the setters above would accept. Repositories call it before each
+// write, so a blog assembled outside the HTTP layer cannot sidestep the rules.
 func (b Blog) Validate() error {
+	if b.OwnerID == "" {
+		return ValidationError{Field: "ownerId", Message: "is required"}
+	}
+
 	candidate := b
 	if err := candidate.SetTitle(b.Title); err != nil {
 		return err
@@ -129,8 +137,4 @@ func (b Blog) CanBeReadBy(uid string) bool {
 		return true
 	}
 	return slices.Contains(b.AllowedUserIDs, uid)
-}
-
-func lengthMessage(max int) string {
-	return fmt.Sprintf("must be %d characters or fewer", max)
 }

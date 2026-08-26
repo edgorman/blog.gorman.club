@@ -64,6 +64,12 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var body userRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
 	user, err := s.users.Get(r.Context(), id)
 	created := errors.Is(err, repository.ErrNotFound)
 	if err != nil && !created {
@@ -72,11 +78,6 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 	}
 	user.ID = id
 
-	var body userRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
 	if err := body.applyTo(&user); err != nil {
 		writeValidationError(w, err)
 		return

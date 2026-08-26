@@ -34,10 +34,14 @@ else, and only `cmd/backend` knows which concrete adapters exist. Swapping Fires
 store means adding a folder under `repository/` and changing one line in `cmd/backend`.
 
 Validation lives on the entities as setters (`SetDisplayName`, `SetVisibility`, ...) that trim,
-check, and only then apply. `Validate` runs those same setters against a copy, so a rule is written
-once no matter which entry point a value arrives through. The HTTP layer decodes into a request
-struct holding only the client-settable fields and applies it through those setters - which is why
-`ownerId` and `createdAt` cannot be spoofed: they are not part of the request shape at all.
+check, and only then apply, so a rejected value is never half-written. The HTTP layer decodes into
+a request struct holding only the client-settable fields and applies it through those setters -
+which is why `ownerId` and `createdAt` cannot be spoofed: they are not part of the request shape at
+all.
+
+`Validate` runs those same setters against a copy and additionally requires the server-set identity
+(`Blog.OwnerID`, `User.ID`). Repositories call it before every write and return without touching
+the datastore if it fails, so the rules hold for any entity, however it was assembled.
 
 Entities carry `json` tags only. Firestore's field names live on separate document structs in
 `repository/firestore`, which also keeps the document body free of the ID that Firestore already

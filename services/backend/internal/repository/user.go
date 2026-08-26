@@ -11,7 +11,8 @@ type UserRepository interface {
 	// Get returns ErrNotFound if id doesn't exist.
 	Get(ctx context.Context, id string) (entity.User, error)
 	// Put writes the record at user.ID, creating it if absent, refreshing UpdatedAt and stamping
-	// CreatedAt when it is zero.
+	// CreatedAt when it is zero. It rejects a profile that fails entity.User.Validate without
+	// writing anything.
 	Put(ctx context.Context, user entity.User) (entity.User, error)
 	Delete(ctx context.Context, id string) error
 }

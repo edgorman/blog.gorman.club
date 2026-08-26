@@ -79,13 +79,18 @@ func TestUser_SetBio(t *testing.T) {
 }
 
 func TestUser_Validate(t *testing.T) {
-	if err := (User{DisplayName: "Ed", Bio: "hello"}).Validate(); err != nil {
+	if err := (User{ID: "u1", DisplayName: "Ed", Bio: "hello"}).Validate(); err != nil {
 		t.Errorf("Validate = %v, want no error", err)
 	}
-	if err := (User{DisplayName: ""}).Validate(); err == nil {
+	if err := (User{ID: "u1", DisplayName: ""}).Validate(); err == nil {
 		t.Error("Validate with no display name = nil, want an error")
 	}
-	if err := (User{DisplayName: "Ed", Bio: strings.Repeat("a", MaxBioLength+1)}).Validate(); err == nil {
+	if err := (User{ID: "u1", DisplayName: "Ed", Bio: strings.Repeat("a", MaxBioLength+1)}).Validate(); err == nil {
 		t.Error("Validate with an overlong bio = nil, want an error")
+	}
+
+	// Profiles are keyed by id, so one without an id has nowhere to be written.
+	if err := (User{DisplayName: "Ed"}).Validate(); err == nil {
+		t.Error("Validate with no id = nil, want an error")
 	}
 }

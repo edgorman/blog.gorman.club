@@ -34,17 +34,24 @@ func New(cfg Config, blogs repository.BlogRepository, users repository.UserRepos
 
 // Handler returns the fully-wired API, ready to serve.
 func (s *Service) Handler() http.Handler {
-	// This service holds the only credentials for the blog and user collections, so every one of
-	// their routes requires a verified caller.
+	// This service holds the only credentials for the blog and user collections, so every write
+	// requires a verified caller, as does every read of a resource an anonymous caller cannot be
+	// authorized against by definition (a profile has no "public").
 	authed := func(h http.HandlerFunc) http.Handler {
 		return requireAuth(s.verifier, h)
+	}
+	// GET /blogs and GET /blogs/{id} admit anonymous callers: entity.Blog.CanBeReadBy already
+	// treats the zero Caller as seeing only public posts, so no handler change was needed to
+	// support this - only relaxing which requests reach it.
+	optional := func(h http.HandlerFunc) http.Handler {
+		return optionalAuth(s.verifier, h)
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.Debug)
 	mux.HandleFunc("/debug", s.Debug)
-	mux.Handle("GET /blogs", authed(s.ListBlogs))
-	mux.Handle("GET /blogs/{id}", authed(s.GetBlog))
+	mux.Handle("GET /blogs", optional(s.ListBlogs))
+	mux.Handle("GET /blogs/{id}", optional(s.GetBlog))
 	mux.Handle("POST /blogs", authed(s.CreateBlog))
 	mux.Handle("PUT /blogs/{id}", authed(s.UpdateBlog))
 	mux.Handle("DELETE /blogs/{id}", authed(s.DeleteBlog))

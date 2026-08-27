@@ -15,12 +15,14 @@ Start writing in **markdown**. A blank line makes a new paragraph.
 Switch to Preview any time to see the rendered post.`
 
 type Mode = 'write' | 'preview'
+type Visibility = Blog['visibility']
 
 export function NewPost() {
   const { api, user, authError, authReady, renderSignInButton } = useApp()
   const [title, setTitle] = useState('')
   const [markdown, setMarkdown] = useState(STARTER_MD)
   const [mode, setMode] = useState<Mode>('write')
+  const [visibility, setVisibility] = useState<Visibility>('public')
   const [publishing, setPublishing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [published, setPublished] = useState<Blog | null>(null)
@@ -30,7 +32,7 @@ export function NewPost() {
     setPublishing(true)
     setError(null)
     api
-      .createBlog({ title, content: markdown, visibility: 'public' })
+      .createBlog({ title, content: markdown, visibility })
       .then(setPublished)
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to publish')))
       .finally(() => setPublishing(false))
@@ -80,6 +82,27 @@ export function NewPost() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
+          </div>
+
+          <div className="seg" role="radiogroup" aria-label="Visibility" style={{ marginBottom: 'var(--space-3)' }}>
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="visibility"
+                checked={visibility === 'public'}
+                onChange={() => setVisibility('public')}
+              />
+              Public
+            </label>
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="visibility"
+                checked={visibility === 'private'}
+                onChange={() => setVisibility('private')}
+              />
+              Private
+            </label>
           </div>
 
           <div className="seg" role="radiogroup" aria-label="Editor mode" style={{ marginBottom: 'var(--space-3)' }}>

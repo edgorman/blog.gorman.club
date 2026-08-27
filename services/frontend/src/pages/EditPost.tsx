@@ -13,6 +13,7 @@ type State =
   | { phase: 'ready'; post: Blog }
 
 type Mode = 'write' | 'preview'
+type Visibility = Blog['visibility']
 
 export function EditPost() {
   const { id } = useParams<{ id: string }>()
@@ -20,6 +21,7 @@ export function EditPost() {
   const [state, setState] = useState<State>(api ? { phase: 'loading' } : { phase: 'unconfigured' })
   const [title, setTitle] = useState('')
   const [markdown, setMarkdown] = useState('')
+  const [visibility, setVisibility] = useState<Visibility>('public')
   const [mode, setMode] = useState<Mode>('write')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,6 +36,7 @@ export function EditPost() {
         setState({ phase: 'ready', post })
         setTitle(post.title)
         setMarkdown(post.content)
+        setVisibility(post.visibility)
       })
       .catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 404) return setState({ phase: 'not-found' })
@@ -43,11 +46,13 @@ export function EditPost() {
   }, [api, id])
 
   const save = () => {
-    if (!api || !id) return
+    if (!api || !id || state.phase !== 'ready') return
     setSaving(true)
     setError(null)
     api
-      .updateBlog(id, { title, content: markdown })
+      // updateBlog is a full replace, so the private-post whitelist has to be carried through even
+      // though this editor doesn't expose it for editing.
+      .updateBlog(id, { title, content: markdown, visibility, allowedUserIds: state.post.allowedUserIds })
       .then(() => setSaved(true))
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to save')))
       .finally(() => setSaving(false))
@@ -123,6 +128,27 @@ export function EditPost() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
+      </div>
+
+      <div className="seg" role="radiogroup" aria-label="Visibility" style={{ marginBottom: 'var(--space-3)' }}>
+        <label className="seg-opt">
+          <input
+            type="radio"
+            name="visibility"
+            checked={visibility === 'public'}
+            onChange={() => setVisibility('public')}
+          />
+          Public
+        </label>
+        <label className="seg-opt">
+          <input
+            type="radio"
+            name="visibility"
+            checked={visibility === 'private'}
+            onChange={() => setVisibility('private')}
+          />
+          Private
+        </label>
       </div>
 
       <div className="seg" role="radiogroup" aria-label="Editor mode" style={{ marginBottom: 'var(--space-3)' }}>

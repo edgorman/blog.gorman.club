@@ -16,7 +16,7 @@ const (
 
 // usernamePattern is deliberately ASCII-only: usernames end up in URLs and are how one person
 // refers to another, so the alphabet stays narrow enough that two names cannot look alike.
-var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
 // User is a profile keyed by the owner's Google account ID (the token's `sub` claim), so profiles
 // are written with PUT rather than POSTed. Any caller, signed in or not, may read one; only its
@@ -40,7 +40,7 @@ func (u *User) SetUsername(username string) error {
 	case trimmed == "":
 		return ValidationError{Field: "username", Message: "is required"}
 	case !usernamePattern.MatchString(trimmed):
-		return ValidationError{Field: "username", Message: "must contain only letters, digits, and underscores"}
+		return ValidationError{Field: "username", Message: "must contain only letters, digits, and hyphens"}
 	case len(trimmed) < MinUsernameLength:
 		return ValidationError{Field: "username", Message: minLengthMessage(MinUsernameLength)}
 	case len(trimmed) > MaxUsernameLength:

@@ -23,7 +23,7 @@ func TestNewUsername_LongestCombinationIsValid(t *testing.T) {
 		longest(usernameAdjectives),
 		longest(usernameActions),
 		longest(usernameAnimals),
-	}, "_")
+	}, usernameSeparator)
 
 	var user User
 	if err := user.SetUsername(worst); err != nil {
@@ -49,7 +49,7 @@ func TestUsernamePoolsAreWellFormed(t *testing.T) {
 
 			seen := make(map[string]bool, len(pool.words))
 			for _, word := range pool.words {
-				if !usernamePattern.MatchString(word) || strings.ContainsRune(word, '_') {
+				if !usernamePattern.MatchString(word) || strings.Contains(word, usernameSeparator) {
 					t.Errorf("%q is not a plain word of letters and digits", word)
 				}
 				if word != strings.ToLower(word) {
@@ -73,7 +73,7 @@ func TestNewUsername_ShapeAndValidity(t *testing.T) {
 		if err := user.SetUsername(name); err != nil {
 			t.Fatalf("SetUsername(%q) = %v, want every generated name to be valid", name, err)
 		}
-		if got := strings.Count(name, "_"); got != 2 {
+		if got := strings.Count(name, usernameSeparator); got != 2 {
 			t.Fatalf("NewUsername() = %q, want two descriptive words followed by an animal", name)
 		}
 	}

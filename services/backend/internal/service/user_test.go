@@ -37,7 +37,7 @@ func userRequestBody(t *testing.T, body userRequest) []byte {
 
 func TestGetUser_AnySignedInCaller(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "someone", Username: "quiet_reading_otter", DisplayName: "Someone"})
+	repo.seed(entity.User{ID: "someone", Username: "quiet-reading-otter", DisplayName: "Someone"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
@@ -92,7 +92,7 @@ func TestPutUser_CreatesOwnProfile(t *testing.T) {
 func TestPutUser_UpdatePreservesCreatedAt(t *testing.T) {
 	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "caller", Username: "sly_dancing_monkey", DisplayName: "Ed", CreatedAt: created})
+	repo.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey", DisplayName: "Ed", CreatedAt: created})
 	s := newTestService(nil, repo)
 
 	body := []byte(`{"displayName":"Edward","createdAt":"1999-01-01T00:00:00Z"}`)
@@ -193,7 +193,7 @@ func TestPutUser_MalformedBodySkipsTheLookup(t *testing.T) {
 
 func TestDeleteUser_Owner(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "caller", Username: "sly_dancing_monkey", DisplayName: "Ed"})
+	repo.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey", DisplayName: "Ed"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
@@ -209,7 +209,7 @@ func TestDeleteUser_Owner(t *testing.T) {
 
 func TestDeleteUser_ForbiddenForOtherProfile(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "someone-else", Username: "bold_leaping_lynx", DisplayName: "Someone"})
+	repo.seed(entity.User{ID: "someone-else", Username: "bold-leaping-lynx", DisplayName: "Someone"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
@@ -252,7 +252,7 @@ func TestPutUser_AssignsAGeneratedUsername(t *testing.T) {
 	}
 
 	stored := repo.users["caller"]
-	if strings.Count(stored.Username, "_") != 2 {
+	if strings.Count(stored.Username, "-") != 2 {
 		t.Errorf("Username = %q, want a generated three-word name", stored.Username)
 	}
 	var candidate entity.User
@@ -329,7 +329,7 @@ func TestPutUser_GivesUpAfterRepeatedCollisions(t *testing.T) {
 // editing a bio cannot silently rename anybody.
 func TestPutUser_OmittedUsernameIsUnchanged(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "caller", Username: "sly_dancing_monkey", DisplayName: "Ed"})
+	repo.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey", DisplayName: "Ed"})
 	s := newTestService(nil, repo)
 
 	body := userRequestBody(t, userRequest{DisplayName: "Ed", Bio: "new bio"})
@@ -339,40 +339,40 @@ func TestPutUser_OmittedUsernameIsUnchanged(t *testing.T) {
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	if got := repo.users["caller"].Username; got != "sly_dancing_monkey" {
+	if got := repo.users["caller"].Username; got != "sly-dancing-monkey" {
 		t.Errorf("Username = %q, want it left alone", got)
 	}
 }
 
 func TestPutUser_RenameReleasesTheOldUsername(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "caller", Username: "sly_dancing_monkey", DisplayName: "Ed"})
+	repo.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey", DisplayName: "Ed"})
 	s := newTestService(nil, repo)
 
-	body := userRequestBody(t, userRequest{Username: "bold_leaping_lynx", DisplayName: "Ed"})
+	body := userRequestBody(t, userRequest{Username: "bold-leaping-lynx", DisplayName: "Ed"})
 	rec := httptest.NewRecorder()
 	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	if got := repo.users["caller"].Username; got != "bold_leaping_lynx" {
-		t.Errorf("Username = %q, want %q", got, "bold_leaping_lynx")
+	if got := repo.users["caller"].Username; got != "bold-leaping-lynx" {
+		t.Errorf("Username = %q, want %q", got, "bold-leaping-lynx")
 	}
-	if _, ok := repo.usernames["sly_dancing_monkey"]; ok {
+	if _, ok := repo.usernames["sly-dancing-monkey"]; ok {
 		t.Error("the old username is still reserved, so nobody else could ever claim it")
 	}
-	if repo.usernames["bold_leaping_lynx"] != "caller" {
+	if repo.usernames["bold-leaping-lynx"] != "caller" {
 		t.Error("the new username was not reserved")
 	}
 }
 
 func TestPutUser_RejectsAUsernameHeldByAnotherUser(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "someone", Username: "sly_dancing_monkey", DisplayName: "Someone"})
+	repo.seed(entity.User{ID: "someone", Username: "sly-dancing-monkey", DisplayName: "Someone"})
 	s := newTestService(nil, repo)
 
-	body := userRequestBody(t, userRequest{Username: "Sly_Dancing_Monkey", DisplayName: "Ed"})
+	body := userRequestBody(t, userRequest{Username: "Sly-Dancing-Monkey", DisplayName: "Ed"})
 	rec := httptest.NewRecorder()
 	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
 
@@ -410,11 +410,11 @@ func usernameHTTPRequest(username string) *http.Request {
 
 func TestGetUserByUsername(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "someone", Username: "sly_dancing_monkey", DisplayName: "Someone"})
+	repo.seed(entity.User{ID: "someone", Username: "sly-dancing-monkey", DisplayName: "Someone"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
-	s.GetUserByUsername(rec, usernameHTTPRequest("sly_dancing_monkey"))
+	s.GetUserByUsername(rec, usernameHTTPRequest("sly-dancing-monkey"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -431,11 +431,11 @@ func TestGetUserByUsername(t *testing.T) {
 // Lookup folds case the same way uniqueness does, so a name typed any way finds its owner.
 func TestGetUserByUsername_IgnoresCase(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "someone", Username: "Sly_Dancing_Monkey", DisplayName: "Someone"})
+	repo.seed(entity.User{ID: "someone", Username: "Sly-Dancing-Monkey", DisplayName: "Someone"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
-	s.GetUserByUsername(rec, usernameHTTPRequest("sly_DANCING_monkey"))
+	s.GetUserByUsername(rec, usernameHTTPRequest("sly-DANCING-monkey"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -447,7 +447,7 @@ func TestGetUserByUsername_NotFound(t *testing.T) {
 	s := newTestService(nil, nil)
 
 	rec := httptest.NewRecorder()
-	s.GetUserByUsername(rec, usernameHTTPRequest("sly_dancing_monkey"))
+	s.GetUserByUsername(rec, usernameHTTPRequest("sly-dancing-monkey"))
 
 	if rec.Result().StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
@@ -478,7 +478,7 @@ func TestGetUserByUsername_RejectsAMalformedName(t *testing.T) {
 // Deleting a profile frees its username for somebody else.
 func TestDeleteUser_ReleasesTheUsername(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "caller", Username: "sly_dancing_monkey", DisplayName: "Ed"})
+	repo.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey", DisplayName: "Ed"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
@@ -487,7 +487,7 @@ func TestDeleteUser_ReleasesTheUsername(t *testing.T) {
 	if rec.Result().StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
 	}
-	if _, ok := repo.usernames["sly_dancing_monkey"]; ok {
+	if _, ok := repo.usernames["sly-dancing-monkey"]; ok {
 		t.Error("username is still reserved after the profile was deleted")
 	}
 }
@@ -496,7 +496,7 @@ func TestDeleteUser_ReleasesTheUsername(t *testing.T) {
 // router sends each to the handler it belongs to rather than matching the id route first.
 func TestHandler_RoutesUsersByIDAndByUsernameSeparately(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "someone", Username: "sly_dancing_monkey", DisplayName: "Someone"})
+	repo.seed(entity.User{ID: "someone", Username: "sly-dancing-monkey", DisplayName: "Someone"})
 	handler := newTestService(nil, repo).Handler()
 
 	for _, tt := range []struct {
@@ -504,7 +504,7 @@ func TestHandler_RoutesUsersByIDAndByUsernameSeparately(t *testing.T) {
 		path string
 	}{
 		{"by id", "/users/someone"},
-		{"by username", "/users/by-username/sly_dancing_monkey"},
+		{"by username", "/users/by-username/sly-dancing-monkey"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()

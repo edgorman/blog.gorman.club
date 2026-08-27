@@ -5,8 +5,12 @@ import (
 	"strings"
 )
 
+// usernameSeparator joins the three words of a generated name. It is not itself a letter or digit,
+// so SetUsername's pattern has to admit it too.
+const usernameSeparator = "-"
+
 // The three pools a generated username is drawn from: two descriptive words followed by an animal,
-// giving names like "sly_dancing_monkey". Every word is lowercase ASCII and at most nine characters,
+// giving names like "sly-dancing-monkey". Every word is lowercase ASCII and at most nine characters,
 // so any combination is at most 29 characters and satisfies SetUsername - TestNewUsername pins both.
 var (
 	usernameAdjectives = []string{
@@ -48,7 +52,7 @@ var (
 	}
 )
 
-// NewUsername returns a random three-word username, e.g. "sly_dancing_monkey". It is what every
+// NewUsername returns a random three-word username, e.g. "sly-dancing-monkey". It is what every
 // profile is named at sign-up, since callers are not asked to pick a name for themselves.
 //
 // The pools multiply out to hundreds of thousands of names, which makes a collision unlikely rather
@@ -60,5 +64,5 @@ func NewUsername() string {
 		usernameAdjectives[rand.IntN(len(usernameAdjectives))],
 		usernameActions[rand.IntN(len(usernameActions))],
 		usernameAnimals[rand.IntN(len(usernameAnimals))],
-	}, "_")
+	}, usernameSeparator)
 }

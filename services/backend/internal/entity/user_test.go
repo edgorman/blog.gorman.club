@@ -85,8 +85,8 @@ func TestUser_SetUsername(t *testing.T) {
 		want  string
 		valid bool
 	}{
-		{"three words", "sly_dancing_monkey", "sly_dancing_monkey", true},
-		{"trims surrounding space", "  sly_dancing_monkey  ", "sly_dancing_monkey", true},
+		{"three words", "sly-dancing-monkey", "sly-dancing-monkey", true},
+		{"trims surrounding space", "  sly-dancing-monkey  ", "sly-dancing-monkey", true},
 		{"digits are allowed", "otter99", "otter99", true},
 		{"case is preserved", "SlyMonkey", "SlyMonkey", true},
 		{"at the lower limit", strings.Repeat("a", MinUsernameLength), strings.Repeat("a", MinUsernameLength), true},
@@ -96,9 +96,10 @@ func TestUser_SetUsername(t *testing.T) {
 		{"below the lower limit is rejected", strings.Repeat("a", MinUsernameLength-1), "", false},
 		{"over the upper limit is rejected", strings.Repeat("a", MaxUsernameLength+1), "", false},
 		{"inner space is rejected", "sly dancing monkey", "", false},
-		{"punctuation is rejected", "sly-dancing-monkey", "", false},
+		{"underscores are rejected", "sly_dancing_monkey", "", false},
+		{"other punctuation is rejected", "sly.dancing.monkey", "", false},
 		{"a slash is rejected", "sly/monkey", "", false},
-		{"non-ascii is rejected", "slyé_monkey", "", false},
+		{"non-ascii is rejected", "slyé-monkey", "", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var user User
@@ -133,19 +134,19 @@ func TestUser_UsernameKey(t *testing.T) {
 	if got := (User{Username: "SlyMonkey"}).UsernameKey(); got != "slymonkey" {
 		t.Errorf("UsernameKey = %q, want %q", got, "slymonkey")
 	}
-	if (User{Username: "Ed_Otter"}).UsernameKey() != (User{Username: "ed_otter"}).UsernameKey() {
+	if (User{Username: "Ed-Otter"}).UsernameKey() != (User{Username: "ed-otter"}).UsernameKey() {
 		t.Error("names differing only in case produced different keys")
 	}
 }
 
 func TestUser_Validate(t *testing.T) {
-	if err := (User{ID: "u1", Username: "sly_dancing_monkey", DisplayName: "Ed", Bio: "hello"}).Validate(); err != nil {
+	if err := (User{ID: "u1", Username: "sly-dancing-monkey", DisplayName: "Ed", Bio: "hello"}).Validate(); err != nil {
 		t.Errorf("Validate = %v, want no error", err)
 	}
-	if err := (User{ID: "u1", Username: "sly_dancing_monkey", DisplayName: ""}).Validate(); err == nil {
+	if err := (User{ID: "u1", Username: "sly-dancing-monkey", DisplayName: ""}).Validate(); err == nil {
 		t.Error("Validate with no display name = nil, want an error")
 	}
-	if err := (User{ID: "u1", Username: "sly_dancing_monkey", DisplayName: "Ed", Bio: strings.Repeat("a", MaxBioLength+1)}).Validate(); err == nil {
+	if err := (User{ID: "u1", Username: "sly-dancing-monkey", DisplayName: "Ed", Bio: strings.Repeat("a", MaxBioLength+1)}).Validate(); err == nil {
 		t.Error("Validate with an overlong bio = nil, want an error")
 	}
 
@@ -155,7 +156,7 @@ func TestUser_Validate(t *testing.T) {
 	}
 
 	// Profiles are keyed by id, so one without an id has nowhere to be written.
-	if err := (User{Username: "sly_dancing_monkey", DisplayName: "Ed"}).Validate(); err == nil {
+	if err := (User{Username: "sly-dancing-monkey", DisplayName: "Ed"}).Validate(); err == nil {
 		t.Error("Validate with no id = nil, want an error")
 	}
 }

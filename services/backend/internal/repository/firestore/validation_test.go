@@ -30,12 +30,12 @@ func TestRepositoriesRejectInvalidEntitiesBeforeWriting(t *testing.T) {
 	})
 
 	t.Run("user put", func(t *testing.T) {
-		_, err := (&UserRepository{}).Put(ctx, entity.User{Username: "sly_dancing_monkey", DisplayName: "Ed"})
+		_, err := (&UserRepository{}).Put(ctx, entity.User{Username: "sly-dancing-monkey", DisplayName: "Ed"})
 		assertValidationError(t, err)
 	})
 
 	t.Run("user with a blank display name", func(t *testing.T) {
-		_, err := (&UserRepository{}).Put(ctx, entity.User{ID: "u1", Username: "sly_dancing_monkey", DisplayName: "  "})
+		_, err := (&UserRepository{}).Put(ctx, entity.User{ID: "u1", Username: "sly-dancing-monkey", DisplayName: "  "})
 		assertValidationError(t, err)
 	})
 

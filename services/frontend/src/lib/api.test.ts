@@ -66,6 +66,16 @@ describe('createApi', () => {
     expect((error as ApiError).message).toBe('user not found')
   })
 
+  it('fetches a single blog by id', async () => {
+    const fetchMock = mockFetch({ json: () => Promise.resolve({ id: 'blog-1' }) })
+
+    await createApi('https://api.example.com', authHeaders).getBlog('blog-1')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://api.example.com/blogs/blog-1')
+    expect(init.method).toBe('GET')
+  })
+
   it('falls back to the status when the error body is not JSON', async () => {
     mockFetch({ ok: false, status: 502, json: () => Promise.reject(new Error('not json')) })
 

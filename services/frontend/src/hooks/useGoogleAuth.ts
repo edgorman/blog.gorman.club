@@ -159,7 +159,7 @@ export function useGoogleAuth(): UseGoogleAuthResult {
     window.google.accounts.id.renderButton(element, {
       type: 'standard',
       theme: 'outline',
-      size: 'large',
+      size: 'medium',
     })
   }, [])
 

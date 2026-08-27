@@ -3,20 +3,25 @@
 Vite/React single-page app for blog.gorman.club, deployed to Cloudflare Pages
 (see the repository root `CLAUDE.md` for the full deployment architecture).
 
-It is an engineering console for the backend API, not a public-facing blog:
-four panels that exercise every endpoint end to end, so a green page proves
-cross-cloud routing, CORS, and token verification all work.
+It is the public blog: a recent-posts feed, a single post view rendering
+markdown, a per-author profile feed, and a markdown editor for publishing.
 
-- **Backend status** — calls `/debug` (the Debug Endpoint Contract described
-  in `CLAUDE.md`) on page load.
-- **Sign in** — Google Sign-In, showing the id, email, and name the credential asserts.
-- **Your profile** — `GET`/`PUT`/`DELETE /users/{id}` for the signed-in caller.
-- **Blogs** — list, create, update, and delete against `/blogs`, with write
-  buttons shown only for posts the caller owns.
+- **Feed** (`/`) — the 10 most recent posts the caller can read (every public
+  post, plus the signed-in caller's own private ones), across all authors.
+- **Post** (`/post/:id`) — `GET /blogs/{id}`, rendered from markdown to HTML.
+- **Profile** (`/profile/:id`) — that author's recent posts, plus their
+  display name and bio from `GET /users/{id}` when the caller is signed in.
+- **New post** (`/new`) — a single-pane markdown editor with a Preview
+  toggle, publishing via `POST /blogs`. Requires sign-in.
 
-Every panel degrades to an explanatory message rather than an error when its
+Every page degrades to an explanatory message rather than an error when its
 configuration is missing, so the page is still useful before anything is
 deployed.
+
+`GET /users/{id}` requires a signed-in caller (it has no anonymous form), so a
+signed-out visitor sees a shortened id in place of an author's name and no
+bio. Signing in resolves every author on the page, including ones already
+rendered, since any signed-in caller may look up any user's id.
 
 ## Google Sign-In
 

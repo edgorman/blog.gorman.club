@@ -72,6 +72,7 @@ async function request<T>(
 export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
   return {
     listBlogs: () => request<Blog[]>(baseUrl, authHeaders, 'GET', '/blogs'),
+    getBlog: (id: string) => request<Blog>(baseUrl, authHeaders, 'GET', `/blogs/${id}`),
     createBlog: (blog: Partial<Blog>) => request<Blog>(baseUrl, authHeaders, 'POST', '/blogs', blog),
     updateBlog: (id: string, blog: Partial<Blog>) =>
       request<Blog>(baseUrl, authHeaders, 'PUT', `/blogs/${id}`, blog),

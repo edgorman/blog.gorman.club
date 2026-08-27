@@ -1,0 +1,50 @@
+import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+import type { Api, Blog } from '../lib/api'
+import { renderWithApp } from '../testUtils'
+import { NewPost } from './NewPost'
+
+const author = { id: 'uid-1', email: 'a@b.com', name: 'Ada' }
+
+function fakeApi(overrides: Partial<Api> = {}): Api {
+  return {
+    listBlogs: vi.fn(),
+    getBlog: vi.fn(),
+    createBlog: vi.fn().mockResolvedValue({ id: 'p1', title: 'My post' } as Blog),
+    updateBlog: vi.fn(),
+    deleteBlog: vi.fn(),
+    getUser: vi.fn(),
+    putUser: vi.fn(),
+    deleteUser: vi.fn(),
+    ...overrides,
+  } as unknown as Api
+}
+
+describe('NewPost', () => {
+  it('prompts sign-in when signed out', () => {
+    renderWithApp(<NewPost />, { context: { api: fakeApi(), user: null } })
+    expect(screen.getByText('Sign in to publish a post.')).toBeInTheDocument()
+  })
+
+  it('publishes the draft as a public post and shows a confirmation', async () => {
+    const api = fakeApi()
+    renderWithApp(<NewPost />, { context: { api, user: author } })
+
+    await userEvent.type(screen.getByLabelText('Title'), 'My post')
+    await userEvent.click(screen.getByRole('button', { name: 'Publish' }))
+
+    await screen.findByText('Published.')
+    expect(api.createBlog).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'My post', visibility: 'public' }),
+    )
+    expect(screen.getByRole('link', { name: 'View post' })).toHaveAttribute('href', '/post/p1')
+  })
+
+  it('renders a live preview of the markdown draft', async () => {
+    renderWithApp(<NewPost />, { context: { api: fakeApi(), user: author } })
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Preview' }))
+    expect(screen.getByRole('heading', { name: 'Your title here' })).toBeInTheDocument()
+  })
+})

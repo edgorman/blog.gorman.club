@@ -37,6 +37,7 @@ func TestBlogMappingRoundTrip(t *testing.T) {
 func TestUserMappingRoundTrip(t *testing.T) {
 	user := entity.User{
 		ID:          "user-1",
+		Username:    "sly_dancing_monkey",
 		DisplayName: "Ed",
 		Bio:         "hello",
 		CreatedAt:   created,

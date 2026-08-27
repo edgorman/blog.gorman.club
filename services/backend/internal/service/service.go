@@ -57,6 +57,7 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("PUT /blogs/{id}", authed(s.UpdateBlog))
 	mux.Handle("DELETE /blogs/{id}", authed(s.DeleteBlog))
 	mux.Handle("GET /users/{id}", optional(s.GetUser))
+	mux.Handle("GET /users/by-username/{username}", optional(s.GetUserByUsername))
 	mux.Handle("PUT /users/{id}", authed(s.PutUser))
 	mux.Handle("DELETE /users/{id}", authed(s.DeleteUser))
 

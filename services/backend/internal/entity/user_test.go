@@ -78,19 +78,84 @@ func TestUser_SetBio(t *testing.T) {
 	}
 }
 
+func TestUser_SetUsername(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		input string
+		want  string
+		valid bool
+	}{
+		{"three words", "sly_dancing_monkey", "sly_dancing_monkey", true},
+		{"trims surrounding space", "  sly_dancing_monkey  ", "sly_dancing_monkey", true},
+		{"digits are allowed", "otter99", "otter99", true},
+		{"case is preserved", "SlyMonkey", "SlyMonkey", true},
+		{"at the lower limit", strings.Repeat("a", MinUsernameLength), strings.Repeat("a", MinUsernameLength), true},
+		{"at the upper limit", strings.Repeat("a", MaxUsernameLength), strings.Repeat("a", MaxUsernameLength), true},
+		{"empty is rejected", "", "", false},
+		{"whitespace only is rejected", "   ", "", false},
+		{"below the lower limit is rejected", strings.Repeat("a", MinUsernameLength-1), "", false},
+		{"over the upper limit is rejected", strings.Repeat("a", MaxUsernameLength+1), "", false},
+		{"inner space is rejected", "sly dancing monkey", "", false},
+		{"punctuation is rejected", "sly-dancing-monkey", "", false},
+		{"a slash is rejected", "sly/monkey", "", false},
+		{"non-ascii is rejected", "slyé_monkey", "", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var user User
+			err := user.SetUsername(tt.input)
+
+			if tt.valid {
+				if err != nil {
+					t.Fatalf("SetUsername(%q) = %v, want no error", tt.input, err)
+				}
+				if user.Username != tt.want {
+					t.Errorf("Username = %q, want %q", user.Username, tt.want)
+				}
+				return
+			}
+
+			var invalid ValidationError
+			if !errors.As(err, &invalid) {
+				t.Fatalf("SetUsername(%q) = %v, want a ValidationError", tt.input, err)
+			}
+			if invalid.Field != "username" {
+				t.Errorf("Field = %q, want %q", invalid.Field, "username")
+			}
+			if user.Username != "" {
+				t.Errorf("Username = %q, want the rejected value not to be applied", user.Username)
+			}
+		})
+	}
+}
+
+// Uniqueness is enforced on the folded form, so two names differing only in case are one name.
+func TestUser_UsernameKey(t *testing.T) {
+	if got := (User{Username: "SlyMonkey"}).UsernameKey(); got != "slymonkey" {
+		t.Errorf("UsernameKey = %q, want %q", got, "slymonkey")
+	}
+	if (User{Username: "Ed_Otter"}).UsernameKey() != (User{Username: "ed_otter"}).UsernameKey() {
+		t.Error("names differing only in case produced different keys")
+	}
+}
+
 func TestUser_Validate(t *testing.T) {
-	if err := (User{ID: "u1", DisplayName: "Ed", Bio: "hello"}).Validate(); err != nil {
+	if err := (User{ID: "u1", Username: "sly_dancing_monkey", DisplayName: "Ed", Bio: "hello"}).Validate(); err != nil {
 		t.Errorf("Validate = %v, want no error", err)
 	}
-	if err := (User{ID: "u1", DisplayName: ""}).Validate(); err == nil {
+	if err := (User{ID: "u1", Username: "sly_dancing_monkey", DisplayName: ""}).Validate(); err == nil {
 		t.Error("Validate with no display name = nil, want an error")
 	}
-	if err := (User{ID: "u1", DisplayName: "Ed", Bio: strings.Repeat("a", MaxBioLength+1)}).Validate(); err == nil {
+	if err := (User{ID: "u1", Username: "sly_dancing_monkey", DisplayName: "Ed", Bio: strings.Repeat("a", MaxBioLength+1)}).Validate(); err == nil {
 		t.Error("Validate with an overlong bio = nil, want an error")
 	}
 
+	// Every profile is looked up by username, so one without a name is not storable.
+	if err := (User{ID: "u1", DisplayName: "Ed"}).Validate(); err == nil {
+		t.Error("Validate with no username = nil, want an error")
+	}
+
 	// Profiles are keyed by id, so one without an id has nowhere to be written.
-	if err := (User{DisplayName: "Ed"}).Validate(); err == nil {
+	if err := (User{Username: "sly_dancing_monkey", DisplayName: "Ed"}).Validate(); err == nil {
 		t.Error("Validate with no id = nil, want an error")
 	}
 }

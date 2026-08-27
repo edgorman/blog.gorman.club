@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,15 +70,29 @@ func (r *fakeBlogRepository) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-// fakeUserRepository is an in-memory repository.UserRepository. gets counts lookups so a test can
-// assert a handler did not reach the datastore.
+// fakeUserRepository is an in-memory repository.UserRepository. usernames mirrors the reservation
+// collection the Firestore implementation keeps, so uniqueness is enforced here too rather than
+// assumed. gets counts lookups so a test can assert a handler did not reach the datastore.
 type fakeUserRepository struct {
-	users map[string]entity.User
-	gets  int
+	users     map[string]entity.User
+	usernames map[string]string
+	gets      int
+	// beforePut lets a test fail a write the in-memory state would otherwise allow, which is the
+	// only way to provoke a username collision when the name being written is generated at random.
+	beforePut func(entity.User) error
 }
 
 func newFakeUserRepository() *fakeUserRepository {
-	return &fakeUserRepository{users: make(map[string]entity.User)}
+	return &fakeUserRepository{
+		users:     make(map[string]entity.User),
+		usernames: make(map[string]string),
+	}
+}
+
+// seed stores a profile and its reservation together, as a real write would.
+func (r *fakeUserRepository) seed(user entity.User) {
+	r.users[user.ID] = user
+	r.usernames[user.UsernameKey()] = user.ID
 }
 
 func (r *fakeUserRepository) Get(_ context.Context, id string) (entity.User, error) {
@@ -89,20 +104,52 @@ func (r *fakeUserRepository) Get(_ context.Context, id string) (entity.User, err
 	return user, nil
 }
 
+func (r *fakeUserRepository) GetByUsername(_ context.Context, username string) (entity.User, error) {
+	r.gets++
+	id, ok := r.usernames[strings.ToLower(username)]
+	if !ok {
+		return entity.User{}, repository.ErrNotFound
+	}
+	user, ok := r.users[id]
+	if !ok {
+		return entity.User{}, repository.ErrNotFound
+	}
+	return user, nil
+}
+
 func (r *fakeUserRepository) Put(_ context.Context, user entity.User) (entity.User, error) {
 	if err := user.Validate(); err != nil {
 		return entity.User{}, err
 	}
+	if r.beforePut != nil {
+		if err := r.beforePut(user); err != nil {
+			return entity.User{}, err
+		}
+	}
+	key := user.UsernameKey()
+	if owner, claimed := r.usernames[key]; claimed && owner != user.ID {
+		return entity.User{}, repository.ErrUsernameTaken
+	}
+
 	now := time.Now().UTC()
+	if previous, ok := r.users[user.ID]; ok {
+		user.CreatedAt = previous.CreatedAt
+		delete(r.usernames, previous.UsernameKey())
+	}
 	if user.CreatedAt.IsZero() {
 		user.CreatedAt = now
 	}
 	user.UpdatedAt = now
+
 	r.users[user.ID] = user
+	r.usernames[key] = user.ID
 	return user, nil
 }
 
 func (r *fakeUserRepository) Delete(_ context.Context, id string) error {
+	if user, ok := r.users[id]; ok {
+		delete(r.usernames, user.UsernameKey())
+	}
 	delete(r.users, id)
 	return nil
 }

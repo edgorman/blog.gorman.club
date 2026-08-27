@@ -121,7 +121,7 @@ func TestHandler_AnonymousCallerCannotReadPrivateBlog(t *testing.T) {
 // GET /users/{id} admits anonymous callers too: a profile has nothing caller-specific to hide.
 func TestHandler_UserReadRouteAdmitsAnonymousCallers(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.users["someone"] = entity.User{ID: "someone", DisplayName: "Someone"}
+	repo.seed(entity.User{ID: "someone", Username: "quiet_reading_otter", DisplayName: "Someone"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()

@@ -16,3 +16,8 @@ func (e ValidationError) Error() string {
 func lengthMessage(max int) string {
 	return fmt.Sprintf("must be %d characters or fewer", max)
 }
+
+// minLengthMessage is its counterpart for every "too short" rule.
+func minLengthMessage(min int) string {
+	return fmt.Sprintf("must be %d characters or more", min)
+}

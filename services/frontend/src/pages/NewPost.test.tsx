@@ -41,6 +41,18 @@ describe('NewPost', () => {
     expect(screen.getByRole('link', { name: 'View post' })).toHaveAttribute('href', '/post/p1')
   })
 
+  it('publishes as private when that visibility is chosen', async () => {
+    const api = fakeApi()
+    renderWithApp(<NewPost />, { context: { api, user: author } })
+
+    await userEvent.type(screen.getByLabelText('Title'), 'My post')
+    await userEvent.click(screen.getByRole('radio', { name: 'Private' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Publish' }))
+
+    await screen.findByText('Published.')
+    expect(api.createBlog).toHaveBeenCalledWith(expect.objectContaining({ visibility: 'private' }))
+  })
+
   it('renders a live preview of the markdown draft', async () => {
     renderWithApp(<NewPost />, { context: { api: fakeApi(), user: author } })
 

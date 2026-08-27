@@ -58,8 +58,41 @@ describe('EditPost', () => {
 
     expect(api.updateBlog).toHaveBeenCalledWith(
       'p1',
-      expect.objectContaining({ title: 'Updated title' }),
+      expect.objectContaining({ title: 'Updated title', visibility: 'public' }),
     )
+  })
+
+  it('carries the visibility and allowed-user whitelist through on save', async () => {
+    const privateBlog: Blog = { ...blog, visibility: 'private', allowedUserIds: ['u2', 'u3'] }
+    const api = fakeApi({ getBlog: vi.fn().mockResolvedValue(privateBlog) })
+    renderWithApp(<EditPost />, {
+      context: { api, user: owner },
+      route: '/post/p1/edit',
+      path: '/post/:id/edit',
+    })
+
+    await screen.findByDisplayValue('Hello world')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(api.updateBlog).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({ visibility: 'private', allowedUserIds: ['u2', 'u3'] }),
+    )
+  })
+
+  it('switches visibility to private before saving', async () => {
+    const api = fakeApi()
+    renderWithApp(<EditPost />, {
+      context: { api, user: owner },
+      route: '/post/p1/edit',
+      path: '/post/:id/edit',
+    })
+
+    await screen.findByDisplayValue('Hello world')
+    await userEvent.click(screen.getByRole('radio', { name: 'Private' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(api.updateBlog).toHaveBeenCalledWith('p1', expect.objectContaining({ visibility: 'private' }))
   })
 
   it('refuses to edit a post owned by someone else', async () => {

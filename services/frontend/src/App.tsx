@@ -1,53 +1,32 @@
-import { useMemo } from 'react'
-import { HealthCheck } from './components/HealthCheck'
-import { SignIn } from './components/SignIn'
-import { Profile } from './components/Profile'
-import { Blogs } from './components/Blogs'
-import { useGoogleAuth } from './hooks/useGoogleAuth'
-import { createApi } from './lib/api'
-import './App.css'
+import { Link, Route, Routes } from 'react-router-dom'
+import { NavBar } from './components/NavBar'
+import { AppProvider } from './context/AppProvider'
+import { Landing } from './pages/Landing'
+import { NewPost } from './pages/NewPost'
+import { Post } from './pages/Post'
+import { UserProfile } from './pages/UserProfile'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
+function NotFound() {
+  return (
+    <div className="page">
+      <p className="center-note">Page not found.</p>
+      <Link to="/">← Back to feed</Link>
+    </div>
+  )
+}
 
 function App() {
-  const { user, authHeaders, error, ready, renderButton, signOut } = useGoogleAuth()
-
-  // Rebuilt when the credential changes, so requests always carry the current one.
-  const api = useMemo(
-    () => (user && BACKEND_URL ? createApi(BACKEND_URL, authHeaders) : null),
-    [user, authHeaders],
-  )
-
   return (
-    <main>
-      <h1>blog.gorman.club</h1>
-      <p>Engineering console for the backend API.</p>
-
-      <HealthCheck />
-      <SignIn
-        user={user}
-        error={error}
-        ready={ready}
-        renderButton={renderButton}
-        signOut={signOut}
-      />
-
-      {api && user ? (
-        <>
-          <Profile api={api} uid={user.id} />
-          <Blogs api={api} uid={user.id} />
-        </>
-      ) : (
-        <section className="panel">
-          <h2>Profile and blogs</h2>
-          <p>
-            {BACKEND_URL
-              ? 'Sign in to call the API.'
-              : 'No backend deployed yet - VITE_BACKEND_URL is unset.'}
-          </p>
-        </section>
-      )}
-    </main>
+    <AppProvider>
+      <NavBar />
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/post/:id" element={<Post />} />
+        <Route path="/profile/:id" element={<UserProfile />} />
+        <Route path="/new" element={<NewPost />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </AppProvider>
   )
 }
 

@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { GoogleSignInButton } from './GoogleSignInButton'
+import { AccountPanel } from './AccountPanel'
 
 const SunIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -22,17 +23,22 @@ const MoonIcon = () => (
   </svg>
 )
 
-/** Sticky top bar: brand, new-post link, theme toggle, and account. */
+const UserIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21a8 8 0 0 0-16 0" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+)
+
+/** Sticky top bar: brand, theme toggle, and an account button that opens AccountPanel. */
 export function NavBar() {
-  const { user, authError, authReady, renderSignInButton, signOut, theme, toggleTheme } = useApp()
+  const { user, theme, toggleTheme } = useApp()
+  const [accountOpen, setAccountOpen] = useState(false)
 
   return (
     <nav className="nav">
       <Link to="/" className="nav-brand">
         Gorman Club
-      </Link>
-      <Link to="/new" className="btn btn-ghost gc-navlink">
-        New post
       </Link>
       <button
         type="button"
@@ -44,17 +50,30 @@ export function NavBar() {
       </button>
 
       {user ? (
-        <>
-          <button type="button" className="btn btn-ghost" onClick={signOut}>
-            Sign out
-          </button>
-          <Link to={`/profile/${user.id}`} className="gc-avatar" aria-label="Your profile">
-            {user.name.charAt(0).toUpperCase()}
-          </Link>
-        </>
+        <button
+          type="button"
+          className="gc-avatar"
+          aria-label="Account"
+          aria-haspopup="dialog"
+          aria-expanded={accountOpen}
+          onClick={() => setAccountOpen(true)}
+        >
+          {user.name.charAt(0).toUpperCase()}
+        </button>
       ) : (
-        !authError && <GoogleSignInButton ready={authReady} onRender={renderSignInButton} />
+        <button
+          type="button"
+          className="btn btn-icon btn-secondary"
+          aria-label="Account"
+          aria-haspopup="dialog"
+          aria-expanded={accountOpen}
+          onClick={() => setAccountOpen(true)}
+        >
+          <UserIcon />
+        </button>
       )}
+
+      {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} />}
     </nav>
   )
 }

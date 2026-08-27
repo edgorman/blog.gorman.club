@@ -15,7 +15,7 @@ type State =
 
 export function Post() {
   const { id } = useParams<{ id: string }>()
-  const { api, resolveAuthorName } = useApp()
+  const { api, user, resolveAuthorName } = useApp()
   const [state, setState] = useState<State>(api ? { phase: 'loading' } : { phase: 'unconfigured' })
   const [authorName, setAuthorName] = useState<string | null>(null)
 
@@ -38,10 +38,13 @@ export function Post() {
     if (state.phase !== 'ready') return
     const hash = window.location.hash.slice(1)
     if (!hash) return
-    const id = window.setTimeout(() => {
-      document.getElementById(decodeURIComponent(hash))?.scrollIntoView()
+    const target = decodeURIComponent(hash)
+    const timeoutId = window.setTimeout(() => {
+      // Some markdown sources target legacy `<a name="...">` anchors rather than an element id.
+      const el = document.getElementById(target) ?? document.getElementsByName(target)[0]
+      el?.scrollIntoView()
     }, 0)
-    return () => window.clearTimeout(id)
+    return () => window.clearTimeout(timeoutId)
   }, [state.phase])
 
   useEffect(() => {
@@ -100,9 +103,16 @@ export function Post() {
 
   return (
     <div className="page">
-      <Link to={authorHref} className="text-muted back-link">
-        ← Back to {authorName ?? 'author'}
-      </Link>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+        <Link to={authorHref} className="text-muted back-link">
+          ← Back to {authorName ?? 'author'}
+        </Link>
+        {user?.id === post.ownerId && (
+          <Link to={`/post/${post.id}/edit`} className="btn btn-secondary">
+            Edit
+          </Link>
+        )}
+      </div>
       <header style={{ paddingBottom: 'var(--space-4)' }}>
         <div className="post-meta">
           <span className="text-muted feed-row-date">{formatDate(post.createdAt)}</span>

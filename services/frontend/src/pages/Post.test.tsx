@@ -50,4 +50,43 @@ describe('Post', () => {
 
     expect(await screen.findByText('This post is private.')).toBeInTheDocument()
   })
+
+  it('scrolls to a legacy `<a name>` anchor when no element has a matching id', async () => {
+    const namedAnchorBlog: Blog = {
+      ...blog,
+      content: '# Hi\n\n<a name="section"></a>\n\n## Section\n\nBody.',
+    }
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    window.location.hash = '#section'
+
+    renderWithApp(<Post />, {
+      context: { api: fakeApi({ getBlog: vi.fn().mockResolvedValue(namedAnchorBlog) }) },
+      route: '/post/p1#section',
+      path: '/post/:id',
+    })
+
+    await screen.findByText('Body.')
+    await vi.waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
+    window.location.hash = ''
+  })
+
+  it('shows an Edit link only to the post owner', async () => {
+    renderWithApp(<Post />, {
+      context: { api: fakeApi(), user: { id: 'uid-1', email: 'a@b.com', name: 'Ada' } },
+      route: '/post/p1',
+      path: '/post/:id',
+    })
+    expect(await screen.findByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/post/p1/edit')
+  })
+
+  it('hides the Edit link from a signed-in visitor who is not the owner', async () => {
+    renderWithApp(<Post />, {
+      context: { api: fakeApi(), user: { id: 'someone-else', email: 'x@y.com', name: 'Bo' } },
+      route: '/post/p1',
+      path: '/post/:id',
+    })
+    expect(await screen.findByText('Hello world')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument()
+  })
 })

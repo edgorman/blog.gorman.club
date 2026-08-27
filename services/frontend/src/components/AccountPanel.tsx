@@ -53,6 +53,9 @@ export function AccountPanel({ onClose }: Props) {
             <Link to={`/profile/${user.id}`} className="btn btn-secondary btn-block" onClick={onClose}>
               View profile
             </Link>
+            <Link to="/profile/edit" className="btn btn-secondary btn-block" onClick={onClose}>
+              Edit profile
+            </Link>
             <button type="button" className="btn btn-ghost btn-block" onClick={() => { signOut(); onClose() }}>
               Sign out
             </button>

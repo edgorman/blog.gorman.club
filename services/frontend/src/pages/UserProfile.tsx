@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { FeedList } from '../components/FeedList'
 import { useApp } from '../context/AppContext'
 import { errorMessage, type Blog } from '../lib/api'
@@ -9,7 +9,7 @@ interface ProfileInfo {
   name: string
   bio: string
   memberSince: string | null
-  /** True once we know GET /users/{id} was reachable - vs. a signed-out fallback name. */
+  /** True once GET /users/{id} returned a real profile - false if this author never set one up. */
   resolved: boolean
 }
 
@@ -24,7 +24,7 @@ const FEED_SIZE = 10
 /** A single author's recent posts, with as much of their profile as the caller is allowed to see. */
 export function UserProfile() {
   const { id } = useParams<{ id: string }>()
-  const { api, resolveAuthorName } = useApp()
+  const { api, user, resolveAuthorName } = useApp()
   const [profile, setProfile] = useState<ProfileInfo | null>(null)
   const [postsState, setPostsState] = useState<PostsState>(
     api ? { phase: 'loading' } : { phase: 'unconfigured' },
@@ -70,19 +70,26 @@ export function UserProfile() {
   return (
     <div className="page">
       <header className="profile-header">
-        <div className="profile-identity">
-          <div className="profile-avatar">{(profile?.name ?? '?').charAt(0).toUpperCase()}</div>
-          <div>
-            <h1 className="title-profile">{profile?.name ?? 'Loading…'}</h1>
-            {profile?.memberSince && (
-              <span className="text-muted feed-row-date">
-                Member since {formatDate(profile.memberSince)}
-              </span>
-            )}
+        <div className="profile-identity" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+            <div className="profile-avatar">{(profile?.name ?? '?').charAt(0).toUpperCase()}</div>
+            <div>
+              <h1 className="title-profile">{profile?.name ?? 'Loading…'}</h1>
+              {profile?.memberSince && (
+                <span className="text-muted feed-row-date">
+                  Member since {formatDate(profile.memberSince)}
+                </span>
+              )}
+            </div>
           </div>
+          {user?.id === id && (
+            <Link to="/profile/edit" className="btn btn-secondary">
+              Edit profile
+            </Link>
+          )}
         </div>
         {profile && !profile.resolved && (
-          <p className="profile-bio text-muted">Sign in to see this author's full profile.</p>
+          <p className="profile-bio text-muted">This author hasn't set up a profile yet.</p>
         )}
         {profile?.resolved && profile.bio && <p className="profile-bio text-muted">{profile.bio}</p>}
       </header>

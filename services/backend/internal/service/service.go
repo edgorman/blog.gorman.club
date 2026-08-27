@@ -34,15 +34,16 @@ func New(cfg Config, blogs repository.BlogRepository, users repository.UserRepos
 
 // Handler returns the fully-wired API, ready to serve.
 func (s *Service) Handler() http.Handler {
-	// This service holds the only credentials for the blog and user collections, so every write
-	// requires a verified caller, as does every read of a resource an anonymous caller cannot be
-	// authorized against by definition (a profile has no "public").
+	// Every write requires a verified caller, since it always resolves to a specific owner.
 	authed := func(h http.HandlerFunc) http.Handler {
 		return requireAuth(s.verifier, h)
 	}
-	// GET /blogs and GET /blogs/{id} admit anonymous callers: entity.Blog.CanBeReadBy already
-	// treats the zero Caller as seeing only public posts, so no handler change was needed to
-	// support this - only relaxing which requests reach it.
+	// GET /blogs, GET /blogs/{id}, and GET /users/{id} admit anonymous callers. Blog visibility is
+	// enforced downstream: entity.Blog.CanBeReadBy already treats the zero Caller as seeing only
+	// public posts, so no handler change was needed to support this - only relaxing which requests
+	// reach it. A profile has nothing caller-specific to hide, so GetUser needed no change either -
+	// a display name and bio are meant to be public (e.g. so a signed-out visitor sees an author's
+	// name on a post instead of their raw id).
 	optional := func(h http.HandlerFunc) http.Handler {
 		return optionalAuth(s.verifier, h)
 	}
@@ -55,7 +56,7 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("POST /blogs", authed(s.CreateBlog))
 	mux.Handle("PUT /blogs/{id}", authed(s.UpdateBlog))
 	mux.Handle("DELETE /blogs/{id}", authed(s.DeleteBlog))
-	mux.Handle("GET /users/{id}", authed(s.GetUser))
+	mux.Handle("GET /users/{id}", optional(s.GetUser))
 	mux.Handle("PUT /users/{id}", authed(s.PutUser))
 	mux.Handle("DELETE /users/{id}", authed(s.DeleteUser))
 

@@ -105,7 +105,7 @@ export function Post() {
     <div className="page">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
         <Link to={authorHref} className="text-muted back-link">
-          ← Back to {authorName ?? 'author'}
+          ← Back to {authorName ?? 'author'}&apos;s posts
         </Link>
         {user?.id === post.ownerId && (
           <Link to={`/post/${post.id}/edit`} className="btn btn-secondary">

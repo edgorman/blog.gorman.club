@@ -37,8 +37,9 @@ export function NavBar() {
 
   return (
     <nav className="nav">
-      <Link to="/" className="nav-brand">
-        Gorman Club
+      <Link to="/" className="nav-brand" aria-label="blog, gorman club">
+        <span className="nav-brand-main" aria-hidden="true">blog</span>
+        <span className="nav-brand-sub" aria-hidden="true">gorman club</span>
       </Link>
       <button
         type="button"

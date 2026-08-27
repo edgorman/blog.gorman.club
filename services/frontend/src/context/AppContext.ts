@@ -13,9 +13,9 @@ export interface AppContextValue {
   theme: Theme
   toggleTheme: () => void
   /**
-   * Looks up a display name for a blog's ownerId. GET /users/{id} accepts any signed-in caller,
-   * not just the owner, so this works for every author once someone is signed in; a signed-out
-   * visitor falls back to a shortened id, since the backend has no unauthenticated user lookup.
+   * Looks up a display name for a blog's ownerId. GET /users/{id} accepts any caller, signed in
+   * or not, so this works for every author; only a missing/misconfigured api or a lookup failure
+   * (e.g. the profile was never created) falls back to a shortened id.
    */
   resolveAuthorName: (id: string) => Promise<string>
 }

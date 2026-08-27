@@ -116,7 +116,7 @@ export function EditPost() {
     <div className="page">
       <header className="page-header">
         <span className="page-kicker text-muted">Edit post</span>
-        <h1 className="title-editor">{post.title || '(untitled)'}</h1>
+        <h1 className="title-editor">Edit your post</h1>
       </header>
 
       <div className="field">

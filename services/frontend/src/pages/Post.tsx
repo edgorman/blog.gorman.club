@@ -35,6 +35,16 @@ export function Post() {
   const ownerId = state.phase === 'ready' ? state.post.ownerId : null
 
   useEffect(() => {
+    if (state.phase !== 'ready') return
+    const hash = window.location.hash.slice(1)
+    if (!hash) return
+    const id = window.setTimeout(() => {
+      document.getElementById(decodeURIComponent(hash))?.scrollIntoView()
+    }, 0)
+    return () => window.clearTimeout(id)
+  }, [state.phase])
+
+  useEffect(() => {
     if (!ownerId) return
     let cancelled = false
     resolveAuthorName(ownerId).then((name) => {

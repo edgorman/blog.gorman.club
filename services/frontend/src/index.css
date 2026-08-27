@@ -517,7 +517,8 @@ a {
 .post-body h3,
 .post-body h4,
 .post-body h5,
-.post-body h6 {
+.post-body h6,
+.post-body a[name] {
   scroll-margin-top: calc(var(--nav-height) + var(--space-3));
 }
 .post-body h1,

@@ -21,10 +21,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   const nameCache = useRef(new Map<string, Promise<string>>())
-  // A fresh sign-in may unlock names a signed-out visitor already got a fallback for.
+  // Names resolved (or fallen back to) before auth was ready may now be resolvable, or a
+  // sign-out means previously-resolved names are no longer backed by an authenticated lookup.
   useEffect(() => {
-    if (!user) nameCache.current.clear()
-  }, [user])
+    nameCache.current.clear()
+  }, [api, user])
 
   const resolveAuthorName = useMemo(() => {
     return (id: string): Promise<string> => {

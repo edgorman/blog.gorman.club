@@ -4,11 +4,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { renderWithApp } from '../testUtils'
 import { NavBar } from './NavBar'
 
+const author = { id: 'uid-1', email: 'a@b.com', name: 'Ada' }
+
 describe('NavBar', () => {
-  it('renders the brand and new-post link', () => {
+  it('renders the brand and theme toggle, with no account panel open by default', () => {
     renderWithApp(<NavBar />)
     expect(screen.getByRole('link', { name: 'Gorman Club' })).toHaveAttribute('href', '/')
-    expect(screen.getByRole('link', { name: 'New post' })).toHaveAttribute('href', '/new')
+    expect(screen.getByRole('button', { name: 'Toggle dark mode' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Account' })).not.toBeInTheDocument()
   })
 
   it('toggles the theme when the icon button is clicked', async () => {
@@ -19,22 +22,42 @@ describe('NavBar', () => {
     expect(toggleTheme).toHaveBeenCalledTimes(1)
   })
 
-  it("links the avatar to the signed-in user's own profile", () => {
-    renderWithApp(<NavBar />, {
-      context: { user: { id: 'uid-1', email: 'a@b.com', name: 'Ada' } },
-    })
+  it('opens the account panel with New post, View profile, and Sign out when signed in', async () => {
+    const signOut = vi.fn()
+    renderWithApp(<NavBar />, { context: { user: author, signOut } })
 
-    expect(screen.getByRole('link', { name: 'Your profile' })).toHaveAttribute(
+    await userEvent.click(screen.getByRole('button', { name: 'Account' }))
+    const dialog = screen.getByRole('dialog', { name: 'Account' })
+    expect(dialog).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'New post' })).toHaveAttribute('href', '/new')
+    expect(screen.getByRole('link', { name: 'View profile' })).toHaveAttribute(
       'href',
       '/profile/uid-1',
     )
-    expect(screen.getByText('A')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(signOut).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('dialog', { name: 'Account' })).not.toBeInTheDocument()
   })
 
-  it('renders the Google sign-in button host when signed out', () => {
+  it('offers the Google sign-in button in the panel when signed out', async () => {
     const renderSignInButton = vi.fn()
     renderWithApp(<NavBar />, { context: { renderSignInButton } })
 
+    await userEvent.click(screen.getByRole('button', { name: 'Account' }))
+    expect(screen.getByText('Sign in to publish and manage your posts.')).toBeInTheDocument()
     expect(renderSignInButton).toHaveBeenCalled()
+  })
+
+  it('closes the panel on backdrop click', async () => {
+    renderWithApp(<NavBar />, { context: { user: author } })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Account' }))
+    expect(screen.getByRole('dialog', { name: 'Account' })).toBeInTheDocument()
+
+    // The backdrop is the dialog's positioning parent, not the dialog itself.
+    const backdrop = screen.getByRole('dialog', { name: 'Account' }).parentElement!
+    await userEvent.click(backdrop)
+    expect(screen.queryByRole('dialog', { name: 'Account' })).not.toBeInTheDocument()
   })
 })

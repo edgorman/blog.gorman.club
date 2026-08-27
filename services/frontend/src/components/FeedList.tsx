@@ -37,7 +37,7 @@ function FeedRow({ post, delayMs }: { post: Blog; delayMs: number }) {
     <Link to={`/post/${post.id}`} className="feed-row" style={{ animationDelay: `${delayMs}ms` }}>
       <div className="feed-row-meta">
         <span className="text-muted feed-row-date">{formatDate(post.createdAt)}</span>
-        {author && <span className="text-muted feed-row-date">{author}</span>}
+        {author && <span className="text-muted feed-row-author">{author}</span>}
         {post.visibility === 'private' && <span className="tag tag-outline">private</span>}
       </div>
       <h2 className="feed-title">{post.title || '(untitled)'}</h2>

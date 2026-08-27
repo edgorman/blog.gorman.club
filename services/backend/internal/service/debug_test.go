@@ -59,16 +59,14 @@ func TestHandler_DebugRoutesAreUnauthenticated(t *testing.T) {
 	}
 }
 
-// Every write, and every read of a resource with no public form (a profile), sits behind
-// requireAuth.
-func TestHandler_WriteAndProfileRoutesRequireAuth(t *testing.T) {
+// Every write sits behind requireAuth.
+func TestHandler_WriteRoutesRequireAuth(t *testing.T) {
 	s := newTestService(nil, nil)
 
 	for _, tt := range []struct{ method, path string }{
 		{http.MethodPost, "/blogs"},
 		{http.MethodPut, "/blogs/blog-1"},
 		{http.MethodDelete, "/blogs/blog-1"},
-		{http.MethodGet, "/users/caller"},
 		{http.MethodPut, "/users/caller"},
 		{http.MethodDelete, "/users/caller"},
 	} {
@@ -117,6 +115,20 @@ func TestHandler_AnonymousCallerCannotReadPrivateBlog(t *testing.T) {
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+	}
+}
+
+// GET /users/{id} admits anonymous callers too: a profile has nothing caller-specific to hide.
+func TestHandler_UserReadRouteAdmitsAnonymousCallers(t *testing.T) {
+	repo := newFakeUserRepository()
+	repo.users["someone"] = entity.User{ID: "someone", DisplayName: "Someone"}
+	s := newTestService(nil, repo)
+
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/users/someone", nil))
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
 }
 

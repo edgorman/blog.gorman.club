@@ -9,7 +9,7 @@ const author = { id: 'uid-1', email: 'a@b.com', name: 'Ada' }
 describe('NavBar', () => {
   it('renders the brand and theme toggle, with no account panel open by default', () => {
     renderWithApp(<NavBar />)
-    expect(screen.getByRole('link', { name: 'Gorman Club' })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('link', { name: 'blog, gorman club' })).toHaveAttribute('href', '/')
     expect(screen.getByRole('button', { name: 'Toggle dark mode' })).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Account' })).not.toBeInTheDocument()
   })

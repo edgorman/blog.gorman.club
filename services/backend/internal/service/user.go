@@ -41,7 +41,7 @@ func requireSelf(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return id, true
 }
 
-// GetUser returns a profile. Any signed-in caller may read any profile.
+// GetUser returns a profile. Any caller, signed in or not, may read any profile.
 func (s *Service) GetUser(w http.ResponseWriter, r *http.Request) {
 	user, err := s.users.Get(r.Context(), r.PathValue("id"))
 	if errors.Is(err, repository.ErrNotFound) {

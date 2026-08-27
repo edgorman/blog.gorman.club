@@ -13,6 +13,8 @@
   --color-accent-700: #ae1800;
   --color-accent-800: #7c1405;
   --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+  --color-code-string: #2f7d4f;
+  --color-code-entity: #6355c7;
 
   --font-heading: 'Archivo', system-ui, sans-serif;
   --font-heading-weight: 800;
@@ -40,6 +42,8 @@
   --color-surface: #262424;
   --color-text: #f3f2f2;
   --color-divider: color-mix(in srgb, #f3f2f2 30%, transparent);
+  --color-code-string: #7ed99a;
+  --color-code-entity: #b3a7ff;
   --color-accent: #ff9783;
   --color-accent-100: #4d170e;
   --color-accent-800: #ffe0d9;
@@ -207,7 +211,12 @@ a {
   outline-offset: 0;
 }
 .seg {
-  display: inline-flex;
+  /* Block-level (not inline-flex): each segmented group needs to sit on its own line, and an
+     inline-level box lets two adjacent .seg elements be laid out on the same line with no wrap
+     point between them, which is what crammed the visibility and mode controls together on
+     narrow screens. */
+  display: flex;
+  width: fit-content;
   overflow: hidden;
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-md);
@@ -271,12 +280,23 @@ a {
   box-sizing: border-box;
 }
 .nav-brand {
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
-  font-size: 18px;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
   margin-right: auto;
   color: inherit;
   text-decoration: none;
+}
+.nav-brand-main {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 18px;
+}
+.nav-brand-sub {
+  font-style: italic;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
 }
 .gc-avatar {
   appearance: none;
@@ -541,6 +561,47 @@ a {
 }
 .post-body pre code {
   font-size: 0.85em;
+}
+/* — syntax highlighting (see lib/markdown.ts) — */
+.hljs-comment,
+.hljs-quote {
+  color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-link {
+  color: var(--color-accent);
+}
+.hljs-string,
+.hljs-attr,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition,
+.hljs-meta .hljs-string {
+  color: var(--color-code-string);
+}
+.hljs-number,
+.hljs-title,
+.hljs-name,
+.hljs-type,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-attribute {
+  color: var(--color-code-entity);
+}
+.hljs-deletion {
+  color: var(--color-accent-700);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
 }
 .post-body blockquote {
   margin: 0 0 var(--space-3);

@@ -50,8 +50,8 @@ describe('UserProfile', () => {
     expect(screen.queryByText('Not mine')).not.toBeInTheDocument()
   })
 
-  it('falls back to a resolved name and a sign-in hint when the profile lookup fails', async () => {
-    const api = fakeApi({ getUser: vi.fn().mockRejectedValue(new Error('unauthorized')) })
+  it('falls back to a resolved name and a no-profile hint when the profile lookup fails', async () => {
+    const api = fakeApi({ getUser: vi.fn().mockRejectedValue(new Error('not found')) })
     renderWithApp(<UserProfile />, {
       context: { api, resolveAuthorName: () => Promise.resolve('uid-1234…') },
       route: '/profile/uid-1',
@@ -59,6 +59,6 @@ describe('UserProfile', () => {
     })
 
     expect(await screen.findByText('uid-1234…')).toBeInTheDocument()
-    expect(screen.getByText(/Sign in to see this author's full profile/)).toBeInTheDocument()
+    expect(screen.getByText(/This author hasn't set up a profile yet/)).toBeInTheDocument()
   })
 })

@@ -12,8 +12,8 @@ const (
 )
 
 // User is a profile keyed by the owner's Google account ID (the token's `sub` claim), so profiles
-// are written with PUT rather than POSTed. Any signed-in caller may read one; only its owner may
-// write it.
+// are written with PUT rather than POSTed. Any caller, signed in or not, may read one; only its
+// owner may write it.
 type User struct {
 	ID          string    `json:"id"`
 	DisplayName string    `json:"displayName"`

@@ -21,18 +21,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   const nameCache = useRef(new Map<string, Promise<string>>())
-  // Names resolved (or fallen back to) before auth was ready may now be resolvable, or a
-  // sign-out means previously-resolved names are no longer backed by an authenticated lookup.
+  // A name resolved (or fallen back to) before the api was configured may now be resolvable.
   useEffect(() => {
     nameCache.current.clear()
-  }, [api, user])
+  }, [api])
 
   const resolveAuthorName = useMemo(() => {
     return (id: string): Promise<string> => {
       const cached = nameCache.current.get(id)
       if (cached) return cached
 
-      const lookup = !api || !user
+      const lookup = !api
         ? Promise.resolve(fallbackName(id))
         : api.getUser(id).then(
             (found) => found.displayName || fallbackName(id),
@@ -42,7 +41,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       nameCache.current.set(id, lookup)
       return lookup
     }
-  }, [api, user])
+  }, [api])
 
   const value: AppContextValue = {
     user,

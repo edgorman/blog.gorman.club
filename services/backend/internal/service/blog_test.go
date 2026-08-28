@@ -2,7 +2,9 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"maps"
 	"net/http"
@@ -633,6 +635,8 @@ func TestDeleteBlog_ForbiddenForNonOwner(t *testing.T) {
 	}
 }
 
+// Deleting a post must never remove its Firestore document - only stamp DeletedAt on it - and the
+// post must stop being reachable through the ordinary read path even though the document remains.
 func TestDeleteBlog_Owner(t *testing.T) {
 	repo := newFakeBlogRepository()
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic})
@@ -645,8 +649,46 @@ func TestDeleteBlog_Owner(t *testing.T) {
 	if rec.Result().StatusCode != http.StatusNoContent {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
 	}
-	if _, ok := repo.stored("owner", "hello-world"); ok {
-		t.Error("blog still present after delete")
+	stored, ok := repo.stored("owner", "hello-world")
+	if !ok {
+		t.Fatal("blog document was removed by delete, want it kept and soft-deleted")
+	}
+	if stored.DeletedAt == nil {
+		t.Error("DeletedAt is nil after delete, want it stamped")
+	}
+	if _, err := repo.Get(context.Background(), "owner", "hello-world"); !errors.Is(err, repository.ErrNotFound) {
+		t.Errorf("Get after delete = %v, want ErrNotFound", err)
+	}
+}
+
+// A soft-deleted post reads as gone everywhere a client can see, even though its document is kept.
+func TestDeleteBlog_PostIsNoLongerReadableOrListed(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic})
+	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
+
+	req := blogPathRequest(http.MethodDelete, "sly-dancing-monkey", "hello-world", nil)
+	rec := httptest.NewRecorder()
+	s.DeleteBlog(rec, withUID(req, "owner"))
+	if rec.Result().StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
+	}
+
+	getReq := blogPathRequest(http.MethodGet, "sly-dancing-monkey", "hello-world", nil)
+	getRec := httptest.NewRecorder()
+	s.GetBlog(getRec, withUID(getReq, "owner"))
+	if getRec.Result().StatusCode != http.StatusNotFound {
+		t.Errorf("GetBlog after delete status = %d, want %d", getRec.Result().StatusCode, http.StatusNotFound)
+	}
+
+	listRec := httptest.NewRecorder()
+	s.ListBlogs(listRec, withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "owner"))
+	var got []blogResponse
+	if err := json.NewDecoder(listRec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("ListBlogs after delete = %v, want the deleted post excluded", got)
 	}
 }
 

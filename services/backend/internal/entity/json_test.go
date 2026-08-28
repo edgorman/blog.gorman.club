@@ -34,6 +34,15 @@ func TestJSONFieldNamesMatchFrontendContract(t *testing.T) {
 		t.Errorf("bare blog JSON =\n %s\nwant\n %s", bare, wantBare)
 	}
 
+	deleted, err := json.Marshal(Blog{Slug: "b1", OwnerID: "o1", Visibility: VisibilityPrivate, CreatedAt: at, UpdatedAt: at, DeletedAt: &at})
+	if err != nil {
+		t.Fatalf("marshal deleted blog: %v", err)
+	}
+	wantDeleted := `{"slug":"b1","ownerId":"o1","title":"","content":"","visibility":"private","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","deletedAt":"2026-01-01T00:00:00Z"}`
+	if string(deleted) != wantDeleted {
+		t.Errorf("deleted blog JSON =\n %s\nwant\n %s", deleted, wantDeleted)
+	}
+
 	user, err := json.Marshal(User{ID: "u1", Username: "sly-dancing-monkey", Bio: "hi", CreatedAt: at, UpdatedAt: at})
 	if err != nil {
 		t.Fatalf("marshal user: %v", err)

@@ -54,6 +54,9 @@ type Blog struct {
 	AllowedUserIDs []string   `json:"allowedUserIds,omitempty"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	UpdatedAt      time.Time  `json:"updatedAt"`
+	// DeletedAt is nil for a live post. A post is never removed from Firestore, only marked gone -
+	// so this is the sole record of deletion, and its absence is what "not deleted" means.
+	DeletedAt *time.Time `json:"deletedAt,omitempty"`
 }
 
 // SetSlug trims and validates a new slug before applying it. Unlike the other setters this one is
@@ -164,6 +167,11 @@ func (b Blog) Validate() error {
 		return err
 	}
 	return candidate.SetAllowedUserIDs(b.AllowedUserIDs)
+}
+
+// IsDeleted reports whether the post has been soft-deleted.
+func (b Blog) IsDeleted() bool {
+	return b.DeletedAt != nil
 }
 
 // IsOwnedBy reports whether uid may write this blog.

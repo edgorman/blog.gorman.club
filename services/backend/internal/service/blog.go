@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -8,6 +9,66 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
+
+// blogResponse is a blog as clients see it: the stored post, plus who wrote it. A username is the
+// whole of an author's public identity, so it is carried directly rather than wrapped.
+//
+// It is resolved on read rather than stored on the post, so renaming reaches every post at once
+// instead of leaving old ones attributed to a name nobody holds, and a client never has to resolve
+// one itself - which it could not do anyway, since a profile is only addressable by a username and
+// a post records its owner by uid. It is empty when the owner never created a profile, which a
+// post does not require.
+type blogResponse struct {
+	entity.Blog
+	AuthorUsername string `json:"authorUsername"`
+}
+
+// authorsFor resolves the username behind each distinct owner in blogs. Looking up owners rather
+// than posts means a feed dominated by one author costs one extra read, not one per post.
+//
+// A missing profile is an empty username rather than a failed request: posting never required one.
+func (s *Service) authorsFor(ctx context.Context, blogs []entity.Blog) (map[string]string, error) {
+	authors := make(map[string]string)
+	for _, blog := range blogs {
+		if _, resolved := authors[blog.OwnerID]; resolved {
+			continue
+		}
+
+		user, err := s.users.Get(ctx, blog.OwnerID)
+		if errors.Is(err, repository.ErrNotFound) {
+			authors[blog.OwnerID] = ""
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		authors[blog.OwnerID] = user.Username
+	}
+	return authors, nil
+}
+
+// withAuthors pairs every blog with its owner's username.
+func (s *Service) withAuthors(ctx context.Context, blogs []entity.Blog) ([]blogResponse, error) {
+	authors, err := s.authorsFor(ctx, blogs)
+	if err != nil {
+		return nil, err
+	}
+
+	responses := make([]blogResponse, 0, len(blogs))
+	for _, blog := range blogs {
+		responses = append(responses, blogResponse{Blog: blog, AuthorUsername: authors[blog.OwnerID]})
+	}
+	return responses, nil
+}
+
+// withAuthor is withAuthors for the handlers that answer with a single post.
+func (s *Service) withAuthor(ctx context.Context, blog entity.Blog) (blogResponse, error) {
+	responses, err := s.withAuthors(ctx, []entity.Blog{blog})
+	if err != nil {
+		return blogResponse{}, err
+	}
+	return responses[0], nil
+}
 
 // blogRequest is the client-settable half of a blog. ID, ownerId, and the timestamps are decided
 // by the server, so they are absent here rather than decoded and then overwritten.
@@ -79,12 +140,15 @@ func (s *Service) ListBlogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if blogs == nil {
-		// An empty collection is an empty JSON array, never null.
-		blogs = []entity.Blog{}
+	// withAuthors always builds its slice, so an empty collection stays an empty JSON array rather
+	// than becoming null - which is what the nil check that used to sit here was for.
+	responses, err := s.withAuthors(r.Context(), blogs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
 
-	writeJSON(w, http.StatusOK, blogs)
+	writeJSON(w, http.StatusOK, responses)
 }
 
 // GetBlog returns a single blog, provided the caller is allowed to read it.
@@ -103,7 +167,13 @@ func (s *Service) GetBlog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, blog)
+	response, err := s.withAuthor(r.Context(), blog)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 // CreateBlog makes a new blog owned by the caller.
@@ -119,7 +189,13 @@ func (s *Service) CreateBlog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, created)
+	response, err := s.withAuthor(r.Context(), created)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, response)
 }
 
 // UpdateBlog replaces a blog's client-settable fields. Only the owner may update it, and because
@@ -139,7 +215,13 @@ func (s *Service) UpdateBlog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, updated)
+	response, err := s.withAuthor(r.Context(), updated)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 // DeleteBlog removes a blog. Only the owner may delete it.

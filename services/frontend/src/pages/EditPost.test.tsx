@@ -11,6 +11,7 @@ const stranger = { id: 'someone-else', email: 'x@y.com', name: 'Bo' }
 const blog: Blog = {
   id: 'p1',
   ownerId: 'uid-1',
+  authorUsername: 'calm-smiling-kestrel',
   title: 'Hello world',
   content: '# Hi\n\nBody text.',
   visibility: 'public',

@@ -8,6 +8,7 @@ function post(overrides: Partial<Blog>): Blog {
   return {
     id: 'p1',
     ownerId: 'uid-1',
+    authorUsername: 'calm-smiling-kestrel',
     title: 'Untitled',
     content: 'hello',
     visibility: 'public',

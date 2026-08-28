@@ -16,7 +16,7 @@ interface Props {
 
 /** The account overlay opened from NavBar's account button: sign in/out and a New post shortcut. */
 export function AccountPanel({ onClose }: Props) {
-  const { user, authError, authReady, renderSignInButton, signOut } = useApp()
+  const { user, profile, authError, authReady, renderSignInButton, signOut } = useApp()
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -50,9 +50,11 @@ export function AccountPanel({ onClose }: Props) {
             <Link to="/new" className="btn btn-primary btn-block" onClick={onClose}>
               New post
             </Link>
-            <Link to={`/profile/${user.id}`} className="btn btn-secondary btn-block" onClick={onClose}>
-              View profile
-            </Link>
+            {profile && (
+              <Link to={`/profile/${profile.username}`} className="btn btn-secondary btn-block" onClick={onClose}>
+                View profile
+              </Link>
+            )}
             <Link to="/profile/edit" className="btn btn-secondary btn-block" onClick={onClose}>
               Edit profile
             </Link>

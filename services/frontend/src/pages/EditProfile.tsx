@@ -1,29 +1,38 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { errorMessage } from '../lib/api'
+import { ApiError, errorMessage } from '../lib/api'
 
-/** Lets a signed-in user edit their own display name and bio (PUT /users/{id}). */
+/** Lets a signed-in user edit their own username and bio (PUT /users/me). */
 export function EditProfile() {
-  const { api, user } = useApp()
+  const { api, user, refreshProfile } = useApp()
+  // The name as saved, which is where Cancel and the post-save redirect point. `draft` is what the
+  // field holds, so an unsaved edit never changes where they go.
+  const [username, setUsername] = useState<string | null>(null)
+  const [draftUsername, setDraftUsername] = useState('')
   const [loading, setLoading] = useState(true)
-  const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     if (!api || !user) return
-    api.getUser(user.id).then(
+    api.getCurrentUser().then(
       (profile) => {
-        setDisplayName(profile.displayName)
+        setUsername(profile.username)
+        setDraftUsername(profile.username)
         setBio(profile.bio ?? '')
         setLoading(false)
       },
-      () => {
-        // No profile saved yet - prefill from the Google account name so there's something to edit.
-        setDisplayName(user.name)
+      (e: unknown) => {
+        // Only a 404 means "no profile yet", which leaves the form blank to be filled in. Any
+        // other failure must not look like that: saving from a blank form would overwrite a real
+        // bio with an empty one, so the form is withheld entirely.
+        if (!(e instanceof ApiError && e.status === 404)) {
+          setLoadError(errorMessage(e, 'Failed to load your profile'))
+        }
         setLoading(false)
       },
     )
@@ -34,8 +43,15 @@ export function EditProfile() {
     setSaving(true)
     setError(null)
     api
-      .putUser(user.id, { displayName, bio })
-      .then(() => setSaved(true))
+      // An unchanged username is sent as undefined, which is what tells the backend to keep the one
+      // already held rather than to treat it as a rename.
+      .putUser({ username: draftUsername === username ? undefined : draftUsername, bio })
+      .then((profile) => {
+        setUsername(profile.username)
+        setDraftUsername(profile.username)
+        refreshProfile()
+        setSaved(true)
+      })
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to save')))
       .finally(() => setSaving(false))
   }
@@ -57,7 +73,18 @@ export function EditProfile() {
     )
   }
 
-  if (saved) return <Navigate to={`/profile/${user.id}`} replace />
+  if (loadError) {
+    return (
+      <div className="page">
+        <p role="alert" className="center-note">
+          {loadError}
+        </p>
+        <Link to="/">← Back to feed</Link>
+      </div>
+    )
+  }
+
+  if (saved && username) return <Navigate to={`/profile/${username}`} replace />
 
   return (
     <div className="page">
@@ -71,13 +98,13 @@ export function EditProfile() {
       ) : (
         <>
           <div className="field">
-            <label htmlFor="gc-display-name">Name</label>
+            <label htmlFor="gc-username">Username</label>
             <input
-              id="gc-display-name"
+              id="gc-username"
               className="input"
-              placeholder="Your name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="your-username"
+              value={draftUsername}
+              onChange={(e) => setDraftUsername(e.target.value)}
             />
           </div>
 
@@ -103,7 +130,7 @@ export function EditProfile() {
             <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
               {saving ? 'Saving…' : 'Save'}
             </button>
-            <Link to={`/profile/${user.id}`} className="btn btn-secondary">
+            <Link to={username ? `/profile/${username}` : '/'} className="btn btn-secondary">
               Cancel
             </Link>
           </div>

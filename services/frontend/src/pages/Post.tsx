@@ -15,9 +15,8 @@ type State =
 
 export function Post() {
   const { id } = useParams<{ id: string }>()
-  const { api, user, resolveAuthorName } = useApp()
+  const { api, user } = useApp()
   const [state, setState] = useState<State>(api ? { phase: 'loading' } : { phase: 'unconfigured' })
-  const [authorName, setAuthorName] = useState<string | null>(null)
 
   useEffect(() => {
     if (!api || !id) return
@@ -32,8 +31,6 @@ export function Post() {
       })
   }, [api, id])
 
-  const ownerId = state.phase === 'ready' ? state.post.ownerId : null
-
   useEffect(() => {
     if (state.phase !== 'ready') return
     const hash = window.location.hash.slice(1)
@@ -46,17 +43,6 @@ export function Post() {
     }, 0)
     return () => window.clearTimeout(timeoutId)
   }, [state.phase])
-
-  useEffect(() => {
-    if (!ownerId) return
-    let cancelled = false
-    resolveAuthorName(ownerId).then((name) => {
-      if (!cancelled) setAuthorName(name)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [ownerId, resolveAuthorName])
 
   if (state.phase === 'unconfigured') {
     return (
@@ -99,14 +85,23 @@ export function Post() {
   }
 
   const { post } = state
-  const authorHref = `/profile/${post.ownerId}`
+  // A post whose owner never set up a profile has no username, and so no profile page to link to:
+  // without one there is no address for it.
+  const authorName = post.authorUsername || 'an unnamed author'
+  const authorHref = post.authorUsername ? `/profile/${post.authorUsername}` : null
 
   return (
     <div className="page">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
-        <Link to={authorHref} className="text-muted back-link">
-          ← Back to {authorName ?? 'author'}&apos;s posts
-        </Link>
+        {authorHref ? (
+          <Link to={authorHref} className="text-muted back-link">
+            ← Back to {authorName}&apos;s posts
+          </Link>
+        ) : (
+          <Link to="/" className="text-muted back-link">
+            ← Back to feed
+          </Link>
+        )}
         {user?.id === post.ownerId && (
           <Link to={`/post/${post.id}/edit`} className="btn btn-secondary">
             Edit
@@ -119,9 +114,13 @@ export function Post() {
           {post.visibility === 'private' && <span className="tag tag-outline">private</span>}
         </div>
         <h1 className="title-post">{post.title || '(untitled)'}</h1>
-        <Link to={authorHref} className="text-muted post-author">
-          by {authorName ?? '…'}
-        </Link>
+        {authorHref ? (
+          <Link to={authorHref} className="text-muted post-author">
+            by {authorName}
+          </Link>
+        ) : (
+          <span className="text-muted post-author">by {authorName}</span>
+        )}
       </header>
       <hr className="hr" />
       <div className="post-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(post.content) }} />

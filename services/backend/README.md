@@ -33,7 +33,7 @@ Dependencies point inward: `service` and `repository` both know `entity`, `entit
 else, and only `cmd/backend` knows which concrete adapters exist. Swapping Firestore for another
 store means adding a folder under `repository/` and changing one line in `cmd/backend`.
 
-Validation lives on the entities as setters (`SetDisplayName`, `SetVisibility`, ...) that trim,
+Validation lives on the entities as setters (`SetUsername`, `SetVisibility`, ...) that trim,
 check, and only then apply, so a rejected value is never half-written. The HTTP layer decodes into
 a request struct holding only the client-settable fields and applies it through those setters -
 which is why `ownerId` and `createdAt` cannot be spoofed: they are not part of the request shape at
@@ -64,15 +64,35 @@ Firestore directly. Access rules therefore live in Go and nowhere else:
   owner, and `createdAt`/`updatedAt` come from the server rather than a
   spoofable client clock.
 
-Profiles in `/users/{userId}` are keyed by the owner's Google account ID, so
-there is no server-assigned ID to hand out and a profile is written with `PUT`
-rather than `POST`. Any signed-in caller may read a profile; `requireSelf`
-restricts writes to the profile's own owner.
+Profiles are keyed by the owner's Google account ID, so there is no
+server-assigned ID to hand out and a profile is written with `PUT` rather than
+`POST`. That key is never a URL, though: a profile is addressed by its
+**username**, which is assigned at sign-up from two descriptive words and an
+animal (`calm-smiling-kestrel`) and may be changed later. Uniqueness is enforced
+by a `usernames/{lowercased}` collection whose document key *is* the constraint,
+claimed in the same transaction as the profile write - so two callers picking the
+same name cannot both succeed.
 
-Every route below except `GET /blogs` and `GET /blogs/{id}` requires a Google
-Sign-In credential — those two run `optionalAuth` instead of `requireAuth`, so
-an anonymous request is answered as far as public posts allow rather than
-rejected. A signed-in caller sends the ID token Google issued, plus a header
+A username is the whole of a public identity. There is deliberately no display
+name: one that could be set freely would let anyone present themselves under a
+name somebody else holds, which is exactly what making the unique handle the
+visible one prevents.
+
+Writes are addressed as `/users/me` and resolve the owner from the verified
+credential, so there is no id in the path to point at somebody else's profile -
+the forbidden case is unreachable rather than merely checked. `GET /users/me`
+exists because a client holds a credential, not a username, and is how it learns
+the name it was given.
+
+Because a post records its owner by uid, and a uid resolves to nothing over
+HTTP, blog responses carry an `authorUsername` resolved at read time. It is
+empty when the owner never created a profile, which posting does not require.
+
+Every route below except `GET /blogs`, `GET /blogs/{id}` and
+`GET /users/{username}` requires a Google Sign-In credential — those three run
+`optionalAuth` instead of `requireAuth`, so an anonymous request is answered as
+far as public posts allow rather than rejected. A profile has nothing
+caller-specific to hide, so it is readable either way. A signed-in caller sends the ID token Google issued, plus a header
 naming the provider that issued it:
 
 ```
@@ -110,9 +130,10 @@ Adding another provider means extending `authProvider` and the switch in
 | POST   | `/blogs`      | Create a blog. `ownerId` is always the caller, regardless of the body. |
 | PUT    | `/blogs/{id}` | Replace a blog's fields. Caller must be the owner.                     |
 | DELETE | `/blogs/{id}` | Delete a blog. Caller must be the owner.                               |
-| GET    | `/users/{id}` | Fetch a profile. Readable by any signed-in caller.                     |
-| PUT    | `/users/{id}` | Create or replace your own profile. `id` must be the caller's uid.     |
-| DELETE | `/users/{id}` | Delete your own profile. `id` must be the caller's uid.                |
+| GET    | `/users/{username}` | Fetch a profile by username. No credential required. A 404 doubles as the availability check. |
+| GET    | `/users/me`   | Fetch your own profile, including the username you were assigned.      |
+| PUT    | `/users/me`   | Create or replace your own profile. An omitted `username` keeps the one you hold; a taken one is a `409`. |
+| DELETE | `/users/me`   | Delete your own profile, releasing its username.                       |
 
 ### Response shape
 

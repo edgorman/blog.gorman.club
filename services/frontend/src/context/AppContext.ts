@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { GoogleUser } from '../hooks/useGoogleAuth'
-import type { Api } from '../lib/api'
+import type { Api, User } from '../lib/api'
 import type { Theme } from '../lib/theme'
 
 export interface AppContextValue {
@@ -13,11 +13,16 @@ export interface AppContextValue {
   theme: Theme
   toggleTheme: () => void
   /**
-   * Looks up a display name for a blog's ownerId. GET /users/{id} accepts any caller, signed in
-   * or not, so this works for every author; only a missing/misconfigured api or a lookup failure
-   * (e.g. the profile was never created) falls back to a shortened id.
+   * The signed-in caller's own profile (GET /users/me), or null when signed out, before it loads,
+   * or when they have not set one up yet. It is how the app learns its own username: the Google
+   * identity carries only a sub, which is no longer addressable.
+   *
+   * Post authors do not come from here - a post carries its own, since resolving one from ownerId
+   * is exactly what the API no longer allows.
    */
-  resolveAuthorName: (id: string) => Promise<string>
+  profile: User | null
+  /** Re-reads `profile`, for after an edit that may have changed the username. */
+  refreshProfile: () => void
 }
 
 // Exported so tests can render `<AppContext.Provider value={...}>` with a fake value instead of

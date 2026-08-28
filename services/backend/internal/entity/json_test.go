@@ -34,11 +34,11 @@ func TestJSONFieldNamesMatchFrontendContract(t *testing.T) {
 		t.Errorf("bare blog JSON =\n %s\nwant\n %s", bare, wantBare)
 	}
 
-	user, err := json.Marshal(User{ID: "u1", DisplayName: "Ed", Bio: "hi", CreatedAt: at, UpdatedAt: at})
+	user, err := json.Marshal(User{ID: "u1", Username: "sly-dancing-monkey", Bio: "hi", CreatedAt: at, UpdatedAt: at})
 	if err != nil {
 		t.Fatalf("marshal user: %v", err)
 	}
-	wantUser := `{"id":"u1","displayName":"Ed","bio":"hi","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}`
+	wantUser := `{"id":"u1","username":"sly-dancing-monkey","bio":"hi","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}`
 	if string(user) != wantUser {
 		t.Errorf("user JSON =\n %s\nwant\n %s", user, wantUser)
 	}

@@ -6,6 +6,8 @@
 export interface Blog {
   id: string
   ownerId: string
+  /** The owner's username, resolved server-side. Empty if they never set up a profile. */
+  authorUsername: string
   title: string
   content: string
   visibility: 'public' | 'private'
@@ -16,7 +18,8 @@ export interface Blog {
 
 export interface User {
   id: string
-  displayName: string
+  /** The whole of a profile's public identity: both its address and the name readers see. */
+  username: string
   bio?: string
   createdAt: string
   updatedAt: string
@@ -78,10 +81,14 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
       request<Blog>(baseUrl, authHeaders, 'PUT', `/blogs/${id}`, blog),
     deleteBlog: (id: string) => request<void>(baseUrl, authHeaders, 'DELETE', `/blogs/${id}`),
 
-    getUser: (id: string) => request<User>(baseUrl, authHeaders, 'GET', `/users/${id}`),
-    putUser: (id: string, user: Partial<User>) =>
-      request<User>(baseUrl, authHeaders, 'PUT', `/users/${id}`, user),
-    deleteUser: (id: string) => request<void>(baseUrl, authHeaders, 'DELETE', `/users/${id}`),
+    // A profile is addressed by its username; the Google sub it is keyed by is never a URL.
+    getUser: (username: string) =>
+      request<User>(baseUrl, authHeaders, 'GET', `/users/${encodeURIComponent(username)}`),
+    // The caller's own profile needs no name: the backend takes the owner from the credential,
+    // which is also how a client discovers the username it was given at sign-up.
+    getCurrentUser: () => request<User>(baseUrl, authHeaders, 'GET', '/users/me'),
+    putUser: (user: Partial<User>) => request<User>(baseUrl, authHeaders, 'PUT', '/users/me', user),
+    deleteUser: () => request<void>(baseUrl, authHeaders, 'DELETE', '/users/me'),
   }
 }
 

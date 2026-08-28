@@ -40,10 +40,10 @@ export function AccountPanel({ onClose }: Props) {
           <>
             <div className="panel-identity">
               <div className="gc-avatar" aria-hidden="true">
-                {user.name.charAt(0).toUpperCase()}
+                {(profile?.username ?? '?').charAt(0).toUpperCase()}
               </div>
               <div>
-                <div className="panel-identity-name">{user.name}</div>
+                <div className="panel-identity-name">{profile?.username ?? 'Loading…'}</div>
                 <div className="text-muted panel-identity-email">{user.email}</div>
               </div>
             </div>

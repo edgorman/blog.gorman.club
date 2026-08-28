@@ -32,7 +32,7 @@ const UserIcon = () => (
 
 /** Sticky top bar: brand, theme toggle, and an account button that opens AccountPanel. */
 export function NavBar() {
-  const { user, theme, toggleTheme } = useApp()
+  const { user, profile, theme, toggleTheme } = useApp()
   const [accountOpen, setAccountOpen] = useState(false)
 
   return (
@@ -59,7 +59,7 @@ export function NavBar() {
           aria-expanded={accountOpen}
           onClick={() => setAccountOpen(true)}
         >
-          {user.name.charAt(0).toUpperCase()}
+          {(profile?.username ?? user.email).charAt(0).toUpperCase()}
         </button>
       ) : (
         <button

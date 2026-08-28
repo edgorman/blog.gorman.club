@@ -35,6 +35,29 @@ func TestBlogMappingRoundTrip(t *testing.T) {
 	}
 }
 
+// DeletedAt is what makes a post soft-deleted rather than gone, so the round trip must carry it
+// too - a mapping that dropped it would resurrect every deleted post on its next read.
+func TestBlogMappingRoundTrip_DeletedAt(t *testing.T) {
+	deletedAt := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	blog := entity.Blog{
+		Slug:       "hello-world",
+		OwnerID:    "owner",
+		Visibility: entity.VisibilityPublic,
+		CreatedAt:  created,
+		UpdatedAt:  updated,
+		DeletedAt:  &deletedAt,
+	}
+
+	got := blogToDocument(blog).toEntity()
+
+	if !reflect.DeepEqual(got, blog) {
+		t.Errorf("round trip = %+v, want %+v", got, blog)
+	}
+	if !got.IsDeleted() {
+		t.Error("IsDeleted() = false after round trip, want true")
+	}
+}
+
 func TestUserMappingRoundTrip(t *testing.T) {
 	user := entity.User{
 		ID:        "user-1",

@@ -28,6 +28,8 @@ export function EditPost() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleted, setDeleted] = useState(false)
 
   useEffect(() => {
     if (!api || !username || !slug) return
@@ -63,6 +65,20 @@ export function EditPost() {
       .then(() => setSaved(true))
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to save')))
       .finally(() => setSaving(false))
+  }
+
+  // The backend soft-deletes a post rather than erasing it, but nothing here lets the owner get it
+  // back, so the prompt still has to warn them as if it were permanent.
+  const remove = () => {
+    if (!api || !username || !slug) return
+    if (!window.confirm('Delete this post? This cannot be undone.')) return
+    setDeleting(true)
+    setError(null)
+    api
+      .deleteBlog(username, slug)
+      .then(() => setDeleted(true))
+      .catch((e: unknown) => setError(errorMessage(e, 'Failed to delete')))
+      .finally(() => setDeleting(false))
   }
 
   if (state.phase === 'unconfigured') {
@@ -109,6 +125,7 @@ export function EditPost() {
   }
 
   if (saved) return <Navigate to={postPath(post) ?? '/'} replace />
+  if (deleted) return <Navigate to="/" replace />
 
   return (
     <div className="page">
@@ -190,6 +207,9 @@ export function EditPost() {
         <Link to={postPath(post) ?? '/'} className="btn btn-secondary">
           Cancel
         </Link>
+        <button type="button" className="btn btn-danger" onClick={remove} disabled={deleting}>
+          {deleting ? 'Deleting…' : 'Delete'}
+        </button>
       </div>
     </div>
   )

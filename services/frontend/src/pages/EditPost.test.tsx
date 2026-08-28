@@ -25,7 +25,7 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
     getBlog: vi.fn().mockResolvedValue(blog),
     createBlog: vi.fn(),
     updateBlog: vi.fn().mockResolvedValue(blog),
-    deleteBlog: vi.fn(),
+    deleteBlog: vi.fn().mockResolvedValue(undefined),
     getUser: vi.fn(),
     putUser: vi.fn(),
     deleteUser: vi.fn(),
@@ -124,5 +124,51 @@ describe('EditPost', () => {
     })
 
     expect(await screen.findByText('Post not found.')).toBeInTheDocument()
+  })
+
+  it('deletes the post via deleteBlog once the owner confirms', async () => {
+    const api = fakeApi()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderWithApp(<EditPost />, {
+      context: { api, user: owner },
+      route: '/post/calm-smiling-kestrel/hello-world/edit',
+      path: '/post/:username/:slug/edit',
+    })
+
+    await screen.findByDisplayValue('Hello world')
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(api.deleteBlog).toHaveBeenCalledWith('calm-smiling-kestrel', 'hello-world')
+  })
+
+  it('does not delete the post when the owner declines the confirmation', async () => {
+    const api = fakeApi()
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderWithApp(<EditPost />, {
+      context: { api, user: owner },
+      route: '/post/calm-smiling-kestrel/hello-world/edit',
+      path: '/post/:username/:slug/edit',
+    })
+
+    await screen.findByDisplayValue('Hello world')
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(api.deleteBlog).not.toHaveBeenCalled()
+  })
+
+  it('shows an error and leaves the editor in place when the delete request fails', async () => {
+    const api = fakeApi({ deleteBlog: vi.fn().mockRejectedValue(new Error('nope')) })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderWithApp(<EditPost />, {
+      context: { api, user: owner },
+      route: '/post/calm-smiling-kestrel/hello-world/edit',
+      path: '/post/:username/:slug/edit',
+    })
+
+    await screen.findByDisplayValue('Hello world')
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(await screen.findByText('nope')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Hello world')).toBeInTheDocument()
   })
 })

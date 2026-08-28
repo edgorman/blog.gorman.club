@@ -49,7 +49,7 @@ func (r *fakeBlogRepository) stored(ownerID, slug string) (entity.Blog, bool) {
 
 func (r *fakeBlogRepository) Get(_ context.Context, ownerID, slug string) (entity.Blog, error) {
 	blog, ok := r.stored(ownerID, slug)
-	if !ok {
+	if !ok || blog.IsDeleted() {
 		return entity.Blog{}, repository.ErrNotFound
 	}
 	return blog, nil
@@ -58,7 +58,7 @@ func (r *fakeBlogRepository) Get(_ context.Context, ownerID, slug string) (entit
 func (r *fakeBlogRepository) List(_ context.Context, uid string) ([]entity.Blog, error) {
 	visible := make([]entity.Blog, 0, len(r.blogs))
 	for _, blog := range r.blogs {
-		if blog.CanBeReadBy(uid) {
+		if !blog.IsDeleted() && blog.CanBeReadBy(uid) {
 			visible = append(visible, blog)
 		}
 	}
@@ -95,11 +95,15 @@ func (r *fakeBlogRepository) Update(_ context.Context, blog entity.Blog) (entity
 	return blog, nil
 }
 
+// Delete mirrors the Firestore repository: the document stays, only DeletedAt is stamped.
 func (r *fakeBlogRepository) Delete(_ context.Context, ownerID, slug string) error {
-	if _, ok := r.stored(ownerID, slug); !ok {
+	blog, ok := r.stored(ownerID, slug)
+	if !ok || blog.IsDeleted() {
 		return repository.ErrNotFound
 	}
-	delete(r.blogs, fakeBlogKey(ownerID, slug))
+	now := time.Now().UTC()
+	blog.DeletedAt = &now
+	r.seed(blog)
 	return nil
 }
 

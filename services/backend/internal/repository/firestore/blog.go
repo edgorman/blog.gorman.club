@@ -33,14 +33,15 @@ func blogKey(ownerID, slug string) string {
 // blogDocument is the stored shape of a blog. It exists so Firestore's field names live here
 // rather than as a second set of tags on entity.Blog.
 type blogDocument struct {
-	OwnerID        string    `firestore:"ownerId"`
-	Slug           string    `firestore:"slug"`
-	Title          string    `firestore:"title"`
-	Content        string    `firestore:"content"`
-	Visibility     string    `firestore:"visibility"`
-	AllowedUserIDs []string  `firestore:"allowedUserIds"`
-	CreatedAt      time.Time `firestore:"createdAt"`
-	UpdatedAt      time.Time `firestore:"updatedAt"`
+	OwnerID        string     `firestore:"ownerId"`
+	Slug           string     `firestore:"slug"`
+	Title          string     `firestore:"title"`
+	Content        string     `firestore:"content"`
+	Visibility     string     `firestore:"visibility"`
+	AllowedUserIDs []string   `firestore:"allowedUserIds"`
+	CreatedAt      time.Time  `firestore:"createdAt"`
+	UpdatedAt      time.Time  `firestore:"updatedAt"`
+	DeletedAt      *time.Time `firestore:"deletedAt"`
 }
 
 func blogToDocument(blog entity.Blog) blogDocument {
@@ -53,6 +54,7 @@ func blogToDocument(blog entity.Blog) blogDocument {
 		AllowedUserIDs: blog.AllowedUserIDs,
 		CreatedAt:      blog.CreatedAt,
 		UpdatedAt:      blog.UpdatedAt,
+		DeletedAt:      blog.DeletedAt,
 	}
 }
 
@@ -68,6 +70,7 @@ func (d blogDocument) toEntity() entity.Blog {
 		AllowedUserIDs: d.AllowedUserIDs,
 		CreatedAt:      d.CreatedAt,
 		UpdatedAt:      d.UpdatedAt,
+		DeletedAt:      d.DeletedAt,
 	}
 }
 
@@ -91,7 +94,9 @@ func NewBlogRepository(client *fs.Client) *BlogRepository {
 }
 
 // Get resolves a post by the pair that names it. Both halves are required: an empty one would ask
-// Firestore about a document path it cannot parse.
+// Firestore about a document path it cannot parse. A soft-deleted post answers the same as one
+// that was never there: its document still exists, but Get is a read path and a deleted post has
+// nothing left to read.
 func (r *BlogRepository) Get(ctx context.Context, ownerID, slug string) (entity.Blog, error) {
 	if ownerID == "" || slug == "" {
 		return entity.Blog{}, repository.ErrNotFound
@@ -104,7 +109,14 @@ func (r *BlogRepository) Get(ctx context.Context, ownerID, slug string) (entity.
 	if err != nil {
 		return entity.Blog{}, err
 	}
-	return documentToBlog(doc)
+	blog, err := documentToBlog(doc)
+	if err != nil {
+		return entity.Blog{}, err
+	}
+	if blog.IsDeleted() {
+		return entity.Blog{}, repository.ErrNotFound
+	}
+	return blog, nil
 }
 
 // List runs CanBeReadBy's predicate as a Firestore OR query, so a caller never fetches a private
@@ -127,6 +139,9 @@ func (r *BlogRepository) List(ctx context.Context, uid string) ([]entity.Blog, e
 		blog, err := documentToBlog(doc)
 		if err != nil {
 			return nil, err
+		}
+		if blog.IsDeleted() {
+			continue
 		}
 		blogs = append(blogs, blog)
 	}
@@ -176,11 +191,18 @@ func (r *BlogRepository) Update(ctx context.Context, blog entity.Blog) (entity.B
 	return blog, nil
 }
 
+// Delete soft-deletes a post by stamping DeletedAt rather than removing its document: the
+// collection never loses a post, it is only marked gone. It is a single targeted field write
+// rather than a read-modify-write, so it costs no more than the hard delete it replaces.
 func (r *BlogRepository) Delete(ctx context.Context, ownerID, slug string) error {
 	if ownerID == "" || slug == "" {
 		return repository.ErrNotFound
 	}
 
-	_, err := r.blogs.Doc(blogKey(ownerID, slug)).Delete(ctx)
+	now := time.Now().UTC()
+	_, err := r.blogs.Doc(blogKey(ownerID, slug)).Update(ctx, []fs.Update{{Path: "deletedAt", Value: now}})
+	if status.Code(err) == codes.NotFound {
+		return repository.ErrNotFound
+	}
 	return err
 }

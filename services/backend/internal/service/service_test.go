@@ -118,7 +118,8 @@ func (r *fakeUserRepository) GetByUsername(_ context.Context, username string) (
 }
 
 func (r *fakeUserRepository) Put(_ context.Context, user entity.User) (entity.User, error) {
-	if err := user.Validate(); err != nil {
+	user, err := user.Normalized()
+	if err != nil {
 		return entity.User{}, err
 	}
 	if r.beforePut != nil {

@@ -33,6 +33,9 @@ func usernameHTTPRequest(username string) *http.Request {
 	return req
 }
 
+// ptr is for userRequest.Username, whose pointer distinguishes an omitted name from a cleared one.
+func ptr(s string) *string { return &s }
+
 func userRequestBody(t *testing.T, body userRequest) []byte {
 	t.Helper()
 
@@ -301,7 +304,7 @@ func TestPutUser_RenameReleasesTheOldUsername(t *testing.T) {
 	repo.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey"})
 	s := newTestService(nil, repo)
 
-	body := userRequestBody(t, userRequest{Username: "bold-leaping-lynx"})
+	body := userRequestBody(t, userRequest{Username: ptr("bold-leaping-lynx")})
 	rec := httptest.NewRecorder()
 	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
@@ -324,7 +327,7 @@ func TestPutUser_RejectsAUsernameHeldByAnotherUser(t *testing.T) {
 	repo.seed(entity.User{ID: "someone", Username: "sly-dancing-monkey"})
 	s := newTestService(nil, repo)
 
-	body := userRequestBody(t, userRequest{Username: "Sly-Dancing-Monkey"})
+	body := userRequestBody(t, userRequest{Username: ptr("Sly-Dancing-Monkey")})
 	rec := httptest.NewRecorder()
 	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
@@ -341,7 +344,7 @@ func TestPutUser_RejectsAUsernameHeldByAnotherUser(t *testing.T) {
 func TestPutUser_RejectsAMalformedUsername(t *testing.T) {
 	s := newTestService(nil, nil)
 
-	body := userRequestBody(t, userRequest{Username: "sly dancing monkey"})
+	body := userRequestBody(t, userRequest{Username: ptr("sly dancing monkey")})
 	rec := httptest.NewRecorder()
 	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
@@ -543,7 +546,7 @@ func TestGetCurrentUser_NotFound(t *testing.T) {
 func TestPutUser_RejectsAReservedUsername(t *testing.T) {
 	s := newTestService(nil, nil)
 
-	body := userRequestBody(t, userRequest{Username: "me"})
+	body := userRequestBody(t, userRequest{Username: ptr("me")})
 	rec := httptest.NewRecorder()
 	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
@@ -552,5 +555,43 @@ func TestPutUser_RejectsAReservedUsername(t *testing.T) {
 	}
 	if got := decodeAPIError(t, rec).Error; !strings.Contains(got, "username") {
 		t.Errorf("error = %q, want it to name the username field", got)
+	}
+}
+
+// A username sent as "" is a name SetUsername rejects, not an omission - answering it with a silent
+// success would leave a client believing it had cleared a field that cannot be empty.
+func TestPutUser_RejectsAnExplicitlyEmptyUsername(t *testing.T) {
+	repo := newFakeUserRepository()
+	repo.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey"})
+	s := newTestService(nil, repo)
+
+	rec := httptest.NewRecorder()
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", []byte(`{"username":"","bio":"hi"}`)))
+
+	if rec.Result().StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
+	}
+	if got := decodeAPIError(t, rec).Error; !strings.Contains(got, "username") {
+		t.Errorf("error = %q, want it to name the username field", got)
+	}
+	if got := repo.users["caller"].Bio; got != "" {
+		t.Errorf("Bio = %q, want the rejected request not to have been written", got)
+	}
+}
+
+// An omitted username keeps the one held, which is what makes a bio-only edit safe.
+func TestPutUser_OmittedUsernameKeepsTheStoredName(t *testing.T) {
+	repo := newFakeUserRepository()
+	repo.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey"})
+	s := newTestService(nil, repo)
+
+	rec := httptest.NewRecorder()
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", []byte(`{"bio":"hi"}`)))
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	if got := repo.users["caller"].Username; got != "sly-dancing-monkey" {
+		t.Errorf("Username = %q, want it unchanged", got)
 	}
 }

@@ -19,8 +19,11 @@ const usernameAttempts = 5
 // userRequest is the client-settable half of a profile; the id comes from the path and the
 // timestamps from the server.
 type userRequest struct {
-	Username string `json:"username"`
-	Bio      string `json:"bio"`
+	// A pointer so an omitted username is distinguishable from one explicitly set to "": the first
+	// keeps the name the profile holds, the second is a name SetUsername rejects. A plain string
+	// would conflate them and answer a cleared field with a silent success.
+	Username *string `json:"username"`
+	Bio      string  `json:"bio"`
 }
 
 // applyTo validates every field through the entity's setters before touching user. An omitted
@@ -28,8 +31,8 @@ type userRequest struct {
 // keeps the name it was given at sign-up without having to echo it back.
 func (u userRequest) applyTo(user *entity.User) error {
 	candidate := *user
-	if u.Username != "" {
-		if err := candidate.SetUsername(u.Username); err != nil {
+	if u.Username != nil {
+		if err := candidate.SetUsername(*u.Username); err != nil {
 			return err
 		}
 	}

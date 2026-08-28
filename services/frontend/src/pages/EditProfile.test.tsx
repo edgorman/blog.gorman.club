@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { Api, User } from '../lib/api'
+import { ApiError, type Api, type User } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { EditProfile } from './EditProfile'
 
@@ -40,10 +40,25 @@ describe('EditProfile', () => {
 
   // Nothing is prefilled before a profile exists: the username is assigned server-side on save.
   it('leaves the form empty when no profile exists yet', async () => {
-    const api = fakeApi({ getCurrentUser: vi.fn().mockRejectedValue(new Error('not found')) })
+    const api = fakeApi({
+      getCurrentUser: vi.fn().mockRejectedValue(new ApiError(404, 'user not found')),
+    })
     renderWithApp(<EditProfile />, { context: { api, user: me } })
 
     expect(await screen.findByLabelText('Username')).toHaveValue('')
+  })
+
+  // Only a 404 means "no profile yet". Any other failure must withhold the form: saving from a
+  // blank one would overwrite a real bio with an empty string.
+  it('withholds the form when the profile cannot be loaded', async () => {
+    const api = fakeApi({
+      getCurrentUser: vi.fn().mockRejectedValue(new ApiError(500, 'internal error')),
+    })
+    renderWithApp(<EditProfile />, { context: { api, user: me } })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('internal error')
+    expect(screen.queryByLabelText('Username')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
   })
 
   // No id argument: the backend takes the owner from the credential.

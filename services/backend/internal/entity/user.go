@@ -18,10 +18,11 @@ const (
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
 // reservedUsernames are names no profile may hold because a route already means something else at
-// that path. "me" addresses the caller's own profile, so a user holding it would be unreachable.
-// The current minimum length happens to exclude it too; naming it here keeps the rule from
-// depending on that coincidence.
-var reservedUsernames = map[string]bool{"me": true}
+// that path: "me" addresses the caller's own profile, and "edit" is the frontend's profile editor
+// at /profile/edit, which outranks the username wildcard beside it. A user holding either would be
+// unreachable at their own URL. The minimum length happens to exclude "me" as well; naming both
+// here keeps the rule from depending on that coincidence.
+var reservedUsernames = map[string]bool{"me": true, "edit": true}
 
 // User is a profile keyed by the owner's Google account ID (the token's `sub` claim), so profiles
 // are written with PUT rather than POSTed. Any caller, signed in or not, may read one; only its
@@ -78,17 +79,30 @@ func (u *User) SetBio(bio string) error {
 	return nil
 }
 
-// Validate reports whether the profile is in a storable state: the id is present, and every other
-// field holds a value the setters above would accept. Repositories call it before each write, so a
-// profile assembled outside the HTTP layer cannot sidestep the rules.
-func (u User) Validate() error {
+// Normalized returns the profile as it should be stored: the id present, and every other field put
+// back through its setter, so what is written is what those setters produce rather than whatever
+// was handed in. It fails for the same reasons they do.
+//
+// Returning the normalized copy rather than only checking it is what stops a profile assembled
+// outside the HTTP layer from being stored raw - " alice " would otherwise pass validation and be
+// written untrimmed, under a reservation key no lookup could match.
+func (u User) Normalized() (User, error) {
 	if u.ID == "" {
-		return ValidationError{Field: "id", Message: "is required"}
+		return User{}, ValidationError{Field: "id", Message: "is required"}
 	}
 
 	candidate := u
 	if err := candidate.SetUsername(u.Username); err != nil {
-		return err
+		return User{}, err
 	}
-	return candidate.SetBio(u.Bio)
+	if err := candidate.SetBio(u.Bio); err != nil {
+		return User{}, err
+	}
+	return candidate, nil
+}
+
+// Validate reports whether the profile is in a storable state, discarding the normalized form.
+func (u User) Validate() error {
+	_, err := u.Normalized()
+	return err
 }

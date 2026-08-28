@@ -114,14 +114,15 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (en
 // Put writes the profile and, when the username is new to it, moves the reservation across in the
 // same transaction, so the two can never disagree about who holds what.
 func (r *UserRepository) Put(ctx context.Context, user entity.User) (entity.User, error) {
-	if err := user.Validate(); err != nil {
+	user, err := user.Normalized()
+	if err != nil {
 		return entity.User{}, err
 	}
 
 	now := time.Now().UTC()
 	key := user.UsernameKey()
 
-	err := r.client.RunTransaction(ctx, func(ctx context.Context, tx *fs.Transaction) error {
+	err = r.client.RunTransaction(ctx, func(ctx context.Context, tx *fs.Transaction) error {
 		// Firestore rejects a read that follows a write within a transaction, so everything the
 		// decision below needs is fetched before anything is written.
 		var current userDocument

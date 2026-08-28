@@ -46,6 +46,7 @@ func TestUser_SetUsername(t *testing.T) {
 		{"inner space is rejected", "sly dancing monkey", "", false},
 		{"underscores are rejected", "sly_dancing_monkey", "", false},
 		{"a reserved name is rejected", "me", "", false},
+		{"the profile editor's path is reserved too", "edit", "", false},
 		{"a reserved name is rejected whatever its case", "ME", "", false},
 		{"other punctuation is rejected", "sly.dancing.monkey", "", false},
 		{"a slash is rejected", "sly/monkey", "", false},
@@ -105,5 +106,28 @@ func TestUser_Validate(t *testing.T) {
 	// Profiles are keyed by id, so one without an id has nowhere to be written.
 	if err := (User{Username: "sly-dancing-monkey"}).Validate(); err == nil {
 		t.Error("Validate with no id = nil, want an error")
+	}
+}
+
+// The repository stores what Normalized returns, so a value that only differs by surrounding space
+// must come back trimmed rather than merely being accepted - a raw " alice " would be reserved
+// under a key no lookup could match.
+func TestUser_Normalized(t *testing.T) {
+	got, err := (User{ID: "u1", Username: "  Sly-Dancing-Monkey  ", Bio: "  hi  "}).Normalized()
+	if err != nil {
+		t.Fatalf("Normalized = %v, want no error", err)
+	}
+	if got.Username != "Sly-Dancing-Monkey" {
+		t.Errorf("Username = %q, want it trimmed", got.Username)
+	}
+	if got.UsernameKey() != "sly-dancing-monkey" {
+		t.Errorf("UsernameKey = %q, want the trimmed name folded", got.UsernameKey())
+	}
+	if got.Bio != "hi" {
+		t.Errorf("Bio = %q, want it trimmed", got.Bio)
+	}
+
+	if _, err := (User{ID: "u1", Username: "me"}).Normalized(); err == nil {
+		t.Error("Normalized with a reserved username = nil, want an error")
 	}
 }

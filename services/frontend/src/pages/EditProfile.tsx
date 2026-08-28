@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { errorMessage } from '../lib/api'
+import { ApiError, errorMessage } from '../lib/api'
 
 /** Lets a signed-in user edit their own username and bio (PUT /users/me). */
 export function EditProfile() {
@@ -14,6 +14,7 @@ export function EditProfile() {
   const [bio, setBio] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -25,9 +26,15 @@ export function EditProfile() {
         setBio(profile.bio ?? '')
         setLoading(false)
       },
-      // No profile saved yet. Nothing is prefilled: saving assigns a username server-side, and
-      // there is no other field the account could supply a sensible default for.
-      () => setLoading(false),
+      (e: unknown) => {
+        // Only a 404 means "no profile yet", which leaves the form blank to be filled in. Any
+        // other failure must not look like that: saving from a blank form would overwrite a real
+        // bio with an empty one, so the form is withheld entirely.
+        if (!(e instanceof ApiError && e.status === 404)) {
+          setLoadError(errorMessage(e, 'Failed to load your profile'))
+        }
+        setLoading(false)
+      },
     )
   }, [api, user])
 
@@ -61,6 +68,17 @@ export function EditProfile() {
     return (
       <div className="page">
         <p className="center-note">Sign in to edit your profile.</p>
+        <Link to="/">← Back to feed</Link>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="page">
+        <p role="alert" className="center-note">
+          {loadError}
+        </p>
         <Link to="/">← Back to feed</Link>
       </div>
     )

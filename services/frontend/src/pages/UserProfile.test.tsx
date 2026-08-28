@@ -92,4 +92,18 @@ describe('UserProfile', () => {
     expect(await screen.findByRole('heading', { name: 'calm-smiling-kestrel' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Edit profile' })).not.toBeInTheDocument()
   })
+  // The backend folds case when resolving a username, so a link that differs only in case has to
+  // behave identically here - header, posts, and the owner's Edit link alike.
+  it('matches the author regardless of the case in the URL', async () => {
+    renderWithApp(<UserProfile />, {
+      context: { api: fakeApi(), profile: user },
+      route: '/profile/CALM-Smiling-Kestrel',
+      path: '/profile/:username',
+    })
+
+    expect(await screen.findByRole('heading', { name: 'calm-smiling-kestrel' })).toBeInTheDocument()
+    expect(screen.getByText('Mine')).toBeInTheDocument()
+    expect(screen.queryByText('Not mine')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Edit profile' })).toBeInTheDocument()
+  })
 })

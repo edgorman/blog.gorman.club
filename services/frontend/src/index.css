@@ -159,6 +159,16 @@ a {
 .btn-secondary:active {
   background: color-mix(in srgb, var(--color-text) 14%, transparent);
 }
+.btn-danger {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.btn-danger:hover {
+  background: var(--color-accent-100);
+}
+.btn-danger:active {
+  background: var(--color-accent-200);
+}
 .btn-ghost {
   color: var(--color-accent);
   padding-inline: var(--space-1);

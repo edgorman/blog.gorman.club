@@ -71,20 +71,11 @@ describe('UserProfile', () => {
     expect(await screen.findByText('No such user.')).toBeInTheDocument()
   })
 
-  // The Edit link belongs to the profile's owner, never to a signed-out visitor whose own profile
-  // is also absent.
-  it('offers Edit profile only to the owner', async () => {
+  // Editing is reached from the account panel alone, so the owner's own profile page carries no
+  // Edit link either.
+  it('leaves the Edit profile link to the account panel', async () => {
     renderWithApp(<UserProfile />, {
       context: { api: fakeApi(), profile: user },
-      route: '/profile/calm-smiling-kestrel',
-      path: '/profile/:username',
-    })
-    expect(await screen.findByRole('link', { name: 'Edit profile' })).toBeInTheDocument()
-  })
-
-  it('hides Edit profile from a signed-out visitor', async () => {
-    renderWithApp(<UserProfile />, {
-      context: { api: fakeApi() },
       route: '/profile/calm-smiling-kestrel',
       path: '/profile/:username',
     })
@@ -92,8 +83,9 @@ describe('UserProfile', () => {
     expect(await screen.findByRole('heading', { name: 'calm-smiling-kestrel' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Edit profile' })).not.toBeInTheDocument()
   })
+
   // The backend folds case when resolving a username, so a link that differs only in case has to
-  // behave identically here - header, posts, and the owner's Edit link alike.
+  // behave identically here - header and posts alike.
   it('matches the author regardless of the case in the URL', async () => {
     renderWithApp(<UserProfile />, {
       context: { api: fakeApi(), profile: user },
@@ -104,6 +96,5 @@ describe('UserProfile', () => {
     expect(await screen.findByRole('heading', { name: 'calm-smiling-kestrel' })).toBeInTheDocument()
     expect(screen.getByText('Mine')).toBeInTheDocument()
     expect(screen.queryByText('Not mine')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Edit profile' })).toBeInTheDocument()
   })
 })

@@ -23,10 +23,10 @@ const FEED_SIZE = 10
 /** A single author's recent posts, with as much of their profile as the caller is allowed to see. */
 export function UserProfile() {
   const { username } = useParams<{ username: string }>()
-  const { api, profile: own } = useApp()
-  // Lookups fold case server-side, so a link may differ in case from the stored name. Anything
-  // compared against the URL folds too, or /profile/ed-gorman would show Ed-Gorman's header with
-  // none of their posts and no Edit link for Ed themselves.
+  const { api } = useApp()
+  // Lookups fold case server-side, so a link may differ in case from the stored name. Posts are
+  // matched against the folded name too, or /profile/ed-gorman would show Ed-Gorman's header with
+  // none of their posts.
   const key = username?.toLowerCase()
   const [profile, setProfile] = useState<ProfileInfo | null>(null)
   const [missing, setMissing] = useState(false)
@@ -101,23 +101,16 @@ export function UserProfile() {
   return (
     <div className="page">
       <header className="profile-header">
-        <div className="profile-identity" style={{ justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-            <div className="profile-avatar">{(profile?.username ?? '?').charAt(0).toUpperCase()}</div>
-            <div>
-              <h1 className="title-profile">{profile?.username ?? 'Loading…'}</h1>
-              {profile?.memberSince && (
-                <span className="text-muted feed-row-date">
-                  Member since {formatDate(profile.memberSince)}
-                </span>
-              )}
-            </div>
+        <div className="profile-identity">
+          <div className="profile-avatar">{(profile?.username ?? '?').charAt(0).toUpperCase()}</div>
+          <div>
+            <h1 className="title-profile">{profile?.username ?? 'Loading…'}</h1>
+            {profile?.memberSince && (
+              <span className="text-muted feed-row-date">
+                Member since {formatDate(profile.memberSince)}
+              </span>
+            )}
           </div>
-          {own?.username.toLowerCase() === key && (
-            <Link to="/profile/edit" className="btn btn-secondary">
-              Edit profile
-            </Link>
-          )}
         </div>
         {profile?.bio && <p className="profile-bio text-muted">{profile.bio}</p>}
       </header>

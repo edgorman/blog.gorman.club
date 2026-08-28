@@ -45,7 +45,7 @@ describe('createApi', () => {
     })
 
     await expect(
-      createApi('https://api.example.com', authHeaders).deleteBlog('blog-1'),
+      createApi('https://api.example.com', authHeaders).deleteBlog('calm-smiling-kestrel', 'hello-world'),
     ).resolves.toBeUndefined()
   })
 
@@ -66,13 +66,14 @@ describe('createApi', () => {
     expect((error as ApiError).message).toBe('user not found')
   })
 
-  it('fetches a single blog by id', async () => {
-    const fetchMock = mockFetch({ json: () => Promise.resolve({ id: 'blog-1' }) })
+  // A slug is only unique within one author, so both halves go into the path.
+  it('fetches a single blog by its author and slug', async () => {
+    const fetchMock = mockFetch({ json: () => Promise.resolve({ slug: 'hello-world' }) })
 
-    await createApi('https://api.example.com', authHeaders).getBlog('blog-1')
+    await createApi('https://api.example.com', authHeaders).getBlog('calm-smiling-kestrel', 'hello-world')
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('https://api.example.com/blogs/blog-1')
+    expect(url).toBe('https://api.example.com/blogs/calm-smiling-kestrel/hello-world')
     expect(init.method).toBe('GET')
   })
 

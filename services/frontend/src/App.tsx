@@ -23,8 +23,10 @@ function App() {
       <NavBar />
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/post/:id" element={<Post />} />
-        <Route path="/post/:id/edit" element={<EditPost />} />
+        {/* A post is addressed by its author and its slug together: slugs are unique per author,
+            so the username is part of the address rather than decoration. */}
+        <Route path="/post/:username/:slug" element={<Post />} />
+        <Route path="/post/:username/:slug/edit" element={<EditPost />} />
         <Route path="/profile/edit" element={<EditProfile />} />
         <Route path="/profile/:username" element={<UserProfile />} />
         <Route path="/new" element={<NewPost />} />

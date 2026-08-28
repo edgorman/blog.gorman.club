@@ -164,20 +164,76 @@ func TestBlog_IsOwnedBy_EmptyUIDNeverMatches(t *testing.T) {
 }
 
 func TestBlog_Validate(t *testing.T) {
-	valid := Blog{OwnerID: "owner", Title: "Hello", Content: "Body", Visibility: VisibilityPublic}
+	valid := Blog{Slug: "hello", OwnerID: "owner", Title: "Hello", Content: "Body", Visibility: VisibilityPublic}
 	if err := valid.Validate(); err != nil {
 		t.Errorf("Validate = %v, want no error", err)
 	}
 
-	if err := (Blog{OwnerID: "owner", Visibility: "everyone"}).Validate(); err == nil {
+	if err := (Blog{Slug: "hello", OwnerID: "owner", Visibility: "everyone"}).Validate(); err == nil {
 		t.Error("Validate with a bad visibility = nil, want an error")
 	}
-	if err := (Blog{OwnerID: "owner", Title: strings.Repeat("a", MaxTitleLength+1), Visibility: VisibilityPublic}).Validate(); err == nil {
+	if err := (Blog{Slug: "hello", OwnerID: "owner", Title: strings.Repeat("a", MaxTitleLength+1), Visibility: VisibilityPublic}).Validate(); err == nil {
 		t.Error("Validate with an overlong title = nil, want an error")
 	}
 
 	// An ownerless blog is unwritable by anyone, so it must never reach a repository.
-	if err := (Blog{Visibility: VisibilityPublic}).Validate(); err == nil {
+	if err := (Blog{Slug: "hello", Visibility: VisibilityPublic}).Validate(); err == nil {
 		t.Error("Validate with no owner = nil, want an error")
+	}
+
+	// A blog with no slug has nowhere to be written and no URL to be read at.
+	if err := (Blog{OwnerID: "owner", Visibility: VisibilityPublic}).Validate(); err == nil {
+		t.Error("Validate with no slug = nil, want an error")
+	}
+}
+
+// SetSlug guards what the server generates and what arrives in a URL, so the cases that matter are
+// the ones that would produce an unaddressable URL or a document key Firestore refuses.
+func TestBlog_SetSlug(t *testing.T) {
+	for _, tt := range []struct {
+		input string
+		valid bool
+	}{
+		{"hello-world", true},
+		{"hello-world-k3m9x", true},
+		{"untitled", true},
+		{"2026", true},
+		// Slugs are lowercased when they are generated, so an uppercase one could only ever come
+		// from a URL - and admitting it would make two spellings of one post's address.
+		{"Hello-World", false},
+		{"", false},
+		{"   ", false},
+		{"hello world", false},
+		{"hello/world", false},
+		{"hello--world", false},
+		{"-hello", false},
+		{"hello-", false},
+		{".", false},
+		{"..", false},
+		{"__name__", false},
+		{strings.Repeat("a", MaxBlogSlugLength+1), false},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			blog := Blog{Slug: "original"}
+			err := blog.SetSlug(tt.input)
+
+			if tt.valid {
+				if err != nil {
+					t.Fatalf("SetSlug(%q) = %v, want no error", tt.input, err)
+				}
+				if blog.Slug != tt.input {
+					t.Errorf("Slug = %q, want %q", blog.Slug, tt.input)
+				}
+				return
+			}
+
+			var invalid ValidationError
+			if !errors.As(err, &invalid) {
+				t.Fatalf("SetSlug(%q) = %v, want a ValidationError", tt.input, err)
+			}
+			if blog.Slug != "original" {
+				t.Errorf("Slug = %q, want the rejected value not to be applied", blog.Slug)
+			}
+		})
 	}
 }

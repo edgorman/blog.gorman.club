@@ -11,6 +11,12 @@ var ErrNotFound = errors.New("not found")
 // learns to pick another name.
 var ErrUsernameTaken = errors.New("username taken")
 
+// ErrSlugTaken is returned by BlogRepository.Create when the author already holds the requested
+// slug. Slugs come from post titles, so one author posting twice under a title collides by design;
+// as with ErrUsernameTaken, only the write can decide whether a slug is free, so this is how a
+// caller learns to draw another.
+var ErrSlugTaken = errors.New("slug taken")
+
 // ErrAuthNotConfigured means the deployment cannot verify credentials at all - an operator
 // problem rather than a caller one.
 var ErrAuthNotConfigured = errors.New("authentication is not configured")

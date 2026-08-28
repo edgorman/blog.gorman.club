@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import type { Blog } from '../lib/api'
+import { postPath, type Blog } from '../lib/api'
 import { formatDate, snippetFrom } from '../lib/format'
 
 interface Props {
@@ -11,7 +11,8 @@ export function FeedList({ posts }: Props) {
   return (
     <div>
       {posts.map((post, i) => (
-        <FeedRow key={post.id} post={post} delayMs={i * 20} />
+        // A slug is unique to its author, so the author is part of what identifies a row.
+        <FeedRow key={`${post.ownerId}/${post.slug}`} post={post} delayMs={i * 20} />
       ))}
     </div>
   )
@@ -19,9 +20,12 @@ export function FeedList({ posts }: Props) {
 
 function FeedRow({ post, delayMs }: { post: Blog; delayMs: number }) {
   const author = post.authorUsername
+  // A post is addressed through its author, so one whose owner holds no username has nowhere to
+  // link to. It still belongs in the feed - it is simply not clickable.
+  const href = postPath(post)
 
-  return (
-    <Link to={`/post/${post.id}`} className="feed-row" style={{ animationDelay: `${delayMs}ms` }}>
+  const body = (
+    <>
       <div className="feed-row-meta">
         <span className="text-muted feed-row-date">{formatDate(post.createdAt)}</span>
         {author && <span className="text-muted feed-row-author">{author}</span>}
@@ -29,6 +33,20 @@ function FeedRow({ post, delayMs }: { post: Blog; delayMs: number }) {
       </div>
       <h2 className="feed-title">{post.title || '(untitled)'}</h2>
       <p className="text-muted feed-snippet">{snippetFrom(post.content)}</p>
+    </>
+  )
+  const style = { animationDelay: `${delayMs}ms` }
+
+  if (!href) {
+    return (
+      <div className="feed-row" style={style}>
+        {body}
+      </div>
+    )
+  }
+  return (
+    <Link to={href} className="feed-row" style={style}>
+      {body}
     </Link>
   )
 }

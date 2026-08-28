@@ -4,11 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
+
+// blogSlugAttempts bounds how many suffixed slugs a post draws once its author already holds the
+// plain form of its title. Each draw is one of about 28 million per title, so reaching even the
+// second is unlikely and exhausting all of them is not something a real post will do.
+const blogSlugAttempts = 5
 
 // blogResponse is a blog as clients see it: the stored post, plus who wrote it. A username is the
 // whole of an author's public identity, so it is carried directly rather than wrapped.
@@ -70,8 +76,52 @@ func (s *Service) withAuthor(ctx context.Context, blog entity.Blog) (blogRespons
 	return responses[0], nil
 }
 
-// blogRequest is the client-settable half of a blog. ID, ownerId, and the timestamps are decided
-// by the server, so they are absent here rather than decoded and then overwritten.
+// saveBlog writes a new post under a slug derived from its title, e.g. "Hello, world!" at
+// "hello-world". The plain slug is tried first, so an author's first post under a title reads as
+// itself in the URL; only once they already hold that slug does a post fall back to a suffixed one
+// like "hello-world-k3m9x".
+//
+// Slugs are scoped to the author (see the repository's document key), so a title is only ever
+// contended with the author's own posts - two people may both hold "hello-world". As with
+// usernames, only the write can tell whether a slug is free, so a collision is answered by drawing
+// another rather than by checking beforehand, which would be slower and still racy.
+func (s *Service) saveBlog(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
+	blog.Slug = entity.NewBlogSlug(blog.Title)
+
+	created, err := s.blogs.Create(ctx, blog)
+	if !errors.Is(err, repository.ErrSlugTaken) {
+		return created, err
+	}
+
+	for range blogSlugAttempts {
+		blog.Slug = entity.NewUniqueBlogSlug(blog.Title)
+
+		if created, err = s.blogs.Create(ctx, blog); !errors.Is(err, repository.ErrSlugTaken) {
+			return created, err
+		}
+	}
+	// Deliberately not wrapped: running out of draws is the server failing to place a post, not the
+	// caller asking for a slug somebody else holds - a client never chooses one at all.
+	return entity.Blog{}, fmt.Errorf("no free slug after %d attempts: %v", blogSlugAttempts, err)
+}
+
+// ensureAuthor gives uid a profile if it has none, so that the post about to be written can be
+// reached: a post is addressed as /blogs/{username}/{slug}, which an author with no username has
+// no form of. The client creates a profile for itself the first time it signs in, but nothing
+// stops a caller reaching this endpoint before it ever has.
+func (s *Service) ensureAuthor(ctx context.Context, uid string) error {
+	_, err := s.users.Get(ctx, uid)
+	if !errors.Is(err, repository.ErrNotFound) {
+		return err
+	}
+
+	// The profile is created with no username of its own, which is what has saveUser name it.
+	_, err = s.saveUser(ctx, entity.User{ID: uid})
+	return err
+}
+
+// blogRequest is the client-settable half of a blog. The slug, ownerId, and the timestamps are
+// decided by the server, so they are absent here rather than decoded and then overwritten.
 type blogRequest struct {
 	Title          string            `json:"title"`
 	Content        string            `json:"content"`
@@ -114,18 +164,82 @@ func decodeBlogRequest(w http.ResponseWriter, r *http.Request, blog *entity.Blog
 	return true
 }
 
-// requireOwnedBlog loads the blog named by the {id} path value and checks the caller owns it,
-// writing the error response and returning false otherwise.
-func (s *Service) requireOwnedBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
-	blog, err := s.blogs.Get(r.Context(), r.PathValue("id"))
-	if errors.Is(err, repository.ErrNotFound) {
+// blogFromPath loads the post named by the {username}/{slug} pair it is addressed by, writing a
+// 404 and returning false if either half is malformed or names nothing.
+//
+// The author is resolved through their profile because a post records its owner by uid, and a uid
+// is never public: the username is the only handle a caller holds, and the uid behind it is what
+// the post is keyed by. A malformed half answers as 404 rather than as the 400 SetUsername or
+// SetSlug would give: the path is a URL a reader followed, not a form they filled in, and a rule it
+// broke is exactly what the address of a private post looks like from the outside - so it is
+// folded into the same "nothing here" every other kind of miss gets, rather than distinguished
+// from them.
+func (s *Service) blogFromPath(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
+	notFound := func() (entity.Blog, bool) {
 		writeError(w, http.StatusNotFound, "blog not found")
 		return entity.Blog{}, false
+	}
+
+	var author entity.User
+	if err := author.SetUsername(r.PathValue("username")); err != nil {
+		return notFound()
+	}
+	var candidate entity.Blog
+	if err := candidate.SetSlug(r.PathValue("slug")); err != nil {
+		return notFound()
+	}
+
+	// A username nobody holds and a username whose holder has no such post are the same 404: the
+	// post asked for does not exist either way, and which half missed is not the caller's business.
+	owner, err := s.users.GetByUsername(r.Context(), author.Username)
+	if errors.Is(err, repository.ErrNotFound) {
+		return notFound()
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return entity.Blog{}, false
 	}
+
+	blog, err := s.blogs.Get(r.Context(), owner.ID, candidate.Slug)
+	if errors.Is(err, repository.ErrNotFound) {
+		return notFound()
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return entity.Blog{}, false
+	}
+	return blog, true
+}
+
+// requireReadableBlog loads the post the request addresses and checks the caller may read it,
+// writing a 404 and returning false otherwise. A caller who cannot read a post is shown the same
+// "not found" a missing one gets, rather than a 403 that would out its existence - which is
+// exactly what a URL built from the author's username and the post's own title lets a stranger
+// probe for.
+func (s *Service) requireReadableBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
+	blog, ok := s.blogFromPath(w, r)
+	if !ok {
+		return entity.Blog{}, false
+	}
+
+	if !blog.CanBeReadBy(uidFromContext(r.Context())) {
+		writeError(w, http.StatusNotFound, "blog not found")
+		return entity.Blog{}, false
+	}
+	return blog, true
+}
+
+// requireOwnedBlog loads the post the request addresses and checks the caller owns it, writing the
+// error response and returning false otherwise. Readability is checked first and masked as the
+// same 404 requireReadableBlog gives, since a non-owner attempting to edit or delete a post they
+// cannot even read must not learn it exists either; only once a post is visible to the caller does
+// a failed ownership check become a 403, which reveals nothing the caller did not already know.
+func (s *Service) requireOwnedBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
+	blog, ok := s.requireReadableBlog(w, r)
+	if !ok {
+		return entity.Blog{}, false
+	}
+
 	if !blog.IsOwnedBy(uidFromContext(r.Context())) {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return entity.Blog{}, false
@@ -153,17 +267,8 @@ func (s *Service) ListBlogs(w http.ResponseWriter, r *http.Request) {
 
 // GetBlog returns a single blog, provided the caller is allowed to read it.
 func (s *Service) GetBlog(w http.ResponseWriter, r *http.Request) {
-	blog, err := s.blogs.Get(r.Context(), r.PathValue("id"))
-	if errors.Is(err, repository.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "blog not found")
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if !blog.CanBeReadBy(uidFromContext(r.Context())) {
-		writeError(w, http.StatusForbidden, "forbidden")
+	blog, ok := s.requireReadableBlog(w, r)
+	if !ok {
 		return
 	}
 
@@ -176,14 +281,20 @@ func (s *Service) GetBlog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-// CreateBlog makes a new blog owned by the caller.
+// CreateBlog makes a new blog owned by the caller, addressed by their username and a slug taken
+// from its title (see saveBlog).
 func (s *Service) CreateBlog(w http.ResponseWriter, r *http.Request) {
 	blog := entity.Blog{OwnerID: uidFromContext(r.Context())}
 	if !decodeBlogRequest(w, r, &blog) {
 		return
 	}
 
-	created, err := s.blogs.Create(r.Context(), blog)
+	if err := s.ensureAuthor(r.Context(), blog.OwnerID); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	created, err := s.saveBlog(r.Context(), blog)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -199,7 +310,8 @@ func (s *Service) CreateBlog(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateBlog replaces a blog's client-settable fields. Only the owner may update it, and because
-// the request is applied to the stored blog, ownerId and createdAt carry over untouched.
+// the request is applied to the stored blog, the slug, ownerId, and createdAt carry over untouched
+// - so retitling a post changes what readers see without moving the URL it lives at.
 func (s *Service) UpdateBlog(w http.ResponseWriter, r *http.Request) {
 	blog, ok := s.requireOwnedBlog(w, r)
 	if !ok {
@@ -231,7 +343,7 @@ func (s *Service) DeleteBlog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.blogs.Delete(r.Context(), blog.ID); err != nil {
+	if err := s.blogs.Delete(r.Context(), blog.OwnerID, blog.Slug); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

@@ -6,20 +6,24 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 )
 
-// BlogRepository persists blogs. Every write is unconditional (last writer wins) and Get is
-// unfiltered - callers check read access themselves via entity.Blog.CanBeReadBy.
+// BlogRepository persists blogs. A post is identified by its owner and its slug together - slugs
+// are unique per author, not globally - so every lookup names both. Updates are unconditional
+// (last writer wins) and Get is unfiltered: callers check read access themselves via
+// entity.Blog.CanBeReadBy.
 type BlogRepository interface {
-	// Get returns ErrNotFound if id doesn't exist.
-	Get(ctx context.Context, id string) (entity.Blog, error)
+	// Get returns ErrNotFound if ownerID holds no post at slug.
+	Get(ctx context.Context, ownerID, slug string) (entity.Blog, error)
 	// List returns the blogs uid may read, newest first, applying the same predicate as
 	// entity.Blog.CanBeReadBy.
 	List(ctx context.Context, uid string) ([]entity.Blog, error)
-	// Create assigns a new ID and creation/update timestamps. It rejects a blog that fails
-	// entity.Blog.Validate without writing anything.
+	// Create writes a new blog at the slug its caller chose, stamping the creation/update
+	// timestamps. It rejects a blog that fails entity.Blog.Validate without writing anything, and
+	// returns ErrSlugTaken - again without writing - if the owner already holds that slug, so the
+	// caller can try another (see entity.NewBlogSlug).
 	Create(ctx context.Context, blog entity.Blog) (entity.Blog, error)
-	// Update overwrites the record at blog.ID and refreshes UpdatedAt, carrying CreatedAt over
-	// from blog rather than re-reading it. It rejects a blog that fails entity.Blog.Validate
+	// Update overwrites the owner's post at blog.Slug and refreshes UpdatedAt, carrying CreatedAt
+	// over from blog rather than re-reading it. It rejects a blog that fails entity.Blog.Validate
 	// without writing anything.
 	Update(ctx context.Context, blog entity.Blog) (entity.Blog, error)
-	Delete(ctx context.Context, id string) error
+	Delete(ctx context.Context, ownerID, slug string) error
 }

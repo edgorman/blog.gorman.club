@@ -8,7 +8,9 @@ markdown, a per-author profile feed, and a markdown editor for publishing.
 
 - **Feed** (`/`) — the 10 most recent posts the caller can read (every public
   post, plus the signed-in caller's own private ones), across all authors.
-- **Post** (`/post/:id`) — `GET /blogs/{id}`, rendered from markdown to HTML.
+- **Post** (`/post/:username/:slug`) — `GET /blogs/{username}/{slug}`, rendered
+  from markdown to HTML. Both halves address the post: a slug is unique to its
+  author, so `lib/api.ts`'s `postPath` builds every link from the pair.
 - **Profile** (`/profile/:id`) — that author's recent posts, plus their
   display name and bio from `GET /users/{id}` when the caller is signed in.
 - **New post** (`/new`) — a single-pane markdown editor with a Preview

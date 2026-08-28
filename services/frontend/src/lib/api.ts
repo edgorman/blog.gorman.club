@@ -4,9 +4,20 @@
  */
 
 export interface Blog {
-  id: string
+  /**
+   * Half of the post's address, the other half being `authorUsername`: the title, slugified, plus
+   * a short random suffix when the same author already holds that slug. Slugs are unique per
+   * author, so a slug on its own does not identify a post - use `postPath` to build a link. It is
+   * assigned when the post is created and never changes, so a link keeps working after a retitle;
+   * render `title`, not this.
+   */
+  slug: string
   ownerId: string
-  /** The owner's username, resolved server-side. Empty if they never set up a profile. */
+  /**
+   * The owner's username, resolved server-side, and the other half of the post's address. Empty
+   * only for a post whose owner holds no profile, which cannot happen for one published since
+   * posting started naming its author - such a post has no URL to link to.
+   */
   authorUsername: string
   title: string
   content: string
@@ -41,6 +52,16 @@ export function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
 }
 
+/**
+ * The path a post lives at, or null for one whose author has no username and so no address. Both
+ * halves are escaped: a slug is URL-safe by construction, but a username arriving from the API is
+ * not this module's to trust.
+ */
+export function postPath(post: Pick<Blog, 'authorUsername' | 'slug'>): string | null {
+  if (!post.authorUsername || !post.slug) return null
+  return `/post/${encodeURIComponent(post.authorUsername)}/${encodeURIComponent(post.slug)}`
+}
+
 export type AuthHeaders = Record<string, string>
 
 async function request<T>(
@@ -72,14 +93,24 @@ async function request<T>(
   return response.json() as Promise<T>
 }
 
+/** The API path for one post, as `postPath` is its route in the console. */
+function blogPath(username: string, slug: string): string {
+  return `/blogs/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`
+}
+
 export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
   return {
     listBlogs: () => request<Blog[]>(baseUrl, authHeaders, 'GET', '/blogs'),
-    getBlog: (id: string) => request<Blog>(baseUrl, authHeaders, 'GET', `/blogs/${id}`),
+    // A post is addressed by its author and its slug together, since slugs are only unique within
+    // one author: "hello-world" means one post under one username and another under a different
+    // one. The uid a post records its owner by is never a URL, exactly as for a profile.
+    getBlog: (username: string, slug: string) =>
+      request<Blog>(baseUrl, authHeaders, 'GET', blogPath(username, slug)),
     createBlog: (blog: Partial<Blog>) => request<Blog>(baseUrl, authHeaders, 'POST', '/blogs', blog),
-    updateBlog: (id: string, blog: Partial<Blog>) =>
-      request<Blog>(baseUrl, authHeaders, 'PUT', `/blogs/${id}`, blog),
-    deleteBlog: (id: string) => request<void>(baseUrl, authHeaders, 'DELETE', `/blogs/${id}`),
+    updateBlog: (username: string, slug: string, blog: Partial<Blog>) =>
+      request<Blog>(baseUrl, authHeaders, 'PUT', blogPath(username, slug), blog),
+    deleteBlog: (username: string, slug: string) =>
+      request<void>(baseUrl, authHeaders, 'DELETE', blogPath(username, slug)),
 
     // A profile is addressed by its username; the Google sub it is keyed by is never a URL.
     getUser: (username: string) =>

@@ -20,12 +20,24 @@ func TestRepositoriesRejectInvalidEntitiesBeforeWriting(t *testing.T) {
 	})
 
 	t.Run("blog update", func(t *testing.T) {
-		_, err := (&BlogRepository{}).Update(ctx, entity.Blog{ID: "b1", Visibility: entity.VisibilityPublic})
+		_, err := (&BlogRepository{}).Update(ctx, entity.Blog{Slug: "b1", Visibility: entity.VisibilityPublic})
 		assertValidationError(t, err)
 	})
 
 	t.Run("blog with a bad visibility", func(t *testing.T) {
-		_, err := (&BlogRepository{}).Create(ctx, entity.Blog{OwnerID: "owner", Visibility: "everyone"})
+		_, err := (&BlogRepository{}).Create(ctx, entity.Blog{Slug: "b1", OwnerID: "owner", Visibility: "everyone"})
+		assertValidationError(t, err)
+	})
+
+	// The slug is half of what names the document, so a write missing one has nowhere to go - and
+	// Firestore panics rather than errors when asked for a document at an empty path.
+	t.Run("blog with no slug", func(t *testing.T) {
+		_, err := (&BlogRepository{}).Create(ctx, entity.Blog{OwnerID: "owner", Visibility: entity.VisibilityPublic})
+		assertValidationError(t, err)
+	})
+
+	t.Run("blog with a malformed slug", func(t *testing.T) {
+		_, err := (&BlogRepository{}).Create(ctx, entity.Blog{Slug: "hello world", OwnerID: "owner", Visibility: entity.VisibilityPublic})
 		assertValidationError(t, err)
 	})
 

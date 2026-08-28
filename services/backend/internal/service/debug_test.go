@@ -65,8 +65,8 @@ func TestHandler_WriteRoutesRequireAuth(t *testing.T) {
 
 	for _, tt := range []struct{ method, path string }{
 		{http.MethodPost, "/blogs"},
-		{http.MethodPut, "/blogs/blog-1"},
-		{http.MethodDelete, "/blogs/blog-1"},
+		{http.MethodPut, "/blogs/sly-dancing-monkey/hello-world"},
+		{http.MethodDelete, "/blogs/sly-dancing-monkey/hello-world"},
 		{http.MethodGet, "/users/me"},
 		{http.MethodPut, "/users/me"},
 		{http.MethodDelete, "/users/me"},
@@ -82,16 +82,16 @@ func TestHandler_WriteRoutesRequireAuth(t *testing.T) {
 	}
 }
 
-// GET /blogs and GET /blogs/{id} admit anonymous callers - they 401 only for a credential that is
-// present but invalid, never merely absent.
+// GET /blogs and GET /blogs/{username}/{slug} admit anonymous callers - they 401 only for a
+// credential that is present but invalid, never merely absent.
 func TestHandler_BlogReadRoutesAdmitAnonymousCallers(t *testing.T) {
 	repo := newFakeBlogRepository()
-	repo.blogs["public"] = entity.Blog{ID: "public", OwnerID: "owner", Visibility: entity.VisibilityPublic}
-	s := newTestService(repo, nil)
+	repo.seed(entity.Blog{Slug: "public", OwnerID: "owner", Visibility: entity.VisibilityPublic})
+	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
 	for _, tt := range []struct{ method, path string }{
 		{http.MethodGet, "/blogs"},
-		{http.MethodGet, "/blogs/public"},
+		{http.MethodGet, "/blogs/sly-dancing-monkey/public"},
 	} {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
 			rec := httptest.NewRecorder()
@@ -104,18 +104,20 @@ func TestHandler_BlogReadRoutesAdmitAnonymousCallers(t *testing.T) {
 	}
 }
 
-// An anonymous GET /blogs/{id} for a private post is a 403, the same outcome a signed-in caller
-// who isn't the owner or on the whitelist gets - not a 401, since no credential was required.
+// An anonymous GET /blogs/{username}/{slug} for a private post is a 404, the same outcome a
+// signed-in caller who isn't the owner or on the whitelist gets - not a 401, since no credential
+// was required, and not a 403, since the address is guessable from the author's username and the
+// post's own title.
 func TestHandler_AnonymousCallerCannotReadPrivateBlog(t *testing.T) {
 	repo := newFakeBlogRepository()
-	repo.blogs["private"] = entity.Blog{ID: "private", OwnerID: "owner", Visibility: entity.VisibilityPrivate}
-	s := newTestService(repo, nil)
+	repo.seed(entity.Blog{Slug: "private", OwnerID: "owner", Visibility: entity.VisibilityPrivate})
+	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/blogs/private", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/blogs/sly-dancing-monkey/private", nil))
 
-	if rec.Result().StatusCode != http.StatusForbidden {
-		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+	if rec.Result().StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
 	}
 }
 
@@ -137,8 +139,10 @@ func TestHandler_UserReadRouteAdmitsAnonymousCallers(t *testing.T) {
 // An anonymous GET /blogs never surfaces a private post, even one owned by nobody's uid ("").
 func TestHandler_AnonymousListOnlyReturnsPublicBlogs(t *testing.T) {
 	repo := newFakeBlogRepository()
-	repo.blogs["public"] = entity.Blog{ID: "public", OwnerID: "owner", Visibility: entity.VisibilityPublic}
-	repo.blogs["private"] = entity.Blog{ID: "private", OwnerID: "owner", Visibility: entity.VisibilityPrivate}
+	repo.seed(
+		entity.Blog{Slug: "public", OwnerID: "owner", Visibility: entity.VisibilityPublic},
+		entity.Blog{Slug: "private", OwnerID: "owner", Visibility: entity.VisibilityPrivate},
+	)
 	s := newTestService(repo, nil)
 
 	rec := httptest.NewRecorder()
@@ -148,7 +152,7 @@ func TestHandler_AnonymousListOnlyReturnsPublicBlogs(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(got) != 1 || got[0].ID != "public" {
+	if len(got) != 1 || got[0].Slug != "public" {
 		t.Errorf("got %v, want only the public blog", got)
 	}
 }

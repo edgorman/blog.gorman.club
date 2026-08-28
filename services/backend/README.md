@@ -57,12 +57,22 @@ Firestore directly. Access rules therefore live in Go and nowhere else:
 - **Reads** — `Blog.CanBeReadBy` is the single definition of who may see a post
   (public posts for anyone, signed in or not; private ones for the owner or a
   uid in `allowedUserIds`). `GET /blogs` applies it as a Firestore query so
-  private posts are never fetched; `GET /blogs/{id}` applies it to the loaded
-  document. Both routes run `optionalAuth`: a signed-in caller's own private
+  private posts are never fetched; `GET /blogs/{username}/{slug}` applies it to
+  the loaded document. Both routes run `optionalAuth`: a signed-in caller's own private
   and whitelisted posts are included, but no credential is required.
 - **Writes** — `requireOwnedBlog` restricts updates and deletes to the post's
   owner, and `createdAt`/`updatedAt` come from the server rather than a
   spoofable client clock.
+
+A post has no id of its own. It is addressed by its author and a **slug** taken
+from its title (`Hello, world!` → `/blogs/{username}/hello-world`), and keyed in
+Firestore by the same pair, so uniqueness is a property of the document key
+rather than something checked: `Create` (unlike `Set`) refuses to overwrite an
+existing document. Slugs are therefore unique *per author* - two people may both
+hold `hello-world`, and only an author reusing one of their own titles falls
+back to a suffixed slug (`hello-world-k3m9x`), drawn rather than counted up
+because only the write can decide whether one is free. A slug is assigned once
+and never revised, so retitling a post leaves every link to it working.
 
 Profiles are keyed by the owner's Google account ID, so there is no
 server-assigned ID to hand out and a profile is written with `PUT` rather than
@@ -85,10 +95,14 @@ exists because a client holds a credential, not a username, and is how it learns
 the name it was given.
 
 Because a post records its owner by uid, and a uid resolves to nothing over
-HTTP, blog responses carry an `authorUsername` resolved at read time. It is
-empty when the owner never created a profile, which posting does not require.
+HTTP, blog responses carry an `authorUsername` resolved at read time - which is
+also half of the post's address, so a client needs it to build a link. Publishing
+therefore assigns a profile to an author who somehow reached `POST /blogs`
+without one, since a post by an unnamed author would have no address at all. It
+is empty only for a post written before that rule, whose owner still holds no
+profile.
 
-Every route below except `GET /blogs`, `GET /blogs/{id}` and
+Every route below except `GET /blogs`, `GET /blogs/{username}/{slug}` and
 `GET /users/{username}` requires a Google Sign-In credential — those three run
 `optionalAuth` instead of `requireAuth`, so an anonymous request is answered as
 far as public posts allow rather than rejected. A profile has nothing
@@ -126,10 +140,10 @@ Adding another provider means extending `authProvider` and the switch in
 | Method | Path          | Description                                                           |
 | ------ | ------------- | --------------------------------------------------------------------- |
 | GET    | `/blogs`      | List the blogs the caller may read, newest first. No credential required. |
-| GET    | `/blogs/{id}` | Fetch a single blog. Caller must be allowed to read it; no credential required for a public one. |
-| POST   | `/blogs`      | Create a blog. `ownerId` is always the caller, regardless of the body. |
-| PUT    | `/blogs/{id}` | Replace a blog's fields. Caller must be the owner.                     |
-| DELETE | `/blogs/{id}` | Delete a blog. Caller must be the owner.                               |
+| GET    | `/blogs/{username}/{slug}` | Fetch a single blog. Caller must be allowed to read it; no credential required for a public one. |
+| POST   | `/blogs`      | Create a blog. `ownerId` is always the caller, and the slug comes from the title, regardless of the body. |
+| PUT    | `/blogs/{username}/{slug}` | Replace a blog's fields. Caller must be the owner. The slug does not move, even when the title changes. |
+| DELETE | `/blogs/{username}/{slug}` | Delete a blog. Caller must be the owner.                  |
 | GET    | `/users/{username}` | Fetch a profile by username. No credential required. A 404 doubles as the availability check. |
 | GET    | `/users/me`   | Fetch your own profile, including the username you were assigned.      |
 | PUT    | `/users/me`   | Create or replace your own profile. An omitted `username` keeps the one you hold; a taken one is a `409`. |

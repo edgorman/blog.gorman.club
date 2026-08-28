@@ -11,7 +11,9 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
     listBlogs: vi.fn(),
     getBlog: vi.fn(),
-    createBlog: vi.fn().mockResolvedValue({ id: 'p1', title: 'My post' } as Blog),
+    createBlog: vi
+      .fn()
+      .mockResolvedValue({ slug: 'my-post', authorUsername: 'calm-smiling-kestrel', title: 'My post' } as Blog),
     updateBlog: vi.fn(),
     deleteBlog: vi.fn(),
     getUser: vi.fn(),
@@ -38,7 +40,11 @@ describe('NewPost', () => {
     expect(api.createBlog).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'My post', visibility: 'public' }),
     )
-    expect(screen.getByRole('link', { name: 'View post' })).toHaveAttribute('href', '/post/p1')
+    // The link is built from both halves of the address the backend assigned.
+    expect(screen.getByRole('link', { name: 'View post' })).toHaveAttribute(
+      'href',
+      '/post/calm-smiling-kestrel/my-post',
+    )
   })
 
   it('publishes as private when that visibility is chosen', async () => {

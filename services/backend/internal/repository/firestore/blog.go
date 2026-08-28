@@ -14,10 +14,27 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
+// blogKeySeparator joins an owner and a slug into the document key below. A slug cannot contain
+// it (entity.Blog.SetSlug admits only lowercase letters, digits, and hyphens), so no two
+// owner/slug pairs can produce the same key.
+const blogKeySeparator = "_"
+
+// blogKey is the document key a post is stored at. Scoping the key to the owner is the whole of
+// how slugs are made unique per author rather than globally: uniqueness is a property of the key
+// (Create refuses to overwrite one), so two authors can both hold "hello-world" while one author
+// cannot hold it twice.
+//
+// The key is derived rather than stored: ownerId and slug are the document's own fields, and this
+// is a function of them, so the two can never disagree about where a post lives.
+func blogKey(ownerID, slug string) string {
+	return ownerID + blogKeySeparator + slug
+}
+
 // blogDocument is the stored shape of a blog. It exists so Firestore's field names live here
-// rather than as a second set of tags on entity.Blog, whose ID is the document key, not a field.
+// rather than as a second set of tags on entity.Blog.
 type blogDocument struct {
 	OwnerID        string    `firestore:"ownerId"`
+	Slug           string    `firestore:"slug"`
 	Title          string    `firestore:"title"`
 	Content        string    `firestore:"content"`
 	Visibility     string    `firestore:"visibility"`
@@ -29,6 +46,7 @@ type blogDocument struct {
 func blogToDocument(blog entity.Blog) blogDocument {
 	return blogDocument{
 		OwnerID:        blog.OwnerID,
+		Slug:           blog.Slug,
 		Title:          blog.Title,
 		Content:        blog.Content,
 		Visibility:     string(blog.Visibility),
@@ -38,11 +56,11 @@ func blogToDocument(blog entity.Blog) blogDocument {
 	}
 }
 
-// toEntity rebuilds a blog from its stored fields; id is the document key, which Firestore keeps
-// outside the document body.
-func (d blogDocument) toEntity(id string) entity.Blog {
+// toEntity rebuilds a blog from its stored fields. Unlike a user - whose id is its document key -
+// a post carries everything that identifies it in the body, so the key is never read back.
+func (d blogDocument) toEntity() entity.Blog {
 	return entity.Blog{
-		ID:             id,
+		Slug:           d.Slug,
 		OwnerID:        d.OwnerID,
 		Title:          d.Title,
 		Content:        d.Content,
@@ -58,7 +76,7 @@ func documentToBlog(doc *fs.DocumentSnapshot) (entity.Blog, error) {
 	if err := doc.DataTo(&stored); err != nil {
 		return entity.Blog{}, err
 	}
-	return stored.toEntity(doc.Ref.ID), nil
+	return stored.toEntity(), nil
 }
 
 var _ repository.BlogRepository = (*BlogRepository)(nil)
@@ -72,8 +90,14 @@ func NewBlogRepository(client *fs.Client) *BlogRepository {
 	return &BlogRepository{blogs: client.Collection("blogs")}
 }
 
-func (r *BlogRepository) Get(ctx context.Context, id string) (entity.Blog, error) {
-	doc, err := r.blogs.Doc(id).Get(ctx)
+// Get resolves a post by the pair that names it. Both halves are required: an empty one would ask
+// Firestore about a document path it cannot parse.
+func (r *BlogRepository) Get(ctx context.Context, ownerID, slug string) (entity.Blog, error) {
+	if ownerID == "" || slug == "" {
+		return entity.Blog{}, repository.ErrNotFound
+	}
+
+	doc, err := r.blogs.Doc(blogKey(ownerID, slug)).Get(ctx)
 	if status.Code(err) == codes.NotFound {
 		return entity.Blog{}, repository.ErrNotFound
 	}
@@ -111,13 +135,13 @@ func (r *BlogRepository) List(ctx context.Context, uid string) ([]entity.Blog, e
 	return blogs, nil
 }
 
-// Create writes the post at the id the caller assigned from its title, rather than at a key
-// Firestore picks. Uniqueness is therefore a property of that key rather than something checked
-// here: Create (unlike Set) refuses to overwrite an existing document, so two posts racing for the
-// same title cannot both take it, and the loser is told to draw a suffixed id instead.
+// Create writes the post at the key its owner and slug name, rather than at one Firestore picks.
+// Uniqueness is therefore a property of that key rather than something checked here: Create
+// (unlike Set) refuses to overwrite an existing document, so two of an author's posts racing for
+// the same title cannot both take it, and the loser is told to draw a suffixed slug instead.
 func (r *BlogRepository) Create(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
-	// Validate is what guarantees the id is a non-empty, addressable document key; Doc panics on
-	// an empty one, so this has to come first.
+	// Validate is what guarantees both halves of the key are present and addressable; Doc panics
+	// on an empty path, so this has to come first.
 	if err := blog.Validate(); err != nil {
 		return entity.Blog{}, err
 	}
@@ -126,9 +150,9 @@ func (r *BlogRepository) Create(ctx context.Context, blog entity.Blog) (entity.B
 	blog.CreatedAt = now
 	blog.UpdatedAt = now
 
-	_, err := r.blogs.Doc(blog.ID).Create(ctx, blogToDocument(blog))
+	_, err := r.blogs.Doc(blogKey(blog.OwnerID, blog.Slug)).Create(ctx, blogToDocument(blog))
 	if status.Code(err) == codes.AlreadyExists {
-		return entity.Blog{}, repository.ErrBlogIDTaken
+		return entity.Blog{}, repository.ErrSlugTaken
 	}
 	if err != nil {
 		return entity.Blog{}, err
@@ -136,9 +160,9 @@ func (r *BlogRepository) Create(ctx context.Context, blog entity.Blog) (entity.B
 	return blog, nil
 }
 
-// Update overwrites the post in place, id included - which is to say the id never moves. Deriving
-// a fresh one from an edited title would break every link to the post and leave the old key free
-// for another post to take, so the id stays as it was assigned at creation.
+// Update overwrites the post in place, slug included - which is to say the post never moves.
+// Deriving a fresh slug from an edited title would break every link to the post and leave the old
+// one free for another of the author's posts to take, so it stays as it was assigned at creation.
 func (r *BlogRepository) Update(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
 	if err := blog.Validate(); err != nil {
 		return entity.Blog{}, err
@@ -146,13 +170,17 @@ func (r *BlogRepository) Update(ctx context.Context, blog entity.Blog) (entity.B
 
 	blog.UpdatedAt = time.Now().UTC()
 
-	if _, err := r.blogs.Doc(blog.ID).Set(ctx, blogToDocument(blog)); err != nil {
+	if _, err := r.blogs.Doc(blogKey(blog.OwnerID, blog.Slug)).Set(ctx, blogToDocument(blog)); err != nil {
 		return entity.Blog{}, err
 	}
 	return blog, nil
 }
 
-func (r *BlogRepository) Delete(ctx context.Context, id string) error {
-	_, err := r.blogs.Doc(id).Delete(ctx)
+func (r *BlogRepository) Delete(ctx context.Context, ownerID, slug string) error {
+	if ownerID == "" || slug == "" {
+		return repository.ErrNotFound
+	}
+
+	_, err := r.blogs.Doc(blogKey(ownerID, slug)).Delete(ctx)
 	return err
 }

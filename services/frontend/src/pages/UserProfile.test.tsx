@@ -12,7 +12,7 @@ const user: User = {
   updatedAt: '2026-01-01T00:00:00Z',
 }
 const mine: Blog = {
-  id: 'p1',
+  slug: 'mine',
   ownerId: 'uid-1',
   authorUsername: 'calm-smiling-kestrel',
   title: 'Mine',
@@ -23,7 +23,7 @@ const mine: Blog = {
 }
 const theirs: Blog = {
   ...mine,
-  id: 'p2',
+  slug: 'not-mine',
   ownerId: 'uid-2',
   authorUsername: 'bold-leaping-lynx',
   title: 'Not mine',

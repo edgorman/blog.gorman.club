@@ -6,7 +6,7 @@ import { Landing } from './Landing'
 
 function post(overrides: Partial<Blog>): Blog {
   return {
-    id: 'p1',
+    slug: 'hello-world',
     ownerId: 'uid-1',
     authorUsername: 'calm-smiling-kestrel',
     title: 'Untitled',
@@ -40,14 +40,35 @@ describe('Landing', () => {
 
   it('renders posts newest first', async () => {
     const posts = [
-      post({ id: 'old', title: 'Old post', createdAt: '2026-01-01T00:00:00Z' }),
-      post({ id: 'new', title: 'New post', createdAt: '2026-08-20T00:00:00Z' }),
+      post({ slug: 'old-post', title: 'Old post', createdAt: '2026-01-01T00:00:00Z' }),
+      post({ slug: 'new-post', title: 'New post', createdAt: '2026-08-20T00:00:00Z' }),
     ]
     const api = fakeApi({ listBlogs: vi.fn().mockResolvedValue(posts) })
     renderWithApp(<Landing />, { context: { api } })
 
     const titles = await screen.findAllByRole('heading', { level: 2 })
     expect(titles.map((t) => t.textContent)).toEqual(['New post', 'Old post'])
+  })
+
+  // A slug is only unique within one author, so a feed row has to carry the author too - a link
+  // to the slug alone would not name a post.
+  it('links each row to its author and slug', async () => {
+    const posts = [post({ slug: 'hello-world', title: 'Hello world' })]
+    const api = fakeApi({ listBlogs: vi.fn().mockResolvedValue(posts) })
+    renderWithApp(<Landing />, { context: { api } })
+
+    const row = await screen.findByRole('link', { name: /Hello world/ })
+    expect(row).toHaveAttribute('href', '/post/calm-smiling-kestrel/hello-world')
+  })
+
+  // A post whose owner holds no username has no address, so its row is not a link at all.
+  it('does not link a row whose author has no username', async () => {
+    const posts = [post({ title: 'Orphaned', authorUsername: '' })]
+    const api = fakeApi({ listBlogs: vi.fn().mockResolvedValue(posts) })
+    renderWithApp(<Landing />, { context: { api } })
+
+    expect(await screen.findByRole('heading', { name: 'Orphaned' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Orphaned/ })).not.toBeInTheDocument()
   })
 
   it('shows an empty state when there are no posts', async () => {

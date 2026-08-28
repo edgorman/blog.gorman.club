@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { ApiError, errorMessage, type Blog } from '../lib/api'
+import { ApiError, errorMessage, postPath, type Blog } from '../lib/api'
 import { renderMarkdown } from '../lib/markdown'
 
 type State =
@@ -16,7 +16,8 @@ type Mode = 'write' | 'preview'
 type Visibility = Blog['visibility']
 
 export function EditPost() {
-  const { id } = useParams<{ id: string }>()
+  // Both halves address the post: a slug belongs to one author, so neither identifies it alone.
+  const { username, slug } = useParams<{ username: string; slug: string }>()
   const { api, user } = useApp()
   const [state, setState] = useState<State>(api ? { phase: 'loading' } : { phase: 'unconfigured' })
   const [title, setTitle] = useState('')
@@ -28,10 +29,10 @@ export function EditPost() {
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    if (!api || !id) return
+    if (!api || !username || !slug) return
     setState({ phase: 'loading' })
     api
-      .getBlog(id)
+      .getBlog(username, slug)
       .then((post) => {
         setState({ phase: 'ready', post })
         setTitle(post.title)
@@ -43,16 +44,22 @@ export function EditPost() {
         if (e instanceof ApiError && e.status === 403) return setState({ phase: 'forbidden' })
         setState({ phase: 'error', message: e instanceof Error ? e.message : 'Failed to load post' })
       })
-  }, [api, id])
+  }, [api, username, slug])
 
   const save = () => {
-    if (!api || !id || state.phase !== 'ready') return
+    if (!api || !username || !slug || state.phase !== 'ready') return
     setSaving(true)
     setError(null)
     api
       // updateBlog is a full replace, so the private-post whitelist has to be carried through even
       // though this editor doesn't expose it for editing.
-      .updateBlog(id, { title, content: markdown, visibility, allowedUserIds: state.post.allowedUserIds })
+      // The slug is not editable, so a retitle saves against the address the post already has.
+      .updateBlog(username, slug, {
+        title,
+        content: markdown,
+        visibility,
+        allowedUserIds: state.post.allowedUserIds,
+      })
       .then(() => setSaved(true))
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to save')))
       .finally(() => setSaving(false))
@@ -105,12 +112,12 @@ export function EditPost() {
     return (
       <div className="page">
         <p className="center-note">You don't have permission to edit this post.</p>
-        <Link to={`/post/${post.id}`}>← Back to post</Link>
+        <Link to={postPath(post) ?? '/'}>← Back to post</Link>
       </div>
     )
   }
 
-  if (saved) return <Navigate to={`/post/${post.id}`} replace />
+  if (saved) return <Navigate to={postPath(post) ?? '/'} replace />
 
   return (
     <div className="page">
@@ -189,7 +196,7 @@ export function EditPost() {
         <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
           {saving ? 'Saving…' : 'Save'}
         </button>
-        <Link to={`/post/${post.id}`} className="btn btn-secondary">
+        <Link to={postPath(post) ?? '/'} className="btn btn-secondary">
           Cancel
         </Link>
       </div>

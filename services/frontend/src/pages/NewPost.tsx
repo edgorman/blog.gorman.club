@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GoogleSignInButton } from '../components/GoogleSignInButton'
 import { useApp } from '../context/AppContext'
-import { errorMessage, type Blog } from '../lib/api'
+import { errorMessage, postPath, type Blog } from '../lib/api'
 import { renderMarkdown } from '../lib/markdown'
 
 const STARTER_MD = `# Your title here
@@ -61,7 +61,7 @@ export function NewPost() {
             "{published.title || 'Untitled post'}" is live.
           </p>
           <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-            <Link to={`/post/${published.id}`} className="btn btn-primary">
+            <Link to={postPath(published) ?? '/'} className="btn btn-primary">
               View post
             </Link>
             <Link to="/" className="btn btn-secondary">

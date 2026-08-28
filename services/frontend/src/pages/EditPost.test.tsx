@@ -9,7 +9,7 @@ const owner = { id: 'uid-1', email: 'a@b.com', name: 'Ada' }
 const stranger = { id: 'someone-else', email: 'x@y.com', name: 'Bo' }
 
 const blog: Blog = {
-  id: 'p1',
+  slug: 'hello-world',
   ownerId: 'uid-1',
   authorUsername: 'calm-smiling-kestrel',
   title: 'Hello world',
@@ -37,8 +37,8 @@ describe('EditPost', () => {
   it('pre-fills the editor with the existing post for its owner', async () => {
     renderWithApp(<EditPost />, {
       context: { api: fakeApi(), user: owner },
-      route: '/post/p1/edit',
-      path: '/post/:id/edit',
+      route: '/post/calm-smiling-kestrel/hello-world/edit',
+      path: '/post/:username/:slug/edit',
     })
 
     expect(await screen.findByDisplayValue('Hello world')).toBeInTheDocument()
@@ -48,8 +48,8 @@ describe('EditPost', () => {
     const api = fakeApi()
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
-      route: '/post/p1/edit',
-      path: '/post/:id/edit',
+      route: '/post/calm-smiling-kestrel/hello-world/edit',
+      path: '/post/:username/:slug/edit',
     })
 
     const titleInput = await screen.findByDisplayValue('Hello world')
@@ -58,7 +58,8 @@ describe('EditPost', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(api.updateBlog).toHaveBeenCalledWith(
-      'p1',
+      'calm-smiling-kestrel',
+      'hello-world',
       expect.objectContaining({ title: 'Updated title', visibility: 'public' }),
     )
   })
@@ -68,15 +69,16 @@ describe('EditPost', () => {
     const api = fakeApi({ getBlog: vi.fn().mockResolvedValue(privateBlog) })
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
-      route: '/post/p1/edit',
-      path: '/post/:id/edit',
+      route: '/post/calm-smiling-kestrel/hello-world/edit',
+      path: '/post/:username/:slug/edit',
     })
 
     await screen.findByDisplayValue('Hello world')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(api.updateBlog).toHaveBeenCalledWith(
-      'p1',
+      'calm-smiling-kestrel',
+      'hello-world',
       expect.objectContaining({ visibility: 'private', allowedUserIds: ['u2', 'u3'] }),
     )
   })
@@ -85,22 +87,26 @@ describe('EditPost', () => {
     const api = fakeApi()
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
-      route: '/post/p1/edit',
-      path: '/post/:id/edit',
+      route: '/post/calm-smiling-kestrel/hello-world/edit',
+      path: '/post/:username/:slug/edit',
     })
 
     await screen.findByDisplayValue('Hello world')
     await userEvent.click(screen.getByRole('radio', { name: 'Private' }))
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(api.updateBlog).toHaveBeenCalledWith('p1', expect.objectContaining({ visibility: 'private' }))
+    expect(api.updateBlog).toHaveBeenCalledWith(
+      'calm-smiling-kestrel',
+      'hello-world',
+      expect.objectContaining({ visibility: 'private' }),
+    )
   })
 
   it('refuses to edit a post owned by someone else', async () => {
     renderWithApp(<EditPost />, {
       context: { api: fakeApi(), user: stranger },
-      route: '/post/p1/edit',
-      path: '/post/:id/edit',
+      route: '/post/calm-smiling-kestrel/hello-world/edit',
+      path: '/post/:username/:slug/edit',
     })
 
     expect(await screen.findByText("You don't have permission to edit this post.")).toBeInTheDocument()
@@ -110,8 +116,8 @@ describe('EditPost', () => {
     const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(403, 'forbidden')) })
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
-      route: '/post/p1/edit',
-      path: '/post/:id/edit',
+      route: '/post/calm-smiling-kestrel/hello-world/edit',
+      path: '/post/:username/:slug/edit',
     })
 
     expect(await screen.findByText('This post is private.')).toBeInTheDocument()

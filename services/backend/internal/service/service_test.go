@@ -15,12 +15,12 @@ import (
 )
 
 // fakeBlogRepository is an in-memory repository.BlogRepository. Like the real one it stores posts
-// under the id its caller chose and refuses to overwrite an occupied one, so the ids a handler
-// derives from titles are exercised here rather than assumed.
+// under their owner and slug together and refuses to overwrite an occupied pair, so the per-author
+// slugs a handler derives from titles are exercised here rather than assumed.
 type fakeBlogRepository struct {
 	blogs map[string]entity.Blog
 	// beforeCreate lets a test fail a write the in-memory state would otherwise allow, which is
-	// the only way to provoke a collision against an id that carries a random suffix.
+	// the only way to provoke a collision against a slug that carries a random suffix.
 	beforeCreate func(entity.Blog) error
 }
 
@@ -28,8 +28,27 @@ func newFakeBlogRepository() *fakeBlogRepository {
 	return &fakeBlogRepository{blogs: make(map[string]entity.Blog)}
 }
 
-func (r *fakeBlogRepository) Get(_ context.Context, id string) (entity.Blog, error) {
-	blog, ok := r.blogs[id]
+// fakeBlogKey mirrors the Firestore repository's document key: a slug belongs to one author, so
+// the same slug under two owners is two posts.
+func fakeBlogKey(ownerID, slug string) string {
+	return ownerID + "/" + slug
+}
+
+// seed stores posts as a real write would, at the key their owner and slug name.
+func (r *fakeBlogRepository) seed(blogs ...entity.Blog) {
+	for _, blog := range blogs {
+		r.blogs[fakeBlogKey(blog.OwnerID, blog.Slug)] = blog
+	}
+}
+
+// stored returns the post held at a key, for a test asserting on what a handler wrote.
+func (r *fakeBlogRepository) stored(ownerID, slug string) (entity.Blog, bool) {
+	blog, ok := r.blogs[fakeBlogKey(ownerID, slug)]
+	return blog, ok
+}
+
+func (r *fakeBlogRepository) Get(_ context.Context, ownerID, slug string) (entity.Blog, error) {
+	blog, ok := r.stored(ownerID, slug)
 	if !ok {
 		return entity.Blog{}, repository.ErrNotFound
 	}
@@ -56,15 +75,15 @@ func (r *fakeBlogRepository) Create(_ context.Context, blog entity.Blog) (entity
 			return entity.Blog{}, err
 		}
 	}
-	if _, taken := r.blogs[blog.ID]; taken {
-		return entity.Blog{}, repository.ErrBlogIDTaken
+	if _, taken := r.stored(blog.OwnerID, blog.Slug); taken {
+		return entity.Blog{}, repository.ErrSlugTaken
 	}
 
 	now := time.Now().UTC()
 	blog.CreatedAt = now
 	blog.UpdatedAt = now
 
-	r.blogs[blog.ID] = blog
+	r.seed(blog)
 	return blog, nil
 }
 
@@ -72,15 +91,15 @@ func (r *fakeBlogRepository) Update(_ context.Context, blog entity.Blog) (entity
 	if err := blog.Validate(); err != nil {
 		return entity.Blog{}, err
 	}
-	r.blogs[blog.ID] = blog
+	r.seed(blog)
 	return blog, nil
 }
 
-func (r *fakeBlogRepository) Delete(_ context.Context, id string) error {
-	if _, ok := r.blogs[id]; !ok {
+func (r *fakeBlogRepository) Delete(_ context.Context, ownerID, slug string) error {
+	if _, ok := r.stored(ownerID, slug); !ok {
 		return repository.ErrNotFound
 	}
-	delete(r.blogs, id)
+	delete(r.blogs, fakeBlogKey(ownerID, slug))
 	return nil
 }
 

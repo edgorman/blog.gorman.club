@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { ApiError, type Blog } from '../lib/api'
+import { ApiError, postPath, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
 import { renderMarkdown } from '../lib/markdown'
 
@@ -14,22 +14,23 @@ type State =
   | { phase: 'ready'; post: Blog }
 
 export function Post() {
-  const { id } = useParams<{ id: string }>()
+  // Both halves address the post: a slug belongs to one author, so neither identifies it alone.
+  const { username, slug } = useParams<{ username: string; slug: string }>()
   const { api, user } = useApp()
   const [state, setState] = useState<State>(api ? { phase: 'loading' } : { phase: 'unconfigured' })
 
   useEffect(() => {
-    if (!api || !id) return
+    if (!api || !username || !slug) return
     setState({ phase: 'loading' })
     api
-      .getBlog(id)
+      .getBlog(username, slug)
       .then((post) => setState({ phase: 'ready', post }))
       .catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 404) return setState({ phase: 'not-found' })
         if (e instanceof ApiError && e.status === 403) return setState({ phase: 'forbidden' })
         setState({ phase: 'error', message: e instanceof Error ? e.message : 'Failed to load post' })
       })
-  }, [api, id])
+  }, [api, username, slug])
 
   useEffect(() => {
     if (state.phase !== 'ready') return
@@ -89,6 +90,9 @@ export function Post() {
   // without one there is no address for it.
   const authorName = post.authorUsername || 'an unnamed author'
   const authorHref = post.authorUsername ? `/profile/${post.authorUsername}` : null
+  // The post was reached through its own address, so it has one; the guard is for the type, not
+  // for a case this page can actually be in.
+  const href = postPath(post)
 
   return (
     <div className="page">
@@ -102,8 +106,8 @@ export function Post() {
             ← Back to feed
           </Link>
         )}
-        {user?.id === post.ownerId && (
-          <Link to={`/post/${post.id}/edit`} className="btn btn-secondary">
+        {user?.id === post.ownerId && href && (
+          <Link to={`${href}/edit`} className="btn btn-secondary">
             Edit
           </Link>
         )}

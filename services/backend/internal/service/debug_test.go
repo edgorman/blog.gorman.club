@@ -67,8 +67,9 @@ func TestHandler_WriteRoutesRequireAuth(t *testing.T) {
 		{http.MethodPost, "/blogs"},
 		{http.MethodPut, "/blogs/blog-1"},
 		{http.MethodDelete, "/blogs/blog-1"},
-		{http.MethodPut, "/users/caller"},
-		{http.MethodDelete, "/users/caller"},
+		{http.MethodGet, "/users/me"},
+		{http.MethodPut, "/users/me"},
+		{http.MethodDelete, "/users/me"},
 	} {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
 			rec := httptest.NewRecorder()
@@ -118,14 +119,15 @@ func TestHandler_AnonymousCallerCannotReadPrivateBlog(t *testing.T) {
 	}
 }
 
-// GET /users/{id} admits anonymous callers too: a profile has nothing caller-specific to hide.
+// GET /users/{username} admits anonymous callers too: a profile has nothing caller-specific to
+// hide, and a username is public by nature.
 func TestHandler_UserReadRouteAdmitsAnonymousCallers(t *testing.T) {
 	repo := newFakeUserRepository()
 	repo.seed(entity.User{ID: "someone", Username: "quiet-reading-otter", DisplayName: "Someone"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/users/someone", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/users/quiet-reading-otter", nil))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)

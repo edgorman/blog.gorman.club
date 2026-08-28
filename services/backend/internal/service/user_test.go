@@ -13,16 +13,24 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
-// userHTTPRequest sets the {id} path value and caller uid explicitly, to cover owner and non-owner.
-func userHTTPRequest(method, id, uid string, body []byte) *http.Request {
+// selfHTTPRequest builds a request against /users/me carrying uid as the verified caller. There is
+// no path value to set: the handler takes the owner from the credential, which is the whole point
+// of addressing writes this way.
+func selfHTTPRequest(method, uid string, body []byte) *http.Request {
 	var req *http.Request
 	if body == nil {
-		req = httptest.NewRequest(method, "/users/"+id, nil)
+		req = httptest.NewRequest(method, "/users/me", nil)
 	} else {
-		req = httptest.NewRequest(method, "/users/"+id, bytes.NewReader(body))
+		req = httptest.NewRequest(method, "/users/me", bytes.NewReader(body))
 	}
-	req.SetPathValue("id", id)
 	return withUID(req, uid)
+}
+
+// usernameHTTPRequest sets the {username} path value the way the router would.
+func usernameHTTPRequest(username string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "/users/"+username, nil)
+	req.SetPathValue("username", username)
+	return req
 }
 
 func userRequestBody(t *testing.T, body userRequest) []byte {
@@ -35,45 +43,13 @@ func userRequestBody(t *testing.T, body userRequest) []byte {
 	return encoded
 }
 
-func TestGetUser_AnySignedInCaller(t *testing.T) {
-	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "someone", Username: "quiet-reading-otter", DisplayName: "Someone"})
-	s := newTestService(nil, repo)
-
-	rec := httptest.NewRecorder()
-	s.GetUser(rec, userHTTPRequest(http.MethodGet, "someone", "a-different-caller", nil))
-
-	if rec.Result().StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
-	}
-	var got entity.User
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if got.DisplayName != "Someone" {
-		t.Errorf("DisplayName = %q, want %q", got.DisplayName, "Someone")
-	}
-}
-
-func TestGetUser_NotFound(t *testing.T) {
-	s := newTestService(nil, nil)
-
-	rec := httptest.NewRecorder()
-	s.GetUser(rec, userHTTPRequest(http.MethodGet, "missing", "caller", nil))
-
-	if rec.Result().StatusCode != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
-	}
-	decodeAPIError(t, rec)
-}
-
 func TestPutUser_CreatesOwnProfile(t *testing.T) {
 	repo := newFakeUserRepository()
 	s := newTestService(nil, repo)
 
 	body := userRequestBody(t, userRequest{DisplayName: "Ed", Bio: "hello"})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	if rec.Result().StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -97,7 +73,7 @@ func TestPutUser_UpdatePreservesCreatedAt(t *testing.T) {
 
 	body := []byte(`{"displayName":"Edward","createdAt":"1999-01-01T00:00:00Z"}`)
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d (existing profile)", rec.Result().StatusCode, http.StatusOK)
@@ -111,20 +87,26 @@ func TestPutUser_UpdatePreservesCreatedAt(t *testing.T) {
 	}
 }
 
-func TestPutUser_ForbiddenForOtherProfile(t *testing.T) {
+// There is no id in the path to forge, so a write can only ever land on the caller's own profile.
+// This pins that: two different callers writing the same body get two separate profiles, and
+// neither can name the other.
+func TestPutUser_AlwaysWritesTheCallersOwnProfile(t *testing.T) {
 	repo := newFakeUserRepository()
+	repo.seed(entity.User{ID: "someone-else", Username: "bold-leaping-lynx", DisplayName: "Someone"})
 	s := newTestService(nil, repo)
 
 	body := userRequestBody(t, userRequest{DisplayName: "Impostor"})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "someone-else", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
-	if rec.Result().StatusCode != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+	if rec.Result().StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
 	}
-	decodeAPIError(t, rec)
-	if _, ok := repo.users["someone-else"]; ok {
-		t.Error("profile was written despite forbidden caller")
+	if got := repo.users["caller"].DisplayName; got != "Impostor" {
+		t.Errorf("caller's DisplayName = %q, want the write to have landed on the caller", got)
+	}
+	if got := repo.users["someone-else"].DisplayName; got != "Someone" {
+		t.Errorf("someone-else's DisplayName = %q, want it untouched", got)
 	}
 }
 
@@ -133,7 +115,7 @@ func TestPutUser_RejectsEmptyDisplayName(t *testing.T) {
 
 	body := userRequestBody(t, userRequest{DisplayName: "   "})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	if rec.Result().StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
@@ -148,7 +130,7 @@ func TestPutUser_RejectsOverlongBio(t *testing.T) {
 
 	body := userRequestBody(t, userRequest{DisplayName: "Ed", Bio: strings.Repeat("a", entity.MaxBioLength+1)})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	if rec.Result().StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
@@ -165,7 +147,7 @@ func TestPutUser_TrimsDisplayName(t *testing.T) {
 
 	body := userRequestBody(t, userRequest{DisplayName: "  Ed  "})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	if rec.Result().StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -181,7 +163,7 @@ func TestPutUser_MalformedBodySkipsTheLookup(t *testing.T) {
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", []byte("not json")))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", []byte("not json")))
 
 	if rec.Result().StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
@@ -197,7 +179,7 @@ func TestDeleteUser_Owner(t *testing.T) {
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
-	s.DeleteUser(rec, userHTTPRequest(http.MethodDelete, "caller", "caller", nil))
+	s.DeleteUser(rec, selfHTTPRequest(http.MethodDelete, "caller", nil))
 
 	if rec.Result().StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
@@ -207,20 +189,22 @@ func TestDeleteUser_Owner(t *testing.T) {
 	}
 }
 
-func TestDeleteUser_ForbiddenForOtherProfile(t *testing.T) {
+// The delete counterpart: the caller's credential picks the target, so another profile is never
+// reachable however the request is shaped.
+func TestDeleteUser_AlwaysDeletesTheCallersOwnProfile(t *testing.T) {
 	repo := newFakeUserRepository()
 	repo.seed(entity.User{ID: "someone-else", Username: "bold-leaping-lynx", DisplayName: "Someone"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
-	s.DeleteUser(rec, userHTTPRequest(http.MethodDelete, "someone-else", "caller", nil))
+	s.DeleteUser(rec, selfHTTPRequest(http.MethodDelete, "caller", nil))
 
-	if rec.Result().StatusCode != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+	// The caller has no profile of its own, so its own delete is the 404 - someone-else survives.
+	if rec.Result().StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
 	}
-	decodeAPIError(t, rec)
 	if _, ok := repo.users["someone-else"]; !ok {
-		t.Error("profile was deleted despite forbidden caller")
+		t.Error("another caller's profile was deleted")
 	}
 }
 
@@ -229,7 +213,7 @@ func TestDeleteUser_NotFound(t *testing.T) {
 	s := newTestService(nil, nil)
 
 	rec := httptest.NewRecorder()
-	s.DeleteUser(rec, userHTTPRequest(http.MethodDelete, "caller", "caller", nil))
+	s.DeleteUser(rec, selfHTTPRequest(http.MethodDelete, "caller", nil))
 
 	if rec.Result().StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
@@ -245,7 +229,7 @@ func TestPutUser_AssignsAGeneratedUsername(t *testing.T) {
 
 	body := userRequestBody(t, userRequest{DisplayName: "Ed"})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	if rec.Result().StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -292,7 +276,7 @@ func TestPutUser_RetriesWhenAGeneratedUsernameCollides(t *testing.T) {
 
 	body := userRequestBody(t, userRequest{DisplayName: "Ed"})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	if rec.Result().StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d after retrying past collisions", rec.Result().StatusCode, http.StatusCreated)
@@ -314,7 +298,7 @@ func TestPutUser_GivesUpAfterRepeatedCollisions(t *testing.T) {
 
 	body := userRequestBody(t, userRequest{DisplayName: "Ed"})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	if rec.Result().StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusInternalServerError)
@@ -334,7 +318,7 @@ func TestPutUser_OmittedUsernameIsUnchanged(t *testing.T) {
 
 	body := userRequestBody(t, userRequest{DisplayName: "Ed", Bio: "new bio"})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -351,7 +335,7 @@ func TestPutUser_RenameReleasesTheOldUsername(t *testing.T) {
 
 	body := userRequestBody(t, userRequest{Username: "bold-leaping-lynx", DisplayName: "Ed"})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -374,7 +358,7 @@ func TestPutUser_RejectsAUsernameHeldByAnotherUser(t *testing.T) {
 
 	body := userRequestBody(t, userRequest{Username: "Sly-Dancing-Monkey", DisplayName: "Ed"})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	// Differing only in case is still the same name, since uniqueness folds case.
 	if rec.Result().StatusCode != http.StatusConflict {
@@ -391,7 +375,7 @@ func TestPutUser_RejectsAMalformedUsername(t *testing.T) {
 
 	body := userRequestBody(t, userRequest{Username: "sly dancing monkey", DisplayName: "Ed"})
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, userHTTPRequest(http.MethodPut, "caller", "caller", body))
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
 	if rec.Result().StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
@@ -401,20 +385,13 @@ func TestPutUser_RejectsAMalformedUsername(t *testing.T) {
 	}
 }
 
-// usernameHTTPRequest sets the {username} path value the way the router would.
-func usernameHTTPRequest(username string) *http.Request {
-	req := httptest.NewRequest(http.MethodGet, "/users/by-username/"+username, nil)
-	req.SetPathValue("username", username)
-	return req
-}
-
-func TestGetUserByUsername(t *testing.T) {
+func TestGetUser(t *testing.T) {
 	repo := newFakeUserRepository()
 	repo.seed(entity.User{ID: "someone", Username: "sly-dancing-monkey", DisplayName: "Someone"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
-	s.GetUserByUsername(rec, usernameHTTPRequest("sly-dancing-monkey"))
+	s.GetUser(rec, usernameHTTPRequest("sly-dancing-monkey"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -429,13 +406,13 @@ func TestGetUserByUsername(t *testing.T) {
 }
 
 // Lookup folds case the same way uniqueness does, so a name typed any way finds its owner.
-func TestGetUserByUsername_IgnoresCase(t *testing.T) {
+func TestGetUser_IgnoresCase(t *testing.T) {
 	repo := newFakeUserRepository()
 	repo.seed(entity.User{ID: "someone", Username: "Sly-Dancing-Monkey", DisplayName: "Someone"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
-	s.GetUserByUsername(rec, usernameHTTPRequest("sly-DANCING-monkey"))
+	s.GetUser(rec, usernameHTTPRequest("sly-DANCING-monkey"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -443,11 +420,11 @@ func TestGetUserByUsername_IgnoresCase(t *testing.T) {
 }
 
 // An unclaimed name is a 404, which is also how a client asks whether one is free.
-func TestGetUserByUsername_NotFound(t *testing.T) {
+func TestGetUser_NotFound(t *testing.T) {
 	s := newTestService(nil, nil)
 
 	rec := httptest.NewRecorder()
-	s.GetUserByUsername(rec, usernameHTTPRequest("sly-dancing-monkey"))
+	s.GetUser(rec, usernameHTTPRequest("sly-dancing-monkey"))
 
 	if rec.Result().StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
@@ -457,12 +434,12 @@ func TestGetUserByUsername_NotFound(t *testing.T) {
 
 // A name that could never be claimed is answered with the rule it breaks, not a bare 404, and
 // costs no datastore lookup.
-func TestGetUserByUsername_RejectsAMalformedName(t *testing.T) {
+func TestGetUser_RejectsAMalformedName(t *testing.T) {
 	repo := newFakeUserRepository()
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
-	s.GetUserByUsername(rec, usernameHTTPRequest("no"))
+	s.GetUser(rec, usernameHTTPRequest("no"))
 
 	if rec.Result().StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
@@ -482,7 +459,7 @@ func TestDeleteUser_ReleasesTheUsername(t *testing.T) {
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()
-	s.DeleteUser(rec, userHTTPRequest(http.MethodDelete, "caller", "caller", nil))
+	s.DeleteUser(rec, selfHTTPRequest(http.MethodDelete, "caller", nil))
 
 	if rec.Result().StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
@@ -492,34 +469,103 @@ func TestDeleteUser_ReleasesTheUsername(t *testing.T) {
 	}
 }
 
-// GET /users/{id} and GET /users/by-username/{username} overlap by prefix, so this pins that the
-// router sends each to the handler it belongs to rather than matching the id route first.
-func TestHandler_RoutesUsersByIDAndByUsernameSeparately(t *testing.T) {
+// GET /users/me and GET /users/{username} overlap: "me" is a value the wildcard would match. This
+// pins that ServeMux prefers the literal, so a client asking for its own profile is never answered
+// with a lookup for a user named "me".
+func TestHandler_RoutesMeAheadOfTheUsernameWildcard(t *testing.T) {
+	repo := newFakeUserRepository()
+	repo.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey", DisplayName: "Ed"})
+	repo.seed(entity.User{ID: "someone", Username: "me", DisplayName: "Someone Called Me"})
+	handler := newTestService(nil, repo).Handler()
+
+	// fakeVerifier resolves any credential to uid "caller", so this reaches GetCurrentUser as the
+	// signed-in caller rather than as a lookup of the profile named "me".
+	req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
+	req.Header.Set(authorizationHeader, bearerPrefix+"token")
+	req.Header.Set(authorizationProviderHeader, string(providerGoogle))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	var got entity.User
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.ID != "caller" {
+		t.Errorf("ID = %q, want the caller's own profile, not the one named \"me\"", got.ID)
+	}
+}
+
+// The wildcard still serves everybody else, anonymously.
+func TestHandler_RoutesUsernameLookups(t *testing.T) {
 	repo := newFakeUserRepository()
 	repo.seed(entity.User{ID: "someone", Username: "sly-dancing-monkey", DisplayName: "Someone"})
 	handler := newTestService(nil, repo).Handler()
 
-	for _, tt := range []struct {
-		name string
-		path string
-	}{
-		{"by id", "/users/someone"},
-		{"by username", "/users/by-username/sly-dancing-monkey"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			rec := httptest.NewRecorder()
-			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tt.path, nil))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/users/sly-dancing-monkey", nil))
 
-			if rec.Result().StatusCode != http.StatusOK {
-				t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
-			}
-			var got entity.User
-			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-				t.Fatalf("decode response: %v", err)
-			}
-			if got.ID != "someone" {
-				t.Errorf("ID = %q, want %q", got.ID, "someone")
-			}
-		})
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
+	var got entity.User
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.ID != "someone" {
+		t.Errorf("ID = %q, want %q", got.ID, "someone")
+	}
+}
+
+// A profile is never addressable by the Google sub it is keyed by.
+func TestHandler_RejectsLookupByID(t *testing.T) {
+	repo := newFakeUserRepository()
+	repo.seed(entity.User{ID: "123456789", Username: "sly-dancing-monkey", DisplayName: "Someone"})
+	handler := newTestService(nil, repo).Handler()
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/users/123456789", nil))
+
+	// The id matches the username wildcard, so it reaches GetUser and finds nothing claiming it.
+	if rec.Result().StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestGetCurrentUser(t *testing.T) {
+	repo := newFakeUserRepository()
+	repo.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey", DisplayName: "Ed"})
+	s := newTestService(nil, repo)
+
+	rec := httptest.NewRecorder()
+	s.GetCurrentUser(rec, selfHTTPRequest(http.MethodGet, "caller", nil))
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	var got entity.User
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	// This route is how a client learns the name it was given, so the username has to come back.
+	if got.Username != "sly-dancing-monkey" {
+		t.Errorf("Username = %q, want %q", got.Username, "sly-dancing-monkey")
+	}
+}
+
+// A signed-in caller who has not created a profile yet gets a 404, which is how the frontend knows
+// to send them through profile setup.
+func TestGetCurrentUser_NotFound(t *testing.T) {
+	s := newTestService(nil, nil)
+
+	rec := httptest.NewRecorder()
+	s.GetCurrentUser(rec, selfHTTPRequest(http.MethodGet, "caller", nil))
+
+	if rec.Result().StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
+	}
+	decodeAPIError(t, rec)
 }

@@ -38,7 +38,7 @@ func (s *Service) Handler() http.Handler {
 	authed := func(h http.HandlerFunc) http.Handler {
 		return requireAuth(s.verifier, h)
 	}
-	// GET /blogs, GET /blogs/{id}, and GET /users/{id} admit anonymous callers. Blog visibility is
+	// GET /blogs, GET /blogs/{id}, and GET /users/{username} admit anonymous callers. Blog visibility is
 	// enforced downstream: entity.Blog.CanBeReadBy already treats the zero Caller as seeing only
 	// public posts, so no handler change was needed to support this - only relaxing which requests
 	// reach it. A profile has nothing caller-specific to hide, so GetUser needed no change either -
@@ -56,10 +56,14 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("POST /blogs", authed(s.CreateBlog))
 	mux.Handle("PUT /blogs/{id}", authed(s.UpdateBlog))
 	mux.Handle("DELETE /blogs/{id}", authed(s.DeleteBlog))
-	mux.Handle("GET /users/{id}", optional(s.GetUser))
-	mux.Handle("GET /users/by-username/{username}", optional(s.GetUserByUsername))
-	mux.Handle("PUT /users/{id}", authed(s.PutUser))
-	mux.Handle("DELETE /users/{id}", authed(s.DeleteUser))
+	// A profile is addressed by its username, never by the Google `sub` it is keyed by, so the id
+	// stays an internal detail rather than a public handle. "me" is the one exception, for a client
+	// that holds a credential but does not yet know which name it was given; ServeMux prefers that
+	// literal over the wildcard, so it wins without any ordering care here.
+	mux.Handle("GET /users/me", authed(s.GetCurrentUser))
+	mux.Handle("PUT /users/me", authed(s.PutUser))
+	mux.Handle("DELETE /users/me", authed(s.DeleteUser))
+	mux.Handle("GET /users/{username}", optional(s.GetUser))
 
 	// CORS wraps the whole mux rather than individual routes: routes are registered under a
 	// specific method, so ServeMux would 405 an OPTIONS preflight before a per-route wrapper ran.

@@ -8,27 +8,35 @@ import (
 )
 
 const (
-	MinUsernameLength    = 3
-	MaxUsernameLength    = 30
-	MaxDisplayNameLength = 100
-	MaxBioLength         = 500
+	MinUsernameLength = 3
+	MaxUsernameLength = 30
+	MaxBioLength      = 500
 )
 
-// usernamePattern is deliberately ASCII-only: usernames end up in URLs and are how one person
-// refers to another, so the alphabet stays narrow enough that two names cannot look alike.
+// usernamePattern is deliberately ASCII-only: a username is the whole of a public identity here,
+// so the alphabet stays narrow enough that two names cannot look alike.
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
+
+// reservedUsernames are names no profile may hold because a route already means something else at
+// that path. "me" addresses the caller's own profile, so a user holding it would be unreachable.
+// The current minimum length happens to exclude it too; naming it here keeps the rule from
+// depending on that coincidence.
+var reservedUsernames = map[string]bool{"me": true}
 
 // User is a profile keyed by the owner's Google account ID (the token's `sub` claim), so profiles
 // are written with PUT rather than POSTed. Any caller, signed in or not, may read one; only its
-// owner may write it. Username is the handle a profile is looked up by instead of that opaque id,
-// and is assigned at sign-up by NewUsername.
+// owner may write it.
+//
+// Username is the whole of a profile's public identity - both the handle it is looked up by and
+// the name readers see. There is deliberately no separate display name: one that could be set
+// freely would let anyone present themselves under a name somebody else holds, which is exactly
+// what making the unique handle the visible one prevents.
 type User struct {
-	ID          string    `json:"id"`
-	Username    string    `json:"username"`
-	DisplayName string    `json:"displayName"`
-	Bio         string    `json:"bio,omitempty"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID        string    `json:"id"`
+	Username  string    `json:"username"`
+	Bio       string    `json:"bio,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // SetUsername trims and validates a new username before applying it.
@@ -41,6 +49,8 @@ func (u *User) SetUsername(username string) error {
 		return ValidationError{Field: "username", Message: "is required"}
 	case !usernamePattern.MatchString(trimmed):
 		return ValidationError{Field: "username", Message: "must contain only letters, digits, and hyphens"}
+	case reservedUsernames[strings.ToLower(trimmed)]:
+		return ValidationError{Field: "username", Message: "is reserved"}
 	case len(trimmed) < MinUsernameLength:
 		return ValidationError{Field: "username", Message: minLengthMessage(MinUsernameLength)}
 	case len(trimmed) > MaxUsernameLength:
@@ -55,20 +65,6 @@ func (u *User) SetUsername(username string) error {
 // from being claimed as two different handles, while the username itself is stored as it was typed.
 func (u User) UsernameKey() string {
 	return strings.ToLower(u.Username)
-}
-
-// SetDisplayName trims and validates a new display name before applying it.
-func (u *User) SetDisplayName(name string) error {
-	trimmed := strings.TrimSpace(name)
-	switch {
-	case trimmed == "":
-		return ValidationError{Field: "displayName", Message: "is required"}
-	case utf8.RuneCountInString(trimmed) > MaxDisplayNameLength:
-		return ValidationError{Field: "displayName", Message: lengthMessage(MaxDisplayNameLength)}
-	}
-
-	u.DisplayName = trimmed
-	return nil
 }
 
 // SetBio trims and validates a new bio before applying it. An empty bio is allowed.
@@ -92,9 +88,6 @@ func (u User) Validate() error {
 
 	candidate := u
 	if err := candidate.SetUsername(u.Username); err != nil {
-		return err
-	}
-	if err := candidate.SetDisplayName(u.DisplayName); err != nil {
 		return err
 	}
 	return candidate.SetBio(u.Bio)

@@ -3,16 +3,11 @@
  * useGoogleAuth, so this module knows nothing about any auth provider.
  */
 
-/** The public half of a post's owner, resolved server-side. Null if they never set up a profile. */
-export interface BlogAuthor {
-  username: string
-  displayName: string
-}
-
 export interface Blog {
   id: string
   ownerId: string
-  author: BlogAuthor | null
+  /** The owner's username, resolved server-side. Empty if they never set up a profile. */
+  authorUsername: string
   title: string
   content: string
   visibility: 'public' | 'private'
@@ -23,8 +18,8 @@ export interface Blog {
 
 export interface User {
   id: string
+  /** The whole of a profile's public identity: both its address and the name readers see. */
   username: string
-  displayName: string
   bio?: string
   createdAt: string
   updatedAt: string

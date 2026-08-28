@@ -18,7 +18,7 @@ export function FeedList({ posts }: Props) {
 }
 
 function FeedRow({ post, delayMs }: { post: Blog; delayMs: number }) {
-  const author = post.author?.displayName
+  const author = post.authorUsername
 
   return (
     <Link to={`/post/${post.id}`} className="feed-row" style={{ animationDelay: `${delayMs}ms` }}>

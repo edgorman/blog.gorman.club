@@ -3,12 +3,14 @@ import { Link, Navigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { errorMessage } from '../lib/api'
 
-/** Lets a signed-in user edit their own display name and bio (PUT /users/me). */
+/** Lets a signed-in user edit their own username and bio (PUT /users/me). */
 export function EditProfile() {
   const { api, user, refreshProfile } = useApp()
+  // The name as saved, which is where Cancel and the post-save redirect point. `draft` is what the
+  // field holds, so an unsaved edit never changes where they go.
   const [username, setUsername] = useState<string | null>(null)
+  const [draftUsername, setDraftUsername] = useState('')
   const [loading, setLoading] = useState(true)
-  const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -19,15 +21,13 @@ export function EditProfile() {
     api.getCurrentUser().then(
       (profile) => {
         setUsername(profile.username)
-        setDisplayName(profile.displayName)
+        setDraftUsername(profile.username)
         setBio(profile.bio ?? '')
         setLoading(false)
       },
-      () => {
-        // No profile saved yet - prefill from the Google account name so there's something to edit.
-        setDisplayName(user.name)
-        setLoading(false)
-      },
+      // No profile saved yet. Nothing is prefilled: saving assigns a username server-side, and
+      // there is no other field the account could supply a sensible default for.
+      () => setLoading(false),
     )
   }, [api, user])
 
@@ -36,11 +36,12 @@ export function EditProfile() {
     setSaving(true)
     setError(null)
     api
-      // The username is left out: it is assigned at sign-up, and omitting it keeps the one they
-      // already hold rather than asking for a new one.
-      .putUser({ displayName, bio })
+      // An unchanged username is sent as undefined, which is what tells the backend to keep the one
+      // already held rather than to treat it as a rename.
+      .putUser({ username: draftUsername === username ? undefined : draftUsername, bio })
       .then((profile) => {
         setUsername(profile.username)
+        setDraftUsername(profile.username)
         refreshProfile()
         setSaved(true)
       })
@@ -79,13 +80,13 @@ export function EditProfile() {
       ) : (
         <>
           <div className="field">
-            <label htmlFor="gc-display-name">Name</label>
+            <label htmlFor="gc-username">Username</label>
             <input
-              id="gc-display-name"
+              id="gc-username"
               className="input"
-              placeholder="Your name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="your-username"
+              value={draftUsername}
+              onChange={(e) => setDraftUsername(e.target.value)}
             />
           </div>
 

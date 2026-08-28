@@ -344,13 +344,13 @@ func TestDeleteBlog_Owner(t *testing.T) {
 	}
 }
 
-// A post carries its author, because a client cannot resolve one: profiles are addressable only by
-// username, and a post records its owner by uid.
+// A post carries its author's username, because a client cannot resolve one: profiles are
+// addressable only by username, and a post records its owner by uid.
 func TestGetBlog_CarriesTheAuthor(t *testing.T) {
 	blogs := newFakeBlogRepository()
 	blogs.blogs["b1"] = entity.Blog{ID: "b1", OwnerID: "owner", Visibility: entity.VisibilityPublic}
 	users := newFakeUserRepository()
-	users.seed(entity.User{ID: "owner", Username: "sly-dancing-monkey", DisplayName: "Ed"})
+	users.seed(entity.User{ID: "owner", Username: "sly-dancing-monkey"})
 	s := newTestService(blogs, users)
 
 	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs/b1", nil), "reader")
@@ -365,18 +365,12 @@ func TestGetBlog_CarriesTheAuthor(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.Author == nil {
-		t.Fatal("Author = nil, want the owner's profile")
-	}
-	if got.Author.Username != "sly-dancing-monkey" {
-		t.Errorf("Author.Username = %q, want %q", got.Author.Username, "sly-dancing-monkey")
-	}
-	if got.Author.DisplayName != "Ed" {
-		t.Errorf("Author.DisplayName = %q, want %q", got.Author.DisplayName, "Ed")
+	if got.AuthorUsername != "sly-dancing-monkey" {
+		t.Errorf("AuthorUsername = %q, want %q", got.AuthorUsername, "sly-dancing-monkey")
 	}
 }
 
-// Posting never required a profile, so an owner without one is a null author rather than a failure.
+// Posting never required a profile, so an owner without one is an empty author, not a failure.
 func TestGetBlog_NullAuthorWhenTheOwnerHasNoProfile(t *testing.T) {
 	blogs := newFakeBlogRepository()
 	blogs.blogs["b1"] = entity.Blog{ID: "b1", OwnerID: "owner", Visibility: entity.VisibilityPublic}
@@ -394,8 +388,8 @@ func TestGetBlog_NullAuthorWhenTheOwnerHasNoProfile(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.Author != nil {
-		t.Errorf("Author = %+v, want null", got.Author)
+	if got.AuthorUsername != "" {
+		t.Errorf("AuthorUsername = %q, want it empty", got.AuthorUsername)
 	}
 }
 
@@ -406,7 +400,7 @@ func TestListBlogs_ResolvesEachAuthorOnce(t *testing.T) {
 		blogs.blogs[id] = entity.Blog{ID: id, OwnerID: "owner", Visibility: entity.VisibilityPublic}
 	}
 	users := newFakeUserRepository()
-	users.seed(entity.User{ID: "owner", Username: "sly-dancing-monkey", DisplayName: "Ed"})
+	users.seed(entity.User{ID: "owner", Username: "sly-dancing-monkey"})
 	s := newTestService(blogs, users)
 
 	rec := httptest.NewRecorder()
@@ -423,8 +417,8 @@ func TestListBlogs_ResolvesEachAuthorOnce(t *testing.T) {
 		t.Fatalf("posts = %d, want 3", len(got))
 	}
 	for _, post := range got {
-		if post.Author == nil || post.Author.Username != "sly-dancing-monkey" {
-			t.Fatalf("post %s carries author %+v, want the owner's profile", post.ID, post.Author)
+		if post.AuthorUsername != "sly-dancing-monkey" {
+			t.Fatalf("post %s carries author %q, want the owner's username", post.ID, post.AuthorUsername)
 		}
 	}
 	if users.gets != 1 {

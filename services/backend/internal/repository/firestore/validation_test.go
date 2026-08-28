@@ -30,22 +30,22 @@ func TestRepositoriesRejectInvalidEntitiesBeforeWriting(t *testing.T) {
 	})
 
 	t.Run("user put", func(t *testing.T) {
-		_, err := (&UserRepository{}).Put(ctx, entity.User{Username: "sly-dancing-monkey", DisplayName: "Ed"})
-		assertValidationError(t, err)
-	})
-
-	t.Run("user with a blank display name", func(t *testing.T) {
-		_, err := (&UserRepository{}).Put(ctx, entity.User{ID: "u1", Username: "sly-dancing-monkey", DisplayName: "  "})
+		_, err := (&UserRepository{}).Put(ctx, entity.User{Username: "sly-dancing-monkey"})
 		assertValidationError(t, err)
 	})
 
 	t.Run("user with no username", func(t *testing.T) {
-		_, err := (&UserRepository{}).Put(ctx, entity.User{ID: "u1", DisplayName: "Ed"})
+		_, err := (&UserRepository{}).Put(ctx, entity.User{ID: "u1"})
 		assertValidationError(t, err)
 	})
 
 	t.Run("user with a malformed username", func(t *testing.T) {
-		_, err := (&UserRepository{}).Put(ctx, entity.User{ID: "u1", Username: "sly dancing monkey", DisplayName: "Ed"})
+		_, err := (&UserRepository{}).Put(ctx, entity.User{ID: "u1", Username: "sly dancing monkey"})
+		assertValidationError(t, err)
+	})
+
+	t.Run("user with a reserved username", func(t *testing.T) {
+		_, err := (&UserRepository{}).Put(ctx, entity.User{ID: "u1", Username: "me"})
 		assertValidationError(t, err)
 	})
 }

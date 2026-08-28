@@ -10,29 +10,25 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
-// blogAuthor is the public half of a post's owner, carried on the post so a client never has to
-// resolve one itself - which it could not do anyway, since a profile is only addressable by a
-// username and a post records its owner by uid.
-type blogAuthor struct {
-	Username    string `json:"username"`
-	DisplayName string `json:"displayName"`
-}
-
-// blogResponse is a blog as clients see it: the stored post, plus who wrote it. The author is
-// resolved on read rather than stored on the post, so renaming reaches every post at once instead
-// of leaving old ones attributed to a name nobody holds. Author is null when the owner never
-// created a profile, which a post does not require.
+// blogResponse is a blog as clients see it: the stored post, plus who wrote it. A username is the
+// whole of an author's public identity, so it is carried directly rather than wrapped.
+//
+// It is resolved on read rather than stored on the post, so renaming reaches every post at once
+// instead of leaving old ones attributed to a name nobody holds, and a client never has to resolve
+// one itself - which it could not do anyway, since a profile is only addressable by a username and
+// a post records its owner by uid. It is empty when the owner never created a profile, which a
+// post does not require.
 type blogResponse struct {
 	entity.Blog
-	Author *blogAuthor `json:"author"`
+	AuthorUsername string `json:"authorUsername"`
 }
 
-// authorsFor resolves the profile behind each distinct owner in blogs. Looking up owners rather
+// authorsFor resolves the username behind each distinct owner in blogs. Looking up owners rather
 // than posts means a feed dominated by one author costs one extra read, not one per post.
 //
-// A missing profile is a nil author rather than a failed request: posting never required one.
-func (s *Service) authorsFor(ctx context.Context, blogs []entity.Blog) (map[string]*blogAuthor, error) {
-	authors := make(map[string]*blogAuthor)
+// A missing profile is an empty username rather than a failed request: posting never required one.
+func (s *Service) authorsFor(ctx context.Context, blogs []entity.Blog) (map[string]string, error) {
+	authors := make(map[string]string)
 	for _, blog := range blogs {
 		if _, resolved := authors[blog.OwnerID]; resolved {
 			continue
@@ -40,18 +36,18 @@ func (s *Service) authorsFor(ctx context.Context, blogs []entity.Blog) (map[stri
 
 		user, err := s.users.Get(ctx, blog.OwnerID)
 		if errors.Is(err, repository.ErrNotFound) {
-			authors[blog.OwnerID] = nil
+			authors[blog.OwnerID] = ""
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		authors[blog.OwnerID] = &blogAuthor{Username: user.Username, DisplayName: user.DisplayName}
+		authors[blog.OwnerID] = user.Username
 	}
 	return authors, nil
 }
 
-// withAuthors pairs every blog with its owner's profile.
+// withAuthors pairs every blog with its owner's username.
 func (s *Service) withAuthors(ctx context.Context, blogs []entity.Blog) ([]blogResponse, error) {
 	authors, err := s.authorsFor(ctx, blogs)
 	if err != nil {
@@ -60,7 +56,7 @@ func (s *Service) withAuthors(ctx context.Context, blogs []entity.Blog) ([]blogR
 
 	responses := make([]blogResponse, 0, len(blogs))
 	for _, blog := range blogs {
-		responses = append(responses, blogResponse{Blog: blog, Author: authors[blog.OwnerID]})
+		responses = append(responses, blogResponse{Blog: blog, AuthorUsername: authors[blog.OwnerID]})
 	}
 	return responses, nil
 }

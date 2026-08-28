@@ -19,9 +19,8 @@ const usernameAttempts = 5
 // userRequest is the client-settable half of a profile; the id comes from the path and the
 // timestamps from the server.
 type userRequest struct {
-	Username    string `json:"username"`
-	DisplayName string `json:"displayName"`
-	Bio         string `json:"bio"`
+	Username string `json:"username"`
+	Bio      string `json:"bio"`
 }
 
 // applyTo validates every field through the entity's setters before touching user. An omitted
@@ -33,9 +32,6 @@ func (u userRequest) applyTo(user *entity.User) error {
 		if err := candidate.SetUsername(u.Username); err != nil {
 			return err
 		}
-	}
-	if err := candidate.SetDisplayName(u.DisplayName); err != nil {
-		return err
 	}
 	if err := candidate.SetBio(u.Bio); err != nil {
 		return err

@@ -15,11 +15,10 @@ import (
 
 // userDocument is the stored shape of a profile; see blogDocument for why it is separate.
 type userDocument struct {
-	Username    string    `firestore:"username"`
-	DisplayName string    `firestore:"displayName"`
-	Bio         string    `firestore:"bio"`
-	CreatedAt   time.Time `firestore:"createdAt"`
-	UpdatedAt   time.Time `firestore:"updatedAt"`
+	Username  string    `firestore:"username"`
+	Bio       string    `firestore:"bio"`
+	CreatedAt time.Time `firestore:"createdAt"`
+	UpdatedAt time.Time `firestore:"updatedAt"`
 }
 
 // usernameDocument is a claim on one username, keyed by entity.User.UsernameKey. Uniqueness is a
@@ -31,23 +30,21 @@ type usernameDocument struct {
 
 func userToDocument(user entity.User) userDocument {
 	return userDocument{
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		Bio:         user.Bio,
-		CreatedAt:   user.CreatedAt,
-		UpdatedAt:   user.UpdatedAt,
+		Username:  user.Username,
+		Bio:       user.Bio,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
 	}
 }
 
 // toEntity rebuilds a profile from its stored fields; id is the document key.
 func (d userDocument) toEntity(id string) entity.User {
 	return entity.User{
-		ID:          id,
-		Username:    d.Username,
-		DisplayName: d.DisplayName,
-		Bio:         d.Bio,
-		CreatedAt:   d.CreatedAt,
-		UpdatedAt:   d.UpdatedAt,
+		ID:        id,
+		Username:  d.Username,
+		Bio:       d.Bio,
+		CreatedAt: d.CreatedAt,
+		UpdatedAt: d.UpdatedAt,
 	}
 }
 

@@ -123,7 +123,7 @@ func TestHandler_AnonymousCallerCannotReadPrivateBlog(t *testing.T) {
 // hide, and a username is public by nature.
 func TestHandler_UserReadRouteAdmitsAnonymousCallers(t *testing.T) {
 	repo := newFakeUserRepository()
-	repo.seed(entity.User{ID: "someone", Username: "quiet-reading-otter", DisplayName: "Someone"})
+	repo.seed(entity.User{ID: "someone", Username: "quiet-reading-otter"})
 	s := newTestService(nil, repo)
 
 	rec := httptest.NewRecorder()

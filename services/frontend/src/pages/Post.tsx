@@ -85,10 +85,10 @@ export function Post() {
   }
 
   const { post } = state
-  // A post whose owner never set up a profile has no author and so no profile page to link to:
-  // without a username there is no address for one.
-  const authorName = post.author?.displayName ?? 'an unnamed author'
-  const authorHref = post.author && `/profile/${post.author.username}`
+  // A post whose owner never set up a profile has no username, and so no profile page to link to:
+  // without one there is no address for it.
+  const authorName = post.authorUsername || 'an unnamed author'
+  const authorHref = post.authorUsername ? `/profile/${post.authorUsername}` : null
 
   return (
     <div className="page">

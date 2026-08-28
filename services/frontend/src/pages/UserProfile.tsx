@@ -6,7 +6,8 @@ import { errorMessage, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
 
 interface ProfileInfo {
-  name: string
+  /** Taken from the fetched profile rather than the URL, so it carries the casing as stored. */
+  username: string
   bio: string
   memberSince: string
 }
@@ -34,7 +35,7 @@ export function UserProfile() {
     // An author who never set up a profile has no username, so nothing can address this page for
     // them - a lookup that misses means the name really is unclaimed.
     api.getUser(username).then(
-      (u) => setProfile({ name: u.displayName, bio: u.bio ?? '', memberSince: u.createdAt }),
+      (u) => setProfile({ username: u.username, bio: u.bio ?? '', memberSince: u.createdAt }),
       () => setMissing(true),
     )
   }, [api, username])
@@ -48,7 +49,7 @@ export function UserProfile() {
         // Matching on the author a post carries, rather than on the uid behind it, keeps this
         // independent of the profile lookup above - both run against the username at once.
         const byOwner = posts
-          .filter((p) => p.author?.username === username)
+          .filter((p) => p.authorUsername === username)
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
           .slice(0, FEED_SIZE)
         setPostsState({ phase: 'ready', posts: byOwner })
@@ -80,9 +81,9 @@ export function UserProfile() {
       <header className="profile-header">
         <div className="profile-identity" style={{ justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-            <div className="profile-avatar">{(profile?.name ?? '?').charAt(0).toUpperCase()}</div>
+            <div className="profile-avatar">{(profile?.username ?? '?').charAt(0).toUpperCase()}</div>
             <div>
-              <h1 className="title-profile">{profile?.name ?? 'Loading…'}</h1>
+              <h1 className="title-profile">{profile?.username ?? 'Loading…'}</h1>
               {profile?.memberSince && (
                 <span className="text-muted feed-row-date">
                   Member since {formatDate(profile.memberSince)}

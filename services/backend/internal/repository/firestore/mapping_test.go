@@ -36,12 +36,11 @@ func TestBlogMappingRoundTrip(t *testing.T) {
 
 func TestUserMappingRoundTrip(t *testing.T) {
 	user := entity.User{
-		ID:          "user-1",
-		Username:    "sly-dancing-monkey",
-		DisplayName: "Ed",
-		Bio:         "hello",
-		CreatedAt:   created,
-		UpdatedAt:   updated,
+		ID:        "user-1",
+		Username:  "sly-dancing-monkey",
+		Bio:       "hello",
+		CreatedAt: created,
+		UpdatedAt: updated,
 	}
 
 	got := userToDocument(user).toEntity(user.ID)

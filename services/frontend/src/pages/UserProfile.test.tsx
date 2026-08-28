@@ -7,7 +7,6 @@ import { UserProfile } from './UserProfile'
 const user: User = {
   id: 'uid-1',
   username: 'calm-smiling-kestrel',
-  displayName: 'Mia Gorman',
   bio: 'Writes things.',
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
@@ -15,7 +14,7 @@ const user: User = {
 const mine: Blog = {
   id: 'p1',
   ownerId: 'uid-1',
-  author: { username: 'calm-smiling-kestrel', displayName: 'Mia Gorman' },
+  authorUsername: 'calm-smiling-kestrel',
   title: 'Mine',
   content: 'hello',
   visibility: 'public',
@@ -26,7 +25,7 @@ const theirs: Blog = {
   ...mine,
   id: 'p2',
   ownerId: 'uid-2',
-  author: { username: 'bold-leaping-lynx', displayName: 'Someone Else' },
+  authorUsername: 'bold-leaping-lynx',
   title: 'Not mine',
 }
 
@@ -53,7 +52,7 @@ describe('UserProfile', () => {
       path: '/profile/:username',
     })
 
-    expect(await screen.findByRole('heading', { name: 'Mia Gorman' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'calm-smiling-kestrel' })).toBeInTheDocument()
     expect(screen.getByText('Writes things.')).toBeInTheDocument()
     expect(screen.getByText('Mine')).toBeInTheDocument()
     expect(screen.queryByText('Not mine')).not.toBeInTheDocument()
@@ -90,7 +89,7 @@ describe('UserProfile', () => {
       path: '/profile/:username',
     })
 
-    expect(await screen.findByRole('heading', { name: 'Mia Gorman' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'calm-smiling-kestrel' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Edit profile' })).not.toBeInTheDocument()
   })
 })

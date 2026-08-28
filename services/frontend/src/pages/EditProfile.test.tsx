@@ -10,7 +10,6 @@ const me = { id: 'uid-1', email: 'a@b.com', name: 'Ada' }
 const profile: User = {
   id: 'uid-1',
   username: 'calm-smiling-kestrel',
-  displayName: 'Ada Lovelace',
   bio: 'Writes things.',
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
@@ -35,29 +34,49 @@ describe('EditProfile', () => {
   it('pre-fills the form with the existing profile', async () => {
     renderWithApp(<EditProfile />, { context: { api: fakeApi(), user: me } })
 
-    expect(await screen.findByDisplayValue('Ada Lovelace')).toBeInTheDocument()
+    expect(await screen.findByDisplayValue('calm-smiling-kestrel')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Writes things.')).toBeInTheDocument()
   })
 
-  it('falls back to the Google account name when no profile exists yet', async () => {
+  // Nothing is prefilled before a profile exists: the username is assigned server-side on save.
+  it('leaves the form empty when no profile exists yet', async () => {
     const api = fakeApi({ getCurrentUser: vi.fn().mockRejectedValue(new Error('not found')) })
     renderWithApp(<EditProfile />, { context: { api, user: me } })
 
-    expect(await screen.findByDisplayValue('Ada')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Username')).toHaveValue('')
   })
 
-  it('saves edits via putUser', async () => {
+  // No id argument: the backend takes the owner from the credential.
+  it('saves a renamed username via putUser', async () => {
     const api = fakeApi()
     renderWithApp(<EditProfile />, { context: { api, user: me } })
 
-    const nameInput = await screen.findByDisplayValue('Ada Lovelace')
+    const nameInput = await screen.findByDisplayValue('calm-smiling-kestrel')
     await userEvent.clear(nameInput)
-    await userEvent.type(nameInput, 'Ada L.')
+    await userEvent.type(nameInput, 'bold-leaping-lynx')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    // No id argument: the backend takes the owner from the credential. The username is omitted
-    // too, which is what keeps the one they already hold.
-    expect(api.putUser).toHaveBeenCalledWith({ displayName: 'Ada L.', bio: 'Writes things.' })
+    expect(api.putUser).toHaveBeenCalledWith({
+      username: 'bold-leaping-lynx',
+      bio: 'Writes things.',
+    })
+  })
+
+  // An untouched username is sent as undefined, so a bio-only edit is never read as a rename -
+  // which would otherwise conflict with the name the profile already holds.
+  it('omits an unchanged username', async () => {
+    const api = fakeApi()
+    renderWithApp(<EditProfile />, { context: { api, user: me } })
+
+    const bioInput = await screen.findByDisplayValue('Writes things.')
+    await userEvent.clear(bioInput)
+    await userEvent.type(bioInput, 'Writes other things.')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(api.putUser).toHaveBeenCalledWith({
+      username: undefined,
+      bio: 'Writes other things.',
+    })
   })
 
   it('prompts sign-in when signed out', () => {

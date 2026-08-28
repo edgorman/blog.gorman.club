@@ -164,31 +164,36 @@ func decodeBlogRequest(w http.ResponseWriter, r *http.Request, blog *entity.Blog
 	return true
 }
 
-// blogFromPath loads the post named by the {username}/{slug} pair it is addressed by, writing the
-// error response and returning false if either half is malformed or names nothing.
+// blogFromPath loads the post named by the {username}/{slug} pair it is addressed by, writing a
+// 404 and returning false if either half is malformed or names nothing.
 //
 // The author is resolved through their profile because a post records its owner by uid, and a uid
 // is never public: the username is the only handle a caller holds, and the uid behind it is what
-// the post is keyed by. Validating both halves first answers a malformed one with the rule it
-// broke, rather than with the 404 that looking it up would produce.
+// the post is keyed by. A malformed half answers as 404 rather than as the 400 SetUsername or
+// SetSlug would give: the path is a URL a reader followed, not a form they filled in, and a rule it
+// broke is exactly what the address of a private post looks like from the outside - so it is
+// folded into the same "nothing here" every other kind of miss gets, rather than distinguished
+// from them.
 func (s *Service) blogFromPath(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
+	notFound := func() (entity.Blog, bool) {
+		writeError(w, http.StatusNotFound, "blog not found")
+		return entity.Blog{}, false
+	}
+
 	var author entity.User
 	if err := author.SetUsername(r.PathValue("username")); err != nil {
-		writeValidationError(w, err)
-		return entity.Blog{}, false
+		return notFound()
 	}
 	var candidate entity.Blog
 	if err := candidate.SetSlug(r.PathValue("slug")); err != nil {
-		writeValidationError(w, err)
-		return entity.Blog{}, false
+		return notFound()
 	}
 
 	// A username nobody holds and a username whose holder has no such post are the same 404: the
 	// post asked for does not exist either way, and which half missed is not the caller's business.
 	owner, err := s.users.GetByUsername(r.Context(), author.Username)
 	if errors.Is(err, repository.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "blog not found")
-		return entity.Blog{}, false
+		return notFound()
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -197,8 +202,7 @@ func (s *Service) blogFromPath(w http.ResponseWriter, r *http.Request) (entity.B
 
 	blog, err := s.blogs.Get(r.Context(), owner.ID, candidate.Slug)
 	if errors.Is(err, repository.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "blog not found")
-		return entity.Blog{}, false
+		return notFound()
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -207,10 +211,31 @@ func (s *Service) blogFromPath(w http.ResponseWriter, r *http.Request) (entity.B
 	return blog, true
 }
 
-// requireOwnedBlog loads the post the request addresses and checks the caller owns it, writing the
-// error response and returning false otherwise.
-func (s *Service) requireOwnedBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
+// requireReadableBlog loads the post the request addresses and checks the caller may read it,
+// writing a 404 and returning false otherwise. A caller who cannot read a post is shown the same
+// "not found" a missing one gets, rather than a 403 that would out its existence - which is
+// exactly what a URL built from the author's username and the post's own title lets a stranger
+// probe for.
+func (s *Service) requireReadableBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
 	blog, ok := s.blogFromPath(w, r)
+	if !ok {
+		return entity.Blog{}, false
+	}
+
+	if !blog.CanBeReadBy(uidFromContext(r.Context())) {
+		writeError(w, http.StatusNotFound, "blog not found")
+		return entity.Blog{}, false
+	}
+	return blog, true
+}
+
+// requireOwnedBlog loads the post the request addresses and checks the caller owns it, writing the
+// error response and returning false otherwise. Readability is checked first and masked as the
+// same 404 requireReadableBlog gives, since a non-owner attempting to edit or delete a post they
+// cannot even read must not learn it exists either; only once a post is visible to the caller does
+// a failed ownership check become a 403, which reveals nothing the caller did not already know.
+func (s *Service) requireOwnedBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
+	blog, ok := s.requireReadableBlog(w, r)
 	if !ok {
 		return entity.Blog{}, false
 	}
@@ -242,13 +267,8 @@ func (s *Service) ListBlogs(w http.ResponseWriter, r *http.Request) {
 
 // GetBlog returns a single blog, provided the caller is allowed to read it.
 func (s *Service) GetBlog(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.blogFromPath(w, r)
+	blog, ok := s.requireReadableBlog(w, r)
 	if !ok {
-		return
-	}
-
-	if !blog.CanBeReadBy(uidFromContext(r.Context())) {
-		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 

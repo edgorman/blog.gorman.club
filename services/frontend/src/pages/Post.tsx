@@ -8,8 +8,9 @@ import { renderMarkdown } from '../lib/markdown'
 type State =
   | { phase: 'unconfigured' }
   | { phase: 'loading' }
+  // The backend answers a private post the caller cannot read the same way it answers a missing
+  // one, so there is no separate forbidden state here to render.
   | { phase: 'not-found' }
-  | { phase: 'forbidden' }
   | { phase: 'error'; message: string }
   | { phase: 'ready'; post: Blog }
 
@@ -27,7 +28,6 @@ export function Post() {
       .then((post) => setState({ phase: 'ready', post }))
       .catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 404) return setState({ phase: 'not-found' })
-        if (e instanceof ApiError && e.status === 403) return setState({ phase: 'forbidden' })
         setState({ phase: 'error', message: e instanceof Error ? e.message : 'Failed to load post' })
       })
   }, [api, username, slug])
@@ -63,14 +63,6 @@ export function Post() {
     return (
       <div className="page">
         <p className="center-note">Post not found.</p>
-        <Link to="/">← Back to feed</Link>
-      </div>
-    )
-  }
-  if (state.phase === 'forbidden') {
-    return (
-      <div className="page">
-        <p className="center-note">This post is private.</p>
         <Link to="/">← Back to feed</Link>
       </div>
     )

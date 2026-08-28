@@ -112,14 +112,17 @@ describe('EditPost', () => {
     expect(await screen.findByText("You don't have permission to edit this post.")).toBeInTheDocument()
   })
 
-  it('shows a private-post message when forbidden', async () => {
-    const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(403, 'forbidden')) })
+  // The backend masks a private post the caller cannot read as a 404 rather than a 403, so there
+  // is nothing here to distinguish from an outright missing post - this locks that in rather than
+  // reintroducing a "this post is private" state the API never triggers.
+  it('treats a masked private post the same as a missing one', async () => {
+    const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(404, 'blog not found')) })
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
       route: '/post/calm-smiling-kestrel/hello-world/edit',
       path: '/post/:username/:slug/edit',
     })
 
-    expect(await screen.findByText('This post is private.')).toBeInTheDocument()
+    expect(await screen.findByText('Post not found.')).toBeInTheDocument()
   })
 })

@@ -185,7 +185,10 @@ func TestGetBlog_ResolvesTheSlugUnderItsAuthor(t *testing.T) {
 	}
 }
 
-func TestGetBlog_ForbiddenForPrivatePost(t *testing.T) {
+// A caller who cannot read a private post is shown the same 404 a missing post gets, not a 403:
+// the address is a function of the author's username and the post's own title, so a 403 would let
+// a stranger confirm the post exists just by guessing at it.
+func TestGetBlog_NotFoundForUnreadablePrivatePost(t *testing.T) {
 	repo := newFakeBlogRepository()
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPrivate, AllowedUserIDs: []string{"another"}})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
@@ -194,8 +197,8 @@ func TestGetBlog_ForbiddenForPrivatePost(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.GetBlog(rec, withUID(req, "caller"))
 
-	if rec.Result().StatusCode != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+	if rec.Result().StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
 	}
 	decodeAPIError(t, rec)
 }
@@ -225,13 +228,14 @@ func TestGetBlog_NotFound(t *testing.T) {
 	}
 }
 
-// A malformed address is answered with the rule it broke rather than the 404 a lookup would give,
-// which is also what stops an unparseable value reaching the datastore as a document path.
-func TestGetBlog_RejectsMalformedAddresses(t *testing.T) {
-	for _, tt := range []struct{ name, username, slug, field string }{
-		{"bad username", "not a username", "hello-world", "username"},
-		{"bad slug", "sly-dancing-monkey", "Hello World", "slug"},
-		{"empty slug", "sly-dancing-monkey", "", "slug"},
+// A malformed address gets the same 404 a well-formed but absent one does, rather than a 400
+// naming the rule it broke: the path is a URL a reader followed, and the shape of a rejected slug
+// would tell a prober as much about what exists as an outright miss would.
+func TestGetBlog_NotFoundForMalformedAddresses(t *testing.T) {
+	for _, tt := range []struct{ name, username, slug string }{
+		{"bad username", "not a username", "hello-world"},
+		{"bad slug", "sly-dancing-monkey", "Hello World"},
+		{"empty slug", "sly-dancing-monkey", ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newBlogService(newFakeBlogRepository(), author("owner", "sly-dancing-monkey"))
@@ -240,12 +244,10 @@ func TestGetBlog_RejectsMalformedAddresses(t *testing.T) {
 			rec := httptest.NewRecorder()
 			s.GetBlog(rec, withUID(req, "caller"))
 
-			if rec.Result().StatusCode != http.StatusBadRequest {
-				t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
+			if rec.Result().StatusCode != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
 			}
-			if got := decodeAPIError(t, rec).Error; !strings.Contains(got, tt.field) {
-				t.Errorf("error = %q, want it to name the %s field", got, tt.field)
-			}
+			decodeAPIError(t, rec)
 		})
 	}
 }
@@ -478,6 +480,25 @@ func TestUpdateBlog_ForbiddenForNonOwner(t *testing.T) {
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+	}
+	decodeAPIError(t, rec)
+}
+
+// A caller who cannot even read a private post gets the same 404 a missing one gives when they try
+// to edit it too - not the 403 a non-owner gets on a post they can see, which would confirm the
+// private post exists at that address.
+func TestUpdateBlog_NotFoundForUnreadablePrivatePost(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPrivate, AllowedUserIDs: []string{"another"}})
+	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
+
+	body := blogRequestBody(t, blogRequest{Title: "Edited", Visibility: entity.VisibilityPublic})
+	req := blogPathRequest(http.MethodPut, "sly-dancing-monkey", "hello-world", body)
+	rec := httptest.NewRecorder()
+	s.UpdateBlog(rec, withUID(req, "not-the-owner"))
+
+	if rec.Result().StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
 	}
 	decodeAPIError(t, rec)
 }

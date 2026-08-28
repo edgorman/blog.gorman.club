@@ -43,9 +43,10 @@ export function EditProfile() {
     setSaving(true)
     setError(null)
     api
-      // An unchanged username is sent as undefined, which is what tells the backend to keep the one
-      // already held rather than to treat it as a rename.
-      .putUser({ username: draftUsername === username ? undefined : draftUsername, bio })
+      // An unchanged username is sent as undefined, which tells the backend to keep the one already
+      // held - or, for a profile that has none yet, to assign one. Only an actual edit is sent, so
+      // a blank form on a new profile asks for a generated name rather than for an empty one.
+      .putUser({ username: draftUsername === (username ?? '') ? undefined : draftUsername, bio })
       .then((profile) => {
         setUsername(profile.username)
         setDraftUsername(profile.username)

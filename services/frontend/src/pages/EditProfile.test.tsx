@@ -77,6 +77,21 @@ describe('EditProfile', () => {
     })
   })
 
+  // A profile that does not exist yet has no stored username, so a blank field is not an edit -
+  // sending "" would ask for an empty name, which is rejected, rather than for a generated one.
+  it('asks for a generated username when creating a profile', async () => {
+    const api = fakeApi({
+      getCurrentUser: vi.fn().mockRejectedValue(new ApiError(404, 'user not found')),
+    })
+    renderWithApp(<EditProfile />, { context: { api, user: me } })
+
+    const bioInput = await screen.findByLabelText('Bio')
+    await userEvent.type(bioInput, 'Hello.')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(api.putUser).toHaveBeenCalledWith({ username: undefined, bio: 'Hello.' })
+  })
+
   // An untouched username is sent as undefined, so a bio-only edit is never read as a rename -
   // which would otherwise conflict with the name the profile already holds.
   it('omits an unchanged username', async () => {

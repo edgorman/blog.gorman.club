@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useGoogleAuth } from '../hooks/useGoogleAuth'
-import { createApi, type User } from '../lib/api'
+import { ApiError, createApi, type User } from '../lib/api'
 import { useTheme } from '../lib/theme'
 import { AppContext, type AppContextValue } from './AppContext'
 
@@ -27,16 +27,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false
-    api.getCurrentUser().then(
-      (found) => {
-        if (!cancelled) setProfile(found)
-      },
-      // A 404 means they are signed in but have not created a profile yet, which is a real state
-      // rather than an error: EditProfile is where they resolve it.
-      () => {
-        if (!cancelled) setProfile(null)
-      },
-    )
+    api
+      .getCurrentUser()
+      // A 404 means they are signed in but hold no profile yet - a new account, or one whose
+      // profile was deleted. Creating it here is what gives every signed-in user a username
+      // without waiting for them to visit the editor: the body is empty, so the backend assigns
+      // the name. Anything else (offline, a 500) leaves profile null to be retried on reload.
+      .catch((e: unknown) => {
+        if (e instanceof ApiError && e.status === 404) return api.putUser({})
+        throw e
+      })
+      .then(
+        (found) => {
+          if (!cancelled) setProfile(found)
+        },
+        () => {
+          if (!cancelled) setProfile(null)
+        },
+      )
     return () => {
       cancelled = true
     }

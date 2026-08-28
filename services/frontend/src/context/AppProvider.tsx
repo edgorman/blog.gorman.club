@@ -1,15 +1,10 @@
-import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useGoogleAuth } from '../hooks/useGoogleAuth'
-import { createApi } from '../lib/api'
+import { createApi, type User } from '../lib/api'
 import { useTheme } from '../lib/theme'
 import { AppContext, type AppContextValue } from './AppContext'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
-
-/** A short, stable stand-in for an author's name when it can't be resolved (see resolveAuthorName). */
-function fallbackName(id: string): string {
-  return id.length > 8 ? `${id.slice(0, 8)}…` : id
-}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const { user, authHeaders, error, ready, renderButton, signOut } = useGoogleAuth()
@@ -20,28 +15,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [authHeaders],
   )
 
-  const nameCache = useRef(new Map<string, Promise<string>>())
-  // A name resolved (or fallen back to) before the api was configured may now be resolvable.
+  const [profile, setProfile] = useState<User | null>(null)
+  // Bumped by refreshProfile to re-run the fetch below, so a rename is picked up without a reload.
+  const [profileNonce, setProfileNonce] = useState(0)
+  const refreshProfile = useCallback(() => setProfileNonce((n) => n + 1), [])
+
   useEffect(() => {
-    nameCache.current.clear()
-  }, [api])
-
-  const resolveAuthorName = useMemo(() => {
-    return (id: string): Promise<string> => {
-      const cached = nameCache.current.get(id)
-      if (cached) return cached
-
-      const lookup = !api
-        ? Promise.resolve(fallbackName(id))
-        : api.getUser(id).then(
-            (found) => found.displayName || fallbackName(id),
-            () => fallbackName(id),
-          )
-
-      nameCache.current.set(id, lookup)
-      return lookup
+    if (!api || !user) {
+      setProfile(null)
+      return
     }
-  }, [api])
+
+    let cancelled = false
+    api.getCurrentUser().then(
+      (found) => {
+        if (!cancelled) setProfile(found)
+      },
+      // A 404 means they are signed in but have not created a profile yet, which is a real state
+      // rather than an error: EditProfile is where they resolve it.
+      () => {
+        if (!cancelled) setProfile(null)
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [api, user, profileNonce])
 
   const value: AppContextValue = {
     user,
@@ -52,7 +51,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     signOut,
     theme,
     toggleTheme,
-    resolveAuthorName,
+    profile,
+    refreshProfile,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

@@ -24,7 +24,14 @@ describe('NavBar', () => {
 
   it('opens the account panel with New post, View profile, and Sign out when signed in', async () => {
     const signOut = vi.fn()
-    renderWithApp(<NavBar />, { context: { user: author, signOut } })
+    const profile = {
+      id: 'uid-1',
+      username: 'calm-smiling-kestrel',
+      displayName: 'Ada',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    }
+    renderWithApp(<NavBar />, { context: { user: author, profile, signOut } })
 
     await userEvent.click(screen.getByRole('button', { name: 'Account' }))
     const dialog = screen.getByRole('dialog', { name: 'Account' })
@@ -32,7 +39,7 @@ describe('NavBar', () => {
     expect(screen.getByRole('link', { name: 'New post' })).toHaveAttribute('href', '/new')
     expect(screen.getByRole('link', { name: 'View profile' })).toHaveAttribute(
       'href',
-      '/profile/uid-1',
+      '/profile/calm-smiling-kestrel',
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))

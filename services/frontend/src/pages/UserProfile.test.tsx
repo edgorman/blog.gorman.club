@@ -6,6 +6,7 @@ import { UserProfile } from './UserProfile'
 
 const user: User = {
   id: 'uid-1',
+  username: 'calm-smiling-kestrel',
   displayName: 'Mia Gorman',
   bio: 'Writes things.',
   createdAt: '2026-01-01T00:00:00Z',
@@ -14,13 +15,20 @@ const user: User = {
 const mine: Blog = {
   id: 'p1',
   ownerId: 'uid-1',
+  author: { username: 'calm-smiling-kestrel', displayName: 'Mia Gorman' },
   title: 'Mine',
   content: 'hello',
   visibility: 'public',
   createdAt: '2026-08-01T00:00:00Z',
   updatedAt: '2026-08-01T00:00:00Z',
 }
-const theirs: Blog = { ...mine, id: 'p2', ownerId: 'uid-2', title: 'Not mine' }
+const theirs: Blog = {
+  ...mine,
+  id: 'p2',
+  ownerId: 'uid-2',
+  author: { username: 'bold-leaping-lynx', displayName: 'Someone Else' },
+  title: 'Not mine',
+}
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
@@ -30,6 +38,7 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
     updateBlog: vi.fn(),
     deleteBlog: vi.fn(),
     getUser: vi.fn().mockResolvedValue(user),
+    getCurrentUser: vi.fn(),
     putUser: vi.fn(),
     deleteUser: vi.fn(),
     ...overrides,
@@ -40,25 +49,48 @@ describe('UserProfile', () => {
   it("shows the profile header and only that author's posts", async () => {
     renderWithApp(<UserProfile />, {
       context: { api: fakeApi() },
-      route: '/profile/uid-1',
-      path: '/profile/:id',
+      route: '/profile/calm-smiling-kestrel',
+      path: '/profile/:username',
     })
 
-    expect(await screen.findByText('Mia Gorman')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Mia Gorman' })).toBeInTheDocument()
     expect(screen.getByText('Writes things.')).toBeInTheDocument()
     expect(screen.getByText('Mine')).toBeInTheDocument()
     expect(screen.queryByText('Not mine')).not.toBeInTheDocument()
   })
 
-  it('falls back to a resolved name and a no-profile hint when the profile lookup fails', async () => {
+  // An author with no profile holds no username, so no URL reaches this page for them: a lookup
+  // that misses means the name is genuinely unclaimed, not that the author is nameless.
+  it('reports an unclaimed username as no such user', async () => {
     const api = fakeApi({ getUser: vi.fn().mockRejectedValue(new Error('not found')) })
     renderWithApp(<UserProfile />, {
-      context: { api, resolveAuthorName: () => Promise.resolve('uid-1234…') },
-      route: '/profile/uid-1',
-      path: '/profile/:id',
+      context: { api },
+      route: '/profile/nobody-here-at-all',
+      path: '/profile/:username',
     })
 
-    expect(await screen.findByText('uid-1234…')).toBeInTheDocument()
-    expect(screen.getByText(/This author hasn't set up a profile yet/)).toBeInTheDocument()
+    expect(await screen.findByText('No such user.')).toBeInTheDocument()
+  })
+
+  // The Edit link belongs to the profile's owner, never to a signed-out visitor whose own profile
+  // is also absent.
+  it('offers Edit profile only to the owner', async () => {
+    renderWithApp(<UserProfile />, {
+      context: { api: fakeApi(), profile: user },
+      route: '/profile/calm-smiling-kestrel',
+      path: '/profile/:username',
+    })
+    expect(await screen.findByRole('link', { name: 'Edit profile' })).toBeInTheDocument()
+  })
+
+  it('hides Edit profile from a signed-out visitor', async () => {
+    renderWithApp(<UserProfile />, {
+      context: { api: fakeApi() },
+      route: '/profile/calm-smiling-kestrel',
+      path: '/profile/:username',
+    })
+
+    expect(await screen.findByRole('heading', { name: 'Mia Gorman' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Edit profile' })).not.toBeInTheDocument()
   })
 })

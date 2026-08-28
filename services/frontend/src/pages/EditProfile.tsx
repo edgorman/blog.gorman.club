@@ -3,9 +3,10 @@ import { Link, Navigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { errorMessage } from '../lib/api'
 
-/** Lets a signed-in user edit their own display name and bio (PUT /users/{id}). */
+/** Lets a signed-in user edit their own display name and bio (PUT /users/me). */
 export function EditProfile() {
-  const { api, user } = useApp()
+  const { api, user, refreshProfile } = useApp()
+  const [username, setUsername] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
@@ -15,8 +16,9 @@ export function EditProfile() {
 
   useEffect(() => {
     if (!api || !user) return
-    api.getUser(user.id).then(
+    api.getCurrentUser().then(
       (profile) => {
+        setUsername(profile.username)
         setDisplayName(profile.displayName)
         setBio(profile.bio ?? '')
         setLoading(false)
@@ -34,8 +36,14 @@ export function EditProfile() {
     setSaving(true)
     setError(null)
     api
-      .putUser(user.id, { displayName, bio })
-      .then(() => setSaved(true))
+      // The username is left out: it is assigned at sign-up, and omitting it keeps the one they
+      // already hold rather than asking for a new one.
+      .putUser({ displayName, bio })
+      .then((profile) => {
+        setUsername(profile.username)
+        refreshProfile()
+        setSaved(true)
+      })
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to save')))
       .finally(() => setSaving(false))
   }
@@ -57,7 +65,7 @@ export function EditProfile() {
     )
   }
 
-  if (saved) return <Navigate to={`/profile/${user.id}`} replace />
+  if (saved && username) return <Navigate to={`/profile/${username}`} replace />
 
   return (
     <div className="page">
@@ -103,7 +111,7 @@ export function EditProfile() {
             <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
               {saving ? 'Saving…' : 'Save'}
             </button>
-            <Link to={`/profile/${user.id}`} className="btn btn-secondary">
+            <Link to={username ? `/profile/${username}` : '/'} className="btn btn-secondary">
               Cancel
             </Link>
           </div>

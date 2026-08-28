@@ -343,3 +343,91 @@ func TestDeleteBlog_Owner(t *testing.T) {
 		t.Error("blog still present after delete")
 	}
 }
+
+// A post carries its author, because a client cannot resolve one: profiles are addressable only by
+// username, and a post records its owner by uid.
+func TestGetBlog_CarriesTheAuthor(t *testing.T) {
+	blogs := newFakeBlogRepository()
+	blogs.blogs["b1"] = entity.Blog{ID: "b1", OwnerID: "owner", Visibility: entity.VisibilityPublic}
+	users := newFakeUserRepository()
+	users.seed(entity.User{ID: "owner", Username: "sly-dancing-monkey", DisplayName: "Ed"})
+	s := newTestService(blogs, users)
+
+	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs/b1", nil), "reader")
+	req.SetPathValue("id", "b1")
+	rec := httptest.NewRecorder()
+	s.GetBlog(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	var got blogResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.Author == nil {
+		t.Fatal("Author = nil, want the owner's profile")
+	}
+	if got.Author.Username != "sly-dancing-monkey" {
+		t.Errorf("Author.Username = %q, want %q", got.Author.Username, "sly-dancing-monkey")
+	}
+	if got.Author.DisplayName != "Ed" {
+		t.Errorf("Author.DisplayName = %q, want %q", got.Author.DisplayName, "Ed")
+	}
+}
+
+// Posting never required a profile, so an owner without one is a null author rather than a failure.
+func TestGetBlog_NullAuthorWhenTheOwnerHasNoProfile(t *testing.T) {
+	blogs := newFakeBlogRepository()
+	blogs.blogs["b1"] = entity.Blog{ID: "b1", OwnerID: "owner", Visibility: entity.VisibilityPublic}
+	s := newTestService(blogs, nil)
+
+	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs/b1", nil), "reader")
+	req.SetPathValue("id", "b1")
+	rec := httptest.NewRecorder()
+	s.GetBlog(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	var got blogResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.Author != nil {
+		t.Errorf("Author = %+v, want null", got.Author)
+	}
+}
+
+// Authors are resolved per distinct owner, not per post, so one author's feed costs one lookup.
+func TestListBlogs_ResolvesEachAuthorOnce(t *testing.T) {
+	blogs := newFakeBlogRepository()
+	for _, id := range []string{"b1", "b2", "b3"} {
+		blogs.blogs[id] = entity.Blog{ID: id, OwnerID: "owner", Visibility: entity.VisibilityPublic}
+	}
+	users := newFakeUserRepository()
+	users.seed(entity.User{ID: "owner", Username: "sly-dancing-monkey", DisplayName: "Ed"})
+	s := newTestService(blogs, users)
+
+	rec := httptest.NewRecorder()
+	s.ListBlogs(rec, withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "reader"))
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	var got []blogResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("posts = %d, want 3", len(got))
+	}
+	for _, post := range got {
+		if post.Author == nil || post.Author.Username != "sly-dancing-monkey" {
+			t.Fatalf("post %s carries author %+v, want the owner's profile", post.ID, post.Author)
+		}
+	}
+	if users.gets != 1 {
+		t.Errorf("user lookups = %d, want 1 for three posts by one author", users.gets)
+	}
+}

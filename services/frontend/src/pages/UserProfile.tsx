@@ -8,9 +8,7 @@ import { formatDate } from '../lib/format'
 interface ProfileInfo {
   name: string
   bio: string
-  memberSince: string | null
-  /** True once GET /users/{id} returned a real profile - false if this author never set one up. */
-  resolved: boolean
+  memberSince: string
 }
 
 type PostsState =
@@ -23,33 +21,34 @@ const FEED_SIZE = 10
 
 /** A single author's recent posts, with as much of their profile as the caller is allowed to see. */
 export function UserProfile() {
-  const { id } = useParams<{ id: string }>()
-  const { api, user, resolveAuthorName } = useApp()
+  const { username } = useParams<{ username: string }>()
+  const { api, profile: own } = useApp()
   const [profile, setProfile] = useState<ProfileInfo | null>(null)
+  const [missing, setMissing] = useState(false)
   const [postsState, setPostsState] = useState<PostsState>(
     api ? { phase: 'loading' } : { phase: 'unconfigured' },
   )
 
   useEffect(() => {
-    if (!api || !id) return
-    api.getUser(id).then(
-      (u) => setProfile({ name: u.displayName, bio: u.bio ?? '', memberSince: u.createdAt, resolved: true }),
-      () => {
-        resolveAuthorName(id).then((name) =>
-          setProfile({ name, bio: '', memberSince: null, resolved: false }),
-        )
-      },
+    if (!api || !username) return
+    // An author who never set up a profile has no username, so nothing can address this page for
+    // them - a lookup that misses means the name really is unclaimed.
+    api.getUser(username).then(
+      (u) => setProfile({ name: u.displayName, bio: u.bio ?? '', memberSince: u.createdAt }),
+      () => setMissing(true),
     )
-  }, [api, id, resolveAuthorName])
+  }, [api, username])
 
   useEffect(() => {
-    if (!api || !id) return
+    if (!api || !username) return
     setPostsState({ phase: 'loading' })
     api
       .listBlogs()
       .then((posts) => {
+        // Matching on the author a post carries, rather than on the uid behind it, keeps this
+        // independent of the profile lookup above - both run against the username at once.
         const byOwner = posts
-          .filter((p) => p.ownerId === id)
+          .filter((p) => p.author?.username === username)
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
           .slice(0, FEED_SIZE)
         setPostsState({ phase: 'ready', posts: byOwner })
@@ -57,12 +56,21 @@ export function UserProfile() {
       .catch((e: unknown) => {
         setPostsState({ phase: 'error', message: errorMessage(e, 'Failed to load posts') })
       })
-  }, [api, id])
+  }, [api, username])
 
   if (postsState.phase === 'unconfigured') {
     return (
       <div className="page">
         <p className="text-muted center-note">No backend deployed yet - VITE_BACKEND_URL is unset.</p>
+      </div>
+    )
+  }
+
+  if (missing) {
+    return (
+      <div className="page">
+        <p className="center-note">No such user.</p>
+        <Link to="/">← Back to feed</Link>
       </div>
     )
   }
@@ -82,16 +90,13 @@ export function UserProfile() {
               )}
             </div>
           </div>
-          {user?.id === id && (
+          {own?.username === username && (
             <Link to="/profile/edit" className="btn btn-secondary">
               Edit profile
             </Link>
           )}
         </div>
-        {profile && !profile.resolved && (
-          <p className="profile-bio text-muted">This author hasn't set up a profile yet.</p>
-        )}
-        {profile?.resolved && profile.bio && <p className="profile-bio text-muted">{profile.bio}</p>}
+        {profile?.bio && <p className="profile-bio text-muted">{profile.bio}</p>}
       </header>
 
       {postsState.phase === 'loading' && <p className="text-muted center-note">Loading…</p>}

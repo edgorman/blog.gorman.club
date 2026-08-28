@@ -13,7 +13,8 @@ export function fakeAppContext(overrides: Partial<AppContextValue> = {}): AppCon
     signOut: () => {},
     theme: 'light',
     toggleTheme: () => {},
-    resolveAuthorName: (id: string) => Promise.resolve(id),
+    profile: null,
+    refreshProfile: () => {},
     ...overrides,
   }
 }

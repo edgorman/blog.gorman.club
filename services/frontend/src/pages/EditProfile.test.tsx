@@ -9,6 +9,7 @@ const me = { id: 'uid-1', email: 'a@b.com', name: 'Ada' }
 
 const profile: User = {
   id: 'uid-1',
+  username: 'calm-smiling-kestrel',
   displayName: 'Ada Lovelace',
   bio: 'Writes things.',
   createdAt: '2026-01-01T00:00:00Z',
@@ -22,7 +23,8 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
     createBlog: vi.fn(),
     updateBlog: vi.fn(),
     deleteBlog: vi.fn(),
-    getUser: vi.fn().mockResolvedValue(profile),
+    getUser: vi.fn(),
+    getCurrentUser: vi.fn().mockResolvedValue(profile),
     putUser: vi.fn().mockResolvedValue(profile),
     deleteUser: vi.fn(),
     ...overrides,
@@ -38,7 +40,7 @@ describe('EditProfile', () => {
   })
 
   it('falls back to the Google account name when no profile exists yet', async () => {
-    const api = fakeApi({ getUser: vi.fn().mockRejectedValue(new Error('not found')) })
+    const api = fakeApi({ getCurrentUser: vi.fn().mockRejectedValue(new Error('not found')) })
     renderWithApp(<EditProfile />, { context: { api, user: me } })
 
     expect(await screen.findByDisplayValue('Ada')).toBeInTheDocument()
@@ -53,10 +55,9 @@ describe('EditProfile', () => {
     await userEvent.type(nameInput, 'Ada L.')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(api.putUser).toHaveBeenCalledWith(
-      'uid-1',
-      expect.objectContaining({ displayName: 'Ada L.', bio: 'Writes things.' }),
-    )
+    // No id argument: the backend takes the owner from the credential. The username is omitted
+    // too, which is what keeps the one they already hold.
+    expect(api.putUser).toHaveBeenCalledWith({ displayName: 'Ada L.', bio: 'Writes things.' })
   })
 
   it('prompts sign-in when signed out', () => {

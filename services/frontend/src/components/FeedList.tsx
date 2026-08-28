@@ -1,6 +1,4 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useApp } from '../context/AppContext'
 import type { Blog } from '../lib/api'
 import { formatDate, snippetFrom } from '../lib/format'
 
@@ -20,18 +18,7 @@ export function FeedList({ posts }: Props) {
 }
 
 function FeedRow({ post, delayMs }: { post: Blog; delayMs: number }) {
-  const { resolveAuthorName } = useApp()
-  const [author, setAuthor] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    resolveAuthorName(post.ownerId).then((name) => {
-      if (!cancelled) setAuthor(name)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [post.ownerId, resolveAuthorName])
+  const author = post.author?.displayName
 
   return (
     <Link to={`/post/${post.id}`} className="feed-row" style={{ animationDelay: `${delayMs}ms` }}>

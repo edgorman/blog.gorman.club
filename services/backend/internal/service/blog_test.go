@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
 func blogRequestBody(t *testing.T, body blogRequest) *bytes.Reader {
@@ -172,6 +174,125 @@ func TestCreateBlog_OwnerIDFromCaller(t *testing.T) {
 	}
 }
 
+// A post is addressed by its title, so the first one to use a title lands at the plain slug of it.
+func TestCreateBlog_IDFromTitle(t *testing.T) {
+	repo := newFakeBlogRepository()
+	s := newTestService(repo, nil)
+
+	body := blogRequestBody(t, blogRequest{Title: "Hello, world!", Visibility: entity.VisibilityPublic})
+	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
+	rec := httptest.NewRecorder()
+	s.CreateBlog(rec, req)
+
+	if rec.Result().StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
+	}
+	var got entity.Blog
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.ID != "hello-world" {
+		t.Errorf("ID = %q, want %q", got.ID, "hello-world")
+	}
+	if _, stored := repo.blogs["hello-world"]; !stored {
+		t.Errorf("stored under %v, want the post written at its title's slug", slices.Collect(maps.Keys(repo.blogs)))
+	}
+}
+
+// A title nobody can slug is still a post that needs an address, and two of them still need
+// telling apart - which is the same fallback a shared title takes.
+func TestCreateBlog_UntitledPostsAreStillAddressable(t *testing.T) {
+	repo := newFakeBlogRepository()
+	s := newTestService(repo, nil)
+
+	ids := make([]string, 0, 2)
+	for range 2 {
+		body := blogRequestBody(t, blogRequest{Visibility: entity.VisibilityPublic})
+		req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
+		rec := httptest.NewRecorder()
+		s.CreateBlog(rec, req)
+
+		if rec.Result().StatusCode != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
+		}
+		var got entity.Blog
+		if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		ids = append(ids, got.ID)
+	}
+
+	if ids[0] != "untitled" {
+		t.Errorf("first ID = %q, want %q", ids[0], "untitled")
+	}
+	if !strings.HasPrefix(ids[1], "untitled-") || ids[1] == ids[0] {
+		t.Errorf("second ID = %q, want a suffixed %q", ids[1], "untitled")
+	}
+}
+
+// The second post to use a title cannot have the plain slug, so it takes a suffixed one rather
+// than failing or overwriting the post already there.
+func TestCreateBlog_SuffixesATakenTitle(t *testing.T) {
+	repo := newFakeBlogRepository()
+	s := newTestService(repo, nil)
+
+	create := func() entity.Blog {
+		t.Helper()
+
+		body := blogRequestBody(t, blogRequest{Title: "Hello world", Content: "Body", Visibility: entity.VisibilityPublic})
+		req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
+		rec := httptest.NewRecorder()
+		s.CreateBlog(rec, req)
+
+		if rec.Result().StatusCode != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
+		}
+		var got entity.Blog
+		if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		return got
+	}
+
+	first, second := create(), create()
+
+	if first.ID != "hello-world" {
+		t.Errorf("first ID = %q, want %q", first.ID, "hello-world")
+	}
+	if !strings.HasPrefix(second.ID, "hello-world-") {
+		t.Errorf("second ID = %q, want it to keep the title and add a suffix", second.ID)
+	}
+	if suffix := strings.TrimPrefix(second.ID, "hello-world-"); len(suffix) != 5 {
+		t.Errorf("suffix of %q is %d characters, want 5", second.ID, len(suffix))
+	}
+	// The first post must still be where it was: a colliding post takes a new id, it does not
+	// displace the one that got there first.
+	if stored := repo.blogs["hello-world"]; stored.CreatedAt != first.CreatedAt {
+		t.Errorf("post at %q = %+v, want the first post left untouched", "hello-world", stored)
+	}
+	if len(repo.blogs) != 2 {
+		t.Errorf("stored %d posts, want both to survive", len(repo.blogs))
+	}
+}
+
+// Running out of draws is a server failure, not a bad request: the client never chose an id, so
+// there is nothing for it to correct.
+func TestCreateBlog_FailsWhenNoIDIsFree(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.beforeCreate = func(entity.Blog) error { return repository.ErrBlogIDTaken }
+	s := newTestService(repo, nil)
+
+	body := blogRequestBody(t, blogRequest{Title: "Hello world", Visibility: entity.VisibilityPublic})
+	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
+	rec := httptest.NewRecorder()
+	s.CreateBlog(rec, req)
+
+	if rec.Result().StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusInternalServerError)
+	}
+	decodeAPIError(t, rec)
+}
+
 func TestCreateBlog_RejectsInvalidVisibility(t *testing.T) {
 	s := newTestService(nil, nil)
 
@@ -287,6 +408,35 @@ func TestUpdateBlog_Owner(t *testing.T) {
 }
 
 // An invalid body must not partially apply: the stored blog stays exactly as it was.
+// An id is assigned once, from the title the post was created with. Re-deriving it on every edit
+// would break every link to the post and free its old id for somebody else to take, so a retitled
+// post keeps the address it has always had.
+func TestUpdateBlog_RetitlingKeepsTheID(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.blogs["hello-world"] = entity.Blog{ID: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic, Title: "Hello world"}
+	s := newTestService(repo, nil)
+
+	body := blogRequestBody(t, blogRequest{Title: "Something else entirely", Visibility: entity.VisibilityPublic})
+	req := withUID(httptest.NewRequest(http.MethodPut, "/blogs/hello-world", body), "owner")
+	req.SetPathValue("id", "hello-world")
+	rec := httptest.NewRecorder()
+	s.UpdateBlog(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	stored, ok := repo.blogs["hello-world"]
+	if !ok {
+		t.Fatalf("stored under %v, want the post left at its original id", slices.Collect(maps.Keys(repo.blogs)))
+	}
+	if stored.Title != "Something else entirely" {
+		t.Errorf("Title = %q, want the edit applied", stored.Title)
+	}
+	if len(repo.blogs) != 1 {
+		t.Errorf("stored %d posts, want the edit not to have created a second", len(repo.blogs))
+	}
+}
+
 func TestUpdateBlog_InvalidBodyLeavesBlogUntouched(t *testing.T) {
 	original := entity.Blog{ID: "blog-1", OwnerID: "owner", Visibility: entity.VisibilityPublic, Title: "Original"}
 	repo := newFakeBlogRepository()

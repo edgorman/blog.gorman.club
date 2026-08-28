@@ -4,11 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
+
+// blogIDAttempts bounds how many suffixed ids a post draws once the plain form of its title is
+// taken. Each draw is one of about 28 million per title, so reaching even the second is unlikely
+// and exhausting all of them is not something a real post will do.
+const blogIDAttempts = 5
 
 // blogResponse is a blog as clients see it: the stored post, plus who wrote it. A username is the
 // whole of an author's public identity, so it is carried directly rather than wrapped.
@@ -68,6 +74,35 @@ func (s *Service) withAuthor(ctx context.Context, blog entity.Blog) (blogRespons
 		return blogResponse{}, err
 	}
 	return responses[0], nil
+}
+
+// saveBlog writes a new post under an id derived from its title, e.g. "Hello, world!" at
+// "hello-world". The plain slug is tried first, so the first post to use a title reads as itself
+// in the URL; only once that is taken does a post fall back to a suffixed id like
+// "hello-world-k3m9x".
+//
+// Ids are global rather than per-author, since a post is addressed at /blogs/{id} with no author
+// in the path. As with usernames, only the write can tell whether one is free, so a collision is
+// answered by drawing another rather than by checking beforehand, which would be slower and still
+// racy.
+func (s *Service) saveBlog(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
+	blog.ID = entity.NewBlogID(blog.Title)
+
+	created, err := s.blogs.Create(ctx, blog)
+	if !errors.Is(err, repository.ErrBlogIDTaken) {
+		return created, err
+	}
+
+	for range blogIDAttempts {
+		blog.ID = entity.NewUniqueBlogID(blog.Title)
+
+		if created, err = s.blogs.Create(ctx, blog); !errors.Is(err, repository.ErrBlogIDTaken) {
+			return created, err
+		}
+	}
+	// Deliberately not wrapped: running out of draws is the server failing to place a post, not the
+	// caller asking for an id somebody else holds - a client never chooses one at all.
+	return entity.Blog{}, fmt.Errorf("no free blog id after %d attempts: %v", blogIDAttempts, err)
 }
 
 // blogRequest is the client-settable half of a blog. ID, ownerId, and the timestamps are decided
@@ -176,14 +211,14 @@ func (s *Service) GetBlog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-// CreateBlog makes a new blog owned by the caller.
+// CreateBlog makes a new blog owned by the caller, named after its title (see saveBlog).
 func (s *Service) CreateBlog(w http.ResponseWriter, r *http.Request) {
 	blog := entity.Blog{OwnerID: uidFromContext(r.Context())}
 	if !decodeBlogRequest(w, r, &blog) {
 		return
 	}
 
-	created, err := s.blogs.Create(r.Context(), blog)
+	created, err := s.saveBlog(r.Context(), blog)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -199,7 +234,8 @@ func (s *Service) CreateBlog(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateBlog replaces a blog's client-settable fields. Only the owner may update it, and because
-// the request is applied to the stored blog, ownerId and createdAt carry over untouched.
+// the request is applied to the stored blog, the id, ownerId, and createdAt carry over untouched -
+// so retitling a post changes what readers see without moving the URL it lives at.
 func (s *Service) UpdateBlog(w http.ResponseWriter, r *http.Request) {
 	blog, ok := s.requireOwnedBlog(w, r)
 	if !ok {

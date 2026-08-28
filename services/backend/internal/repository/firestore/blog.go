@@ -111,7 +111,13 @@ func (r *BlogRepository) List(ctx context.Context, uid string) ([]entity.Blog, e
 	return blogs, nil
 }
 
+// Create writes the post at the id the caller assigned from its title, rather than at a key
+// Firestore picks. Uniqueness is therefore a property of that key rather than something checked
+// here: Create (unlike Set) refuses to overwrite an existing document, so two posts racing for the
+// same title cannot both take it, and the loser is told to draw a suffixed id instead.
 func (r *BlogRepository) Create(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
+	// Validate is what guarantees the id is a non-empty, addressable document key; Doc panics on
+	// an empty one, so this has to come first.
 	if err := blog.Validate(); err != nil {
 		return entity.Blog{}, err
 	}
@@ -120,14 +126,19 @@ func (r *BlogRepository) Create(ctx context.Context, blog entity.Blog) (entity.B
 	blog.CreatedAt = now
 	blog.UpdatedAt = now
 
-	ref := r.blogs.NewDoc()
-	if _, err := ref.Set(ctx, blogToDocument(blog)); err != nil {
+	_, err := r.blogs.Doc(blog.ID).Create(ctx, blogToDocument(blog))
+	if status.Code(err) == codes.AlreadyExists {
+		return entity.Blog{}, repository.ErrBlogIDTaken
+	}
+	if err != nil {
 		return entity.Blog{}, err
 	}
-	blog.ID = ref.ID
 	return blog, nil
 }
 
+// Update overwrites the post in place, id included - which is to say the id never moves. Deriving
+// a fresh one from an edited title would break every link to the post and leave the old key free
+// for another post to take, so the id stays as it was assigned at creation.
 func (r *BlogRepository) Update(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
 	if err := blog.Validate(); err != nil {
 		return entity.Blog{}, err

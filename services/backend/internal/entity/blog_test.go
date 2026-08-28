@@ -164,20 +164,75 @@ func TestBlog_IsOwnedBy_EmptyUIDNeverMatches(t *testing.T) {
 }
 
 func TestBlog_Validate(t *testing.T) {
-	valid := Blog{OwnerID: "owner", Title: "Hello", Content: "Body", Visibility: VisibilityPublic}
+	valid := Blog{ID: "hello", OwnerID: "owner", Title: "Hello", Content: "Body", Visibility: VisibilityPublic}
 	if err := valid.Validate(); err != nil {
 		t.Errorf("Validate = %v, want no error", err)
 	}
 
-	if err := (Blog{OwnerID: "owner", Visibility: "everyone"}).Validate(); err == nil {
+	if err := (Blog{ID: "hello", OwnerID: "owner", Visibility: "everyone"}).Validate(); err == nil {
 		t.Error("Validate with a bad visibility = nil, want an error")
 	}
-	if err := (Blog{OwnerID: "owner", Title: strings.Repeat("a", MaxTitleLength+1), Visibility: VisibilityPublic}).Validate(); err == nil {
+	if err := (Blog{ID: "hello", OwnerID: "owner", Title: strings.Repeat("a", MaxTitleLength+1), Visibility: VisibilityPublic}).Validate(); err == nil {
 		t.Error("Validate with an overlong title = nil, want an error")
 	}
 
 	// An ownerless blog is unwritable by anyone, so it must never reach a repository.
-	if err := (Blog{Visibility: VisibilityPublic}).Validate(); err == nil {
+	if err := (Blog{ID: "hello", Visibility: VisibilityPublic}).Validate(); err == nil {
 		t.Error("Validate with no owner = nil, want an error")
+	}
+
+	// A blog with no id has nowhere to be written and no URL to be read at.
+	if err := (Blog{OwnerID: "owner", Visibility: VisibilityPublic}).Validate(); err == nil {
+		t.Error("Validate with no id = nil, want an error")
+	}
+}
+
+// SetID guards what the server generates rather than what a client sends, so the cases that matter
+// are the ones that would produce an unaddressable URL or a document key Firestore refuses.
+func TestBlog_SetID(t *testing.T) {
+	for _, tt := range []struct {
+		input string
+		valid bool
+	}{
+		{"hello-world", true},
+		{"hello-world-k3m9x", true},
+		{"untitled", true},
+		{"2026", true},
+		// Posts predating title-derived ids hold a Firestore-generated key.
+		{"AbC123dEf456GhI789jK", true},
+		{"", false},
+		{"   ", false},
+		{"hello world", false},
+		{"hello/world", false},
+		{"hello--world", false},
+		{"-hello", false},
+		{"hello-", false},
+		{".", false},
+		{"..", false},
+		{"__name__", false},
+		{strings.Repeat("a", MaxBlogIDLength+1), false},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			blog := Blog{ID: "original"}
+			err := blog.SetID(tt.input)
+
+			if tt.valid {
+				if err != nil {
+					t.Fatalf("SetID(%q) = %v, want no error", tt.input, err)
+				}
+				if blog.ID != tt.input {
+					t.Errorf("ID = %q, want %q", blog.ID, tt.input)
+				}
+				return
+			}
+
+			var invalid ValidationError
+			if !errors.As(err, &invalid) {
+				t.Fatalf("SetID(%q) = %v, want a ValidationError", tt.input, err)
+			}
+			if blog.ID != "original" {
+				t.Errorf("ID = %q, want the rejected value not to be applied", blog.ID)
+			}
+		})
 	}
 }

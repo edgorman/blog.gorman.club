@@ -25,7 +25,19 @@ func TestRepositoriesRejectInvalidEntitiesBeforeWriting(t *testing.T) {
 	})
 
 	t.Run("blog with a bad visibility", func(t *testing.T) {
-		_, err := (&BlogRepository{}).Create(ctx, entity.Blog{OwnerID: "owner", Visibility: "everyone"})
+		_, err := (&BlogRepository{}).Create(ctx, entity.Blog{ID: "b1", OwnerID: "owner", Visibility: "everyone"})
+		assertValidationError(t, err)
+	})
+
+	// An id is what names the document, so a write missing one has nowhere to go - and Firestore
+	// panics rather than errors when asked for a document at an empty path.
+	t.Run("blog with no id", func(t *testing.T) {
+		_, err := (&BlogRepository{}).Create(ctx, entity.Blog{OwnerID: "owner", Visibility: entity.VisibilityPublic})
+		assertValidationError(t, err)
+	})
+
+	t.Run("blog with a malformed id", func(t *testing.T) {
+		_, err := (&BlogRepository{}).Create(ctx, entity.Blog{ID: "hello world", OwnerID: "owner", Visibility: entity.VisibilityPublic})
 		assertValidationError(t, err)
 	})
 

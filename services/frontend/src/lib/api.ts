@@ -4,6 +4,11 @@
  */
 
 export interface Blog {
+  /**
+   * The post's address as well as its key: the title, slugified, plus a short random suffix when
+   * another post already holds that slug. It is assigned when the post is created and never
+   * changes, so a link keeps working after a retitle - render `title`, not this.
+   */
   id: string
   ownerId: string
   /** The owner's username, resolved server-side. Empty if they never set up a profile. */

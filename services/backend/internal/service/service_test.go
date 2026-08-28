@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -15,10 +14,14 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
-// fakeBlogRepository is an in-memory repository.BlogRepository.
+// fakeBlogRepository is an in-memory repository.BlogRepository. Like the real one it stores posts
+// under the id its caller chose and refuses to overwrite an occupied one, so the ids a handler
+// derives from titles are exercised here rather than assumed.
 type fakeBlogRepository struct {
-	blogs  map[string]entity.Blog
-	nextID int
+	blogs map[string]entity.Blog
+	// beforeCreate lets a test fail a write the in-memory state would otherwise allow, which is
+	// the only way to provoke a collision against an id that carries a random suffix.
+	beforeCreate func(entity.Blog) error
 }
 
 func newFakeBlogRepository() *fakeBlogRepository {
@@ -48,8 +51,19 @@ func (r *fakeBlogRepository) Create(_ context.Context, blog entity.Blog) (entity
 	if err := blog.Validate(); err != nil {
 		return entity.Blog{}, err
 	}
-	r.nextID++
-	blog.ID = fmt.Sprintf("blog-%d", r.nextID)
+	if r.beforeCreate != nil {
+		if err := r.beforeCreate(blog); err != nil {
+			return entity.Blog{}, err
+		}
+	}
+	if _, taken := r.blogs[blog.ID]; taken {
+		return entity.Blog{}, repository.ErrBlogIDTaken
+	}
+
+	now := time.Now().UTC()
+	blog.CreatedAt = now
+	blog.UpdatedAt = now
+
 	r.blogs[blog.ID] = blog
 	return blog, nil
 }

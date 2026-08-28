@@ -2,6 +2,7 @@ package entity
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -13,6 +14,15 @@ const (
 	MaxContentLength = 100_000
 	MaxAllowedUsers  = 100
 )
+
+// blogIDPattern is what an id has to look like to be addressable: alphanumeric words joined by
+// single hyphens, with no leading, trailing, or doubled separator. That is exactly the shape
+// NewBlogID produces, and it also excludes every id Firestore refuses as a document key ("." and
+// "..", anything holding a slash, and the "__reserved__" form).
+//
+// It admits uppercase only so that posts created before ids were derived from titles - which hold
+// a Firestore-generated key of mixed-case characters - stay editable; nothing generates one now.
+var blogIDPattern = regexp.MustCompile(`^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$`)
 
 // Visibility decides who may read a blog beyond its owner.
 type Visibility string
@@ -28,6 +38,11 @@ func (v Visibility) Valid() bool {
 
 // Blog is a post. This service holds the only credentials for the collection, so read and write
 // access is decided here (CanBeReadBy, IsOwnedBy) and nowhere else.
+//
+// ID is the post's public handle as well as its key: it is derived from the title at creation (see
+// NewBlogID), so a post is addressed at a URL that reads as what it is called. It is assigned once
+// and never revised, so retitling a post leaves every link to it working - the title readers see
+// is the stored Title, which is free to change beneath a fixed id.
 type Blog struct {
 	ID             string     `json:"id"`
 	OwnerID        string     `json:"ownerId"`
@@ -37,6 +52,24 @@ type Blog struct {
 	AllowedUserIDs []string   `json:"allowedUserIds,omitempty"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	UpdatedAt      time.Time  `json:"updatedAt"`
+}
+
+// SetID trims and validates a new id before applying it. Unlike the other setters this one is not
+// driven by anything a client sends: ids are assigned by the server at creation and carried over
+// on every write after it, so this guards what the service generates rather than what it is given.
+func (b *Blog) SetID(id string) error {
+	trimmed := strings.TrimSpace(id)
+	switch {
+	case trimmed == "":
+		return ValidationError{Field: "id", Message: "is required"}
+	case len(trimmed) > MaxBlogIDLength:
+		return ValidationError{Field: "id", Message: lengthMessage(MaxBlogIDLength)}
+	case !blogIDPattern.MatchString(trimmed):
+		return ValidationError{Field: "id", Message: "must be words of letters and digits joined by single hyphens"}
+	}
+
+	b.ID = trimmed
+	return nil
 }
 
 // SetTitle trims and validates a new title before applying it. An empty title is allowed - the
@@ -104,15 +137,20 @@ func (b *Blog) SetAllowedUserIDs(uids []string) error {
 	return nil
 }
 
-// Validate reports whether the blog is in a storable state: the server-set owner is present, and
-// every other field holds a value the setters above would accept. Repositories call it before each
-// write, so a blog assembled outside the HTTP layer cannot sidestep the rules.
+// Validate reports whether the blog is in a storable state: the server-set id and owner are
+// present, and every other field holds a value the setters above would accept. Repositories call
+// it before each write, so a blog assembled outside the HTTP layer cannot sidestep the rules -
+// including one carrying an id that could not be addressed, or that Firestore would refuse as a
+// document key.
 func (b Blog) Validate() error {
 	if b.OwnerID == "" {
 		return ValidationError{Field: "ownerId", Message: "is required"}
 	}
 
 	candidate := b
+	if err := candidate.SetID(b.ID); err != nil {
+		return err
+	}
 	if err := candidate.SetTitle(b.Title); err != nil {
 		return err
 	}

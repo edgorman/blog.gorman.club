@@ -266,15 +266,23 @@ func (a *Assistant) generate(ctx context.Context, client *http.Client, system st
 	return decoded, nil
 }
 
-// failureDetail summarizes an error response as " (STATUS: REASON)", or as nothing at all when the
-// body is not the shape Google's errors take. Only the enum fields are read; the human-readable
-// message deliberately is not.
+// failureDetail summarizes an error response as " (STATUS: REASON: field, field)", or as nothing at
+// all when the body is not the shape Google's errors take.
+//
+// Three things are read, and all three are machine-readable metadata rather than prose: the status
+// enum, the reason enum a denial carries, and the field paths a rejected request carries. The
+// human-readable message deliberately is not read - it can quote the request back, and the request
+// holds the post. The field paths are what make a 400 actionable at all, since INVALID_ARGUMENT
+// alone says only that the request was wrong somewhere.
 func failureDetail(payload []byte) string {
 	var body struct {
 		Error struct {
 			Status  string `json:"status"`
 			Details []struct {
-				Reason string `json:"reason"`
+				Reason          string `json:"reason"`
+				FieldViolations []struct {
+					Field string `json:"field"`
+				} `json:"fieldViolations"`
 			} `json:"details"`
 		} `json:"error"`
 	}
@@ -282,7 +290,7 @@ func failureDetail(payload []byte) string {
 		return ""
 	}
 
-	parts := make([]string, 0, 1+len(body.Error.Details))
+	var parts, fields []string
 	if body.Error.Status != "" {
 		parts = append(parts, body.Error.Status)
 	}
@@ -290,7 +298,16 @@ func failureDetail(payload []byte) string {
 		if detail.Reason != "" && !slices.Contains(parts, detail.Reason) {
 			parts = append(parts, detail.Reason)
 		}
+		for _, violation := range detail.FieldViolations {
+			if violation.Field != "" && !slices.Contains(fields, violation.Field) {
+				fields = append(fields, violation.Field)
+			}
+		}
 	}
+	if len(fields) > 0 {
+		parts = append(parts, strings.Join(fields, ", "))
+	}
+
 	if len(parts) == 0 {
 		return ""
 	}

@@ -14,22 +14,6 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
-// blogKeySeparator joins an owner and a slug into the document key below. A slug cannot contain
-// it (entity.Blog.SetSlug admits only lowercase letters, digits, and hyphens), so no two
-// owner/slug pairs can produce the same key.
-const blogKeySeparator = "_"
-
-// blogKey is the document key a post is stored at. Scoping the key to the owner is the whole of
-// how slugs are made unique per author rather than globally: uniqueness is a property of the key
-// (Create refuses to overwrite one), so two authors can both hold "hello-world" while one author
-// cannot hold it twice.
-//
-// The key is derived rather than stored: ownerId and slug are the document's own fields, and this
-// is a function of them, so the two can never disagree about where a post lives.
-func blogKey(ownerID, slug string) string {
-	return ownerID + blogKeySeparator + slug
-}
-
 // blogDocument is the stored shape of a blog. It exists so Firestore's field names live here
 // rather than as a second set of tags on entity.Blog.
 type blogDocument struct {
@@ -84,6 +68,14 @@ func documentToBlog(doc *fs.DocumentSnapshot) (entity.Blog, error) {
 
 var _ repository.BlogRepository = (*BlogRepository)(nil)
 
+// BlogRepository stores each post at its slug, unqualified, and that is the whole of how slugs are
+// made unique across every author: uniqueness is a property of the document key (Create refuses to
+// overwrite one), so no two posts hold "hello-world" whoever wrote them. That global uniqueness is
+// what lets a post be addressed as /blogs/{slug}, with the owner kept as a field rather than as
+// part of where the post lives.
+//
+// entity.Blog.SetSlug is what keeps a slug usable as a key: it admits only lowercase letters,
+// digits, and single hyphens, which excludes every form Firestore refuses in a document path.
 type BlogRepository struct {
 	blogs *fs.CollectionRef
 }
@@ -93,16 +85,16 @@ func NewBlogRepository(client *fs.Client) *BlogRepository {
 	return &BlogRepository{blogs: client.Collection("blogs")}
 }
 
-// Get resolves a post by the pair that names it. Both halves are required: an empty one would ask
+// Get resolves a post by the slug that names it. A slug is required: an empty one would ask
 // Firestore about a document path it cannot parse. A soft-deleted post answers the same as one
 // that was never there: its document still exists, but Get is a read path and a deleted post has
 // nothing left to read.
-func (r *BlogRepository) Get(ctx context.Context, ownerID, slug string) (entity.Blog, error) {
-	if ownerID == "" || slug == "" {
+func (r *BlogRepository) Get(ctx context.Context, slug string) (entity.Blog, error) {
+	if slug == "" {
 		return entity.Blog{}, repository.ErrNotFound
 	}
 
-	doc, err := r.blogs.Doc(blogKey(ownerID, slug)).Get(ctx)
+	doc, err := r.blogs.Doc(slug).Get(ctx)
 	if status.Code(err) == codes.NotFound {
 		return entity.Blog{}, repository.ErrNotFound
 	}
@@ -150,13 +142,13 @@ func (r *BlogRepository) List(ctx context.Context, uid string) ([]entity.Blog, e
 	return blogs, nil
 }
 
-// Create writes the post at the key its owner and slug name, rather than at one Firestore picks.
+// Create writes the post at the key its slug names, rather than at one Firestore picks.
 // Uniqueness is therefore a property of that key rather than something checked here: Create
-// (unlike Set) refuses to overwrite an existing document, so two of an author's posts racing for
-// the same title cannot both take it, and the loser is told to draw a suffixed slug instead.
+// (unlike Set) refuses to overwrite an existing document, so two posts racing for the same title
+// cannot both take it, and the loser is told to draw a suffixed slug instead.
 func (r *BlogRepository) Create(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
-	// Validate is what guarantees both halves of the key are present and addressable; Doc panics
-	// on an empty path, so this has to come first.
+	// Validate is what guarantees the key is present and addressable; Doc panics on an empty path,
+	// so this has to come first.
 	if err := blog.Validate(); err != nil {
 		return entity.Blog{}, err
 	}
@@ -165,7 +157,7 @@ func (r *BlogRepository) Create(ctx context.Context, blog entity.Blog) (entity.B
 	blog.CreatedAt = now
 	blog.UpdatedAt = now
 
-	_, err := r.blogs.Doc(blogKey(blog.OwnerID, blog.Slug)).Create(ctx, blogToDocument(blog))
+	_, err := r.blogs.Doc(blog.Slug).Create(ctx, blogToDocument(blog))
 	if status.Code(err) == codes.AlreadyExists {
 		return entity.Blog{}, repository.ErrSlugTaken
 	}
@@ -177,7 +169,7 @@ func (r *BlogRepository) Create(ctx context.Context, blog entity.Blog) (entity.B
 
 // Update overwrites the post in place, slug included - which is to say the post never moves.
 // Deriving a fresh slug from an edited title would break every link to the post and leave the old
-// one free for another of the author's posts to take, so it stays as it was assigned at creation.
+// one free for another post to take, so it stays as it was assigned at creation.
 func (r *BlogRepository) Update(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
 	if err := blog.Validate(); err != nil {
 		return entity.Blog{}, err
@@ -185,7 +177,7 @@ func (r *BlogRepository) Update(ctx context.Context, blog entity.Blog) (entity.B
 
 	blog.UpdatedAt = time.Now().UTC()
 
-	if _, err := r.blogs.Doc(blogKey(blog.OwnerID, blog.Slug)).Set(ctx, blogToDocument(blog)); err != nil {
+	if _, err := r.blogs.Doc(blog.Slug).Set(ctx, blogToDocument(blog)); err != nil {
 		return entity.Blog{}, err
 	}
 	return blog, nil
@@ -194,13 +186,13 @@ func (r *BlogRepository) Update(ctx context.Context, blog entity.Blog) (entity.B
 // Delete soft-deletes a post by stamping DeletedAt rather than removing its document: the
 // collection never loses a post, it is only marked gone. It is a single targeted field write
 // rather than a read-modify-write, so it costs no more than the hard delete it replaces.
-func (r *BlogRepository) Delete(ctx context.Context, ownerID, slug string) error {
-	if ownerID == "" || slug == "" {
+func (r *BlogRepository) Delete(ctx context.Context, slug string) error {
+	if slug == "" {
 		return repository.ErrNotFound
 	}
 
 	now := time.Now().UTC()
-	_, err := r.blogs.Doc(blogKey(ownerID, slug)).Update(ctx, []fs.Update{{Path: "deletedAt", Value: now}})
+	_, err := r.blogs.Doc(slug).Update(ctx, []fs.Update{{Path: "deletedAt", Value: now}})
 	if status.Code(err) == codes.NotFound {
 		return repository.ErrNotFound
 	}

@@ -35,10 +35,15 @@ describe('NavBar', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Account' }))
     const dialog = screen.getByRole('dialog', { name: 'Account' })
     expect(dialog).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'New post' })).toHaveAttribute('href', '/new')
+    expect(screen.getByRole('link', { name: 'New post' })).toHaveAttribute('href', '/post/new')
     expect(screen.getByRole('link', { name: 'View profile' })).toHaveAttribute(
       'href',
-      '/profile/calm-smiling-kestrel',
+      '/user/calm-smiling-kestrel',
+    )
+    // The editor sits under the profile it edits, so its link is the profile's path plus /edit.
+    expect(screen.getByRole('link', { name: 'Edit profile' })).toHaveAttribute(
+      'href',
+      '/user/calm-smiling-kestrel/edit',
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))

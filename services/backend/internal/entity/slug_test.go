@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// A generated slug goes straight into storage as half of a document key without passing back
+// A generated slug goes straight into storage as the whole of a document key without passing back
 // through the HTTP layer, so no title may produce one SetSlug would reject.
 func assertValidBlogSlug(t *testing.T, slug string) {
 	t.Helper()
@@ -87,9 +87,11 @@ func TestNewUniqueBlogSlug_ShapeAndValidity(t *testing.T) {
 				t.Fatalf("len(%q) = %d, want at most %d", slug, len(slug), MaxBlogSlugLength)
 			}
 
-			// The suffixed slug has to be the plain one plus a fixed-width suffix, so that a reader
-			// seeing either form of a title recognises it as the same post.
-			base := NewBlogSlug(title)
+			// The suffixed slug has to be the slugified title plus a fixed-width suffix, so that a
+			// reader seeing either form of a title recognises it as the same post. It is compared
+			// against blogSlugFrom rather than NewBlogSlug because the two diverge for a title
+			// that slugs to a reserved name, which has no plain form.
+			base := blogSlugFrom(title)
 			if want := len(base) + len(blogSlugSeparator) + blogSlugSuffixLength; len(slug) != want {
 				t.Fatalf("NewUniqueBlogSlug(%q) = %q, want %q plus a %d-character suffix", title, slug, base, blogSlugSuffixLength)
 			}
@@ -106,7 +108,7 @@ func TestNewUniqueBlogSlug_ShapeAndValidity(t *testing.T) {
 }
 
 // Two draws being equal is possible but should be rare; a generator stuck on one suffix would make
-// every post after an author's second under a title unplaceable.
+// every post after the second under a title unplaceable.
 func TestNewUniqueBlogSlug_Varies(t *testing.T) {
 	seen := make(map[string]bool)
 	for range 100 {
@@ -137,5 +139,31 @@ func TestBlogSlugAlphabetIsWellFormed(t *testing.T) {
 			t.Errorf("%q appears twice, which skews the draw towards it", r)
 		}
 		seen[r] = true
+	}
+}
+
+// A slug the frontend claims for a route of its own is one no post can ever hold, so a title that
+// slugs to it takes the suffixed form straight away rather than being assigned a name it would
+// then be refused - and be unreachable at, since the route wins over the slug wildcard beside it.
+func TestNewBlogSlug_AvoidsReservedSlugs(t *testing.T) {
+	if len(reservedBlogSlugs) == 0 {
+		t.Fatal("no slugs are reserved, which would make this test vacuous")
+	}
+
+	for reserved := range reservedBlogSlugs {
+		var blog Blog
+		if err := blog.SetSlug(reserved); err == nil {
+			t.Errorf("SetSlug(%q) = nil, want a reserved slug refused", reserved)
+		}
+
+		// The title is the reserved word itself, which is the only way to slug into one.
+		slug := NewBlogSlug(reserved)
+		if slug == reserved {
+			t.Errorf("NewBlogSlug(%q) = %q, want a slug the route does not already claim", reserved, slug)
+		}
+		if !strings.HasPrefix(slug, reserved+blogSlugSeparator) {
+			t.Errorf("NewBlogSlug(%q) = %q, want the title kept and a suffix added", reserved, slug)
+		}
+		assertValidBlogSlug(t, slug)
 	}
 }

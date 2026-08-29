@@ -50,25 +50,27 @@ describe('Landing', () => {
     expect(titles.map((t) => t.textContent)).toEqual(['New post', 'Old post'])
   })
 
-  // A slug is only unique within one author, so a feed row has to carry the author too - a link
-  // to the slug alone would not name a post.
-  it('links each row to its author and slug', async () => {
+  // A slug names one post across every author, so a row links to the slug alone.
+  it('links each row to its slug', async () => {
     const posts = [post({ slug: 'hello-world', title: 'Hello world' })]
     const api = fakeApi({ listBlogs: vi.fn().mockResolvedValue(posts) })
     renderWithApp(<Landing />, { context: { api } })
 
     const row = await screen.findByRole('link', { name: /Hello world/ })
-    expect(row).toHaveAttribute('href', '/post/calm-smiling-kestrel/hello-world')
+    expect(row).toHaveAttribute('href', '/post/hello-world')
   })
 
-  // A post whose owner holds no username has no address, so its row is not a link at all.
-  it('does not link a row whose author has no username', async () => {
-    const posts = [post({ title: 'Orphaned', authorUsername: '' })]
+  // A post's address no longer runs through its author, so one whose owner holds no username is
+  // still reachable - it is only shown without an author beside it.
+  it('links a row whose author has no username', async () => {
+    const posts = [post({ slug: 'orphaned', title: 'Orphaned', authorUsername: '' })]
     const api = fakeApi({ listBlogs: vi.fn().mockResolvedValue(posts) })
     renderWithApp(<Landing />, { context: { api } })
 
-    expect(await screen.findByRole('heading', { name: 'Orphaned' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /Orphaned/ })).not.toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /Orphaned/ })).toHaveAttribute(
+      'href',
+      '/post/orphaned',
+    )
   })
 
   it('shows an empty state when there are no posts', async () => {

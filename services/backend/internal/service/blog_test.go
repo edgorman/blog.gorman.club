@@ -30,19 +30,18 @@ func blogRequestBody(t *testing.T, body blogRequest) *bytes.Reader {
 	return bytes.NewReader(encoded)
 }
 
-// blogPathRequest addresses a post the way its route does: by its author's username and its slug.
-// The target is escaped but the path values are not, since that is what a real request produces -
-// ServeMux decodes each segment before a handler reads it.
-func blogPathRequest(method, username, slug string, body io.Reader) *http.Request {
-	req := httptest.NewRequest(method, "/blogs/"+url.PathEscape(username)+"/"+url.PathEscape(slug), body)
-	req.SetPathValue("username", username)
+// blogPathRequest addresses a post the way its route does: by its slug, alone. The target is
+// escaped but the path value is not, since that is what a real request produces - ServeMux decodes
+// each segment before a handler reads it.
+func blogPathRequest(method, slug string, body io.Reader) *http.Request {
+	req := httptest.NewRequest(method, "/blogs/"+url.PathEscape(slug), body)
 	req.SetPathValue("slug", slug)
 	return req
 }
 
-// newBlogService wires a service over posts and the profiles they are addressed through. Seeding
-// the authors is not optional scaffolding: a request names a post by its author's username, and
-// only a profile maps that back to the uid the post records as its owner.
+// newBlogService wires a service over posts and the profiles behind their owners. The address no
+// longer runs through a profile, but a response still reports its author by username, so seeding
+// one is what lets a test assert on the author a post comes back with.
 func newBlogService(blogs repository.BlogRepository, authors ...entity.User) *Service {
 	users := newFakeUserRepository()
 	for _, author := range authors {
@@ -51,7 +50,7 @@ func newBlogService(blogs repository.BlogRepository, authors ...entity.User) *Se
 	return newTestService(blogs, users)
 }
 
-// author is the profile behind a post's owner uid, named as the URL to it would be.
+// author is the profile behind a post's owner uid, named as a response would report it.
 func author(uid, username string) entity.User {
 	return entity.User{ID: uid, Username: username}
 }
@@ -146,7 +145,7 @@ func TestGetBlog_Readable(t *testing.T) {
 			repo.seed(tt.blog)
 			s := newBlogService(repo, author(tt.blog.OwnerID, "sly-dancing-monkey"))
 
-			req := blogPathRequest(http.MethodGet, "sly-dancing-monkey", "hello-world", nil)
+			req := blogPathRequest(http.MethodGet, "hello-world", nil)
 			rec := httptest.NewRecorder()
 			s.GetBlog(rec, withUID(req, "caller"))
 
@@ -160,21 +159,21 @@ func TestGetBlog_Readable(t *testing.T) {
 	}
 }
 
-// Slugs belong to an author, so the same one under two usernames is two different posts - and
-// asking under the wrong author must not reach the other's.
-func TestGetBlog_ResolvesTheSlugUnderItsAuthor(t *testing.T) {
+// A slug names at most one post anywhere, so a reader following one reaches it without naming an
+// author - which is the whole point of making slugs unique globally rather than per author.
+func TestGetBlog_ResolvesTheSlugWithoutAnAuthor(t *testing.T) {
 	repo := newFakeBlogRepository()
 	repo.seed(
 		entity.Blog{Slug: "hello-world", OwnerID: "first", Title: "First author", Visibility: entity.VisibilityPublic},
-		entity.Blog{Slug: "hello-world", OwnerID: "second", Title: "Second author", Visibility: entity.VisibilityPublic},
+		entity.Blog{Slug: "hello-world-k3m9x", OwnerID: "second", Title: "Second author", Visibility: entity.VisibilityPublic},
 	)
 	s := newBlogService(repo, author("first", "sly-dancing-monkey"), author("second", "bold-leaping-otter"))
 
-	for username, want := range map[string]string{
-		"sly-dancing-monkey": "First author",
-		"bold-leaping-otter": "Second author",
+	for slug, want := range map[string]string{
+		"hello-world":       "First author",
+		"hello-world-k3m9x": "Second author",
 	} {
-		req := blogPathRequest(http.MethodGet, username, "hello-world", nil)
+		req := blogPathRequest(http.MethodGet, slug, nil)
 		rec := httptest.NewRecorder()
 		s.GetBlog(rec, withUID(req, "reader"))
 
@@ -182,20 +181,20 @@ func TestGetBlog_ResolvesTheSlugUnderItsAuthor(t *testing.T) {
 			t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 		}
 		if got := decodeBlog(t, rec); got.Title != want {
-			t.Errorf("/blogs/%s/hello-world = %q, want %q", username, got.Title, want)
+			t.Errorf("/blogs/%s = %q, want %q", slug, got.Title, want)
 		}
 	}
 }
 
 // A caller who cannot read a private post is shown the same 404 a missing post gets, not a 403:
-// the address is a function of the author's username and the post's own title, so a 403 would let
-// a stranger confirm the post exists just by guessing at it.
+// the address is a function of the post's own title, so a 403 would let a stranger confirm the
+// post exists just by guessing at it.
 func TestGetBlog_NotFoundForUnreadablePrivatePost(t *testing.T) {
 	repo := newFakeBlogRepository()
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPrivate, AllowedUserIDs: []string{"another"}})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	req := blogPathRequest(http.MethodGet, "sly-dancing-monkey", "hello-world", nil)
+	req := blogPathRequest(http.MethodGet, "hello-world", nil)
 	rec := httptest.NewRecorder()
 	s.GetBlog(rec, withUID(req, "caller"))
 
@@ -205,44 +204,35 @@ func TestGetBlog_NotFoundForUnreadablePrivatePost(t *testing.T) {
 	decodeAPIError(t, rec)
 }
 
-// A username nobody holds and a post the holder does not have are the same 404: either way the
-// post asked for does not exist, and which half missed is not the caller's business.
 func TestGetBlog_NotFound(t *testing.T) {
 	repo := newFakeBlogRepository()
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic})
+	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	for _, tt := range []struct{ name, username, slug string }{
-		{"unknown author", "nobody-at-all", "hello-world"},
-		{"author holds no such post", "sly-dancing-monkey", "missing"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
+	req := blogPathRequest(http.MethodGet, "missing", nil)
+	rec := httptest.NewRecorder()
+	s.GetBlog(rec, withUID(req, "caller"))
 
-			req := blogPathRequest(http.MethodGet, tt.username, tt.slug, nil)
-			rec := httptest.NewRecorder()
-			s.GetBlog(rec, withUID(req, "caller"))
-
-			if rec.Result().StatusCode != http.StatusNotFound {
-				t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
-			}
-			decodeAPIError(t, rec)
-		})
+	if rec.Result().StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
 	}
+	decodeAPIError(t, rec)
 }
 
 // A malformed address gets the same 404 a well-formed but absent one does, rather than a 400
 // naming the rule it broke: the path is a URL a reader followed, and the shape of a rejected slug
-// would tell a prober as much about what exists as an outright miss would.
+// would tell a prober as much about what exists as an outright miss would. A slug the frontend
+// reserves for a route of its own is refused the same way, since no post can hold one.
 func TestGetBlog_NotFoundForMalformedAddresses(t *testing.T) {
-	for _, tt := range []struct{ name, username, slug string }{
-		{"bad username", "not a username", "hello-world"},
-		{"bad slug", "sly-dancing-monkey", "Hello World"},
-		{"empty slug", "sly-dancing-monkey", ""},
+	for _, tt := range []struct{ name, slug string }{
+		{"bad slug", "Hello World"},
+		{"empty slug", ""},
+		{"reserved slug", "new"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newBlogService(newFakeBlogRepository(), author("owner", "sly-dancing-monkey"))
 
-			req := blogPathRequest(http.MethodGet, tt.username, tt.slug, nil)
+			req := blogPathRequest(http.MethodGet, tt.slug, nil)
 			rec := httptest.NewRecorder()
 			s.GetBlog(rec, withUID(req, "caller"))
 
@@ -273,8 +263,8 @@ func TestCreateBlog_OwnerIDFromCaller(t *testing.T) {
 	}
 }
 
-// A post is addressed by its author's username, so the response carries one: without it a client
-// holds a slug it cannot build a URL from.
+// A post is addressed by its slug alone, so the response carries the slug the server chose; the
+// author comes back beside it because a client cannot resolve one for itself.
 func TestCreateBlog_SlugFromTitle(t *testing.T) {
 	repo := newFakeBlogRepository()
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
@@ -292,19 +282,21 @@ func TestCreateBlog_SlugFromTitle(t *testing.T) {
 		t.Errorf("Slug = %q, want %q", got.Slug, "hello-world")
 	}
 	if got.AuthorUsername != "sly-dancing-monkey" {
-		t.Errorf("AuthorUsername = %q, want the address to be complete", got.AuthorUsername)
+		t.Errorf("AuthorUsername = %q, want the post attributed to its author", got.AuthorUsername)
 	}
-	if _, stored := repo.stored("caller", "hello-world"); !stored {
-		t.Errorf("stored under %v, want the post written at its author and slug", slices.Collect(maps.Keys(repo.blogs)))
+	if _, stored := repo.stored("hello-world"); !stored {
+		t.Errorf("stored under %v, want the post written at its slug", slices.Collect(maps.Keys(repo.blogs)))
 	}
 }
 
-// Slugs are scoped to their author, so a title one person has used says nothing about whether
-// another may use it - which is the whole difference from a globally unique id.
-func TestCreateBlog_SlugsAreScopedToTheAuthor(t *testing.T) {
+// Slugs are unique across every author, so a title one person has used is taken for everyone else
+// too - the second post under it is suffixed whoever wrote it. That is what lets the author be
+// left out of the address.
+func TestCreateBlog_SlugsAreUniqueAcrossAuthors(t *testing.T) {
 	repo := newFakeBlogRepository()
 	s := newBlogService(repo, author("first", "sly-dancing-monkey"), author("second", "bold-leaping-otter"))
 
+	slugs := make(map[string]string, 2)
 	for _, uid := range []string{"first", "second"} {
 		body := blogRequestBody(t, blogRequest{Title: "Hello world", Visibility: entity.VisibilityPublic})
 		req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), uid)
@@ -314,9 +306,17 @@ func TestCreateBlog_SlugsAreScopedToTheAuthor(t *testing.T) {
 		if rec.Result().StatusCode != http.StatusCreated {
 			t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
 		}
-		if got := decodeBlog(t, rec); got.Slug != "hello-world" {
-			t.Errorf("%s posted at %q, want %q - one author's slug is not another's", uid, got.Slug, "hello-world")
-		}
+		slugs[uid] = decodeBlog(t, rec).Slug
+	}
+
+	if slugs["first"] != "hello-world" {
+		t.Errorf("first posted at %q, want %q", slugs["first"], "hello-world")
+	}
+	if !strings.HasPrefix(slugs["second"], "hello-world-") {
+		t.Errorf("second posted at %q, want another author's title to be taken already", slugs["second"])
+	}
+	if len(repo.blogs) != 2 {
+		t.Errorf("stored %d posts, want neither to have displaced the other", len(repo.blogs))
 	}
 }
 
@@ -347,9 +347,9 @@ func TestCreateBlog_UntitledPostsAreStillAddressable(t *testing.T) {
 	}
 }
 
-// An author's second post under one title cannot have the plain slug, so it takes a suffixed one
-// rather than failing or overwriting the post already there.
-func TestCreateBlog_SuffixesATitleTheAuthorHasUsed(t *testing.T) {
+// A second post under a title cannot have the plain slug, so it takes a suffixed one rather than
+// failing or overwriting the post already there.
+func TestCreateBlog_SuffixesATitleAlreadyUsed(t *testing.T) {
 	repo := newFakeBlogRepository()
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
 
@@ -380,11 +380,34 @@ func TestCreateBlog_SuffixesATitleTheAuthorHasUsed(t *testing.T) {
 	}
 	// The first post must still be where it was: a colliding post takes a new slug, it does not
 	// displace the one that got there first.
-	if stored, _ := repo.stored("caller", "hello-world"); stored.CreatedAt != first.CreatedAt {
+	if stored, _ := repo.stored("hello-world"); stored.CreatedAt != first.CreatedAt {
 		t.Errorf("post at %q = %+v, want the first post left untouched", "hello-world", stored)
 	}
 	if len(repo.blogs) != 2 {
 		t.Errorf("stored %d posts, want both to survive", len(repo.blogs))
+	}
+}
+
+// A title that slugs to a name the frontend routes elsewhere ("New" onto /post/new) must not be
+// posted there: the route would win over the slug beside it and the post would be unreachable.
+func TestCreateBlog_AvoidsSlugsTheFrontendReserves(t *testing.T) {
+	repo := newFakeBlogRepository()
+	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
+
+	body := blogRequestBody(t, blogRequest{Title: "New", Visibility: entity.VisibilityPublic})
+	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
+	rec := httptest.NewRecorder()
+	s.CreateBlog(rec, req)
+
+	if rec.Result().StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
+	}
+	got := decodeBlog(t, rec)
+	if got.Slug == "new" {
+		t.Fatalf("Slug = %q, want a slug /post/new does not already claim", got.Slug)
+	}
+	if !strings.HasPrefix(got.Slug, "new-") {
+		t.Errorf("Slug = %q, want the title kept and a suffix added", got.Slug)
 	}
 }
 
@@ -407,8 +430,8 @@ func TestCreateBlog_FailsWhenNoSlugIsFree(t *testing.T) {
 }
 
 // Posting through a client always follows a profile being created, but nothing stops a caller
-// reaching this endpoint first - and a post by an author with no username has no address at all,
-// so one is assigned rather than leaving the post unreachable.
+// reaching this endpoint first - and a post by an author with no username is attributed to nobody,
+// so one is assigned rather than leaving the post unattributed.
 func TestCreateBlog_NamesAnAuthorWhoHasNoProfile(t *testing.T) {
 	blogs := newFakeBlogRepository()
 	users := newFakeUserRepository()
@@ -424,7 +447,7 @@ func TestCreateBlog_NamesAnAuthorWhoHasNoProfile(t *testing.T) {
 	}
 	got := decodeBlog(t, rec)
 	if got.AuthorUsername == "" {
-		t.Fatal("AuthorUsername is empty, want the post to have been given an address")
+		t.Fatal("AuthorUsername is empty, want the post to have been given an author")
 	}
 	profile, ok := users.users["caller"]
 	if !ok {
@@ -476,7 +499,7 @@ func TestUpdateBlog_ForbiddenForNonOwner(t *testing.T) {
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
 	body := blogRequestBody(t, blogRequest{Title: "Edited", Visibility: entity.VisibilityPublic})
-	req := blogPathRequest(http.MethodPut, "sly-dancing-monkey", "hello-world", body)
+	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "not-the-owner"))
 
@@ -495,7 +518,7 @@ func TestUpdateBlog_NotFoundForUnreadablePrivatePost(t *testing.T) {
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
 	body := blogRequestBody(t, blogRequest{Title: "Edited", Visibility: entity.VisibilityPublic})
-	req := blogPathRequest(http.MethodPut, "sly-dancing-monkey", "hello-world", body)
+	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "not-the-owner"))
 
@@ -509,7 +532,7 @@ func TestUpdateBlog_NotFound(t *testing.T) {
 	s := newBlogService(newFakeBlogRepository(), author("caller", "sly-dancing-monkey"))
 
 	body := blogRequestBody(t, blogRequest{Title: "Edited", Visibility: entity.VisibilityPublic})
-	req := blogPathRequest(http.MethodPut, "sly-dancing-monkey", "missing", body)
+	req := blogPathRequest(http.MethodPut, "missing", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "caller"))
 
@@ -527,14 +550,14 @@ func TestUpdateBlog_PreservesOwnerAndCreatedAt(t *testing.T) {
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
 	body := []byte(`{"title":"Edited","visibility":"public","ownerId":"someone-else","createdAt":"1999-01-01T00:00:00Z"}`)
-	req := blogPathRequest(http.MethodPut, "sly-dancing-monkey", "hello-world", bytes.NewReader(body))
+	req := blogPathRequest(http.MethodPut, "hello-world", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "owner"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	stored, ok := repo.stored("owner", "hello-world")
+	stored, ok := repo.stored("hello-world")
 	if !ok {
 		t.Fatalf("stored under %v, want the post left where it was", slices.Collect(maps.Keys(repo.blogs)))
 	}
@@ -552,14 +575,14 @@ func TestUpdateBlog_Owner(t *testing.T) {
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
 	body := blogRequestBody(t, blogRequest{Title: "Edited", Visibility: entity.VisibilityPrivate})
-	req := blogPathRequest(http.MethodPut, "sly-dancing-monkey", "hello-world", body)
+	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "owner"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	stored, _ := repo.stored("owner", "hello-world")
+	stored, _ := repo.stored("hello-world")
 	if stored.Title != "Edited" {
 		t.Errorf("Title = %q, want %q", stored.Title, "Edited")
 	}
@@ -569,22 +592,22 @@ func TestUpdateBlog_Owner(t *testing.T) {
 }
 
 // A slug is assigned once, from the title the post was created with. Re-deriving it on every edit
-// would break every link to the post and free the old one for another of the author's posts, so a
-// retitled post keeps the address it has always had.
+// would break every link to the post and free the old one for another post to take, so a retitled
+// post keeps the address it has always had.
 func TestUpdateBlog_RetitlingKeepsTheSlug(t *testing.T) {
 	repo := newFakeBlogRepository()
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic, Title: "Hello world"})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
 	body := blogRequestBody(t, blogRequest{Title: "Something else entirely", Visibility: entity.VisibilityPublic})
-	req := blogPathRequest(http.MethodPut, "sly-dancing-monkey", "hello-world", body)
+	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "owner"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	stored, ok := repo.stored("owner", "hello-world")
+	stored, ok := repo.stored("hello-world")
 	if !ok {
 		t.Fatalf("stored under %v, want the post left at its original slug", slices.Collect(maps.Keys(repo.blogs)))
 	}
@@ -604,14 +627,14 @@ func TestUpdateBlog_InvalidBodyLeavesBlogUntouched(t *testing.T) {
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
 	body := blogRequestBody(t, blogRequest{Title: "Edited", Visibility: "everyone"})
-	req := blogPathRequest(http.MethodPut, "sly-dancing-monkey", "hello-world", body)
+	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "owner"))
 
 	if rec.Result().StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
 	}
-	stored, _ := repo.stored("owner", "hello-world")
+	stored, _ := repo.stored("hello-world")
 	if !reflect.DeepEqual(stored, original) {
 		t.Errorf("stored = %+v, want it unchanged at %+v", stored, original)
 	}
@@ -622,7 +645,7 @@ func TestDeleteBlog_ForbiddenForNonOwner(t *testing.T) {
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	req := blogPathRequest(http.MethodDelete, "sly-dancing-monkey", "hello-world", nil)
+	req := blogPathRequest(http.MethodDelete, "hello-world", nil)
 	rec := httptest.NewRecorder()
 	s.DeleteBlog(rec, withUID(req, "not-the-owner"))
 
@@ -630,7 +653,7 @@ func TestDeleteBlog_ForbiddenForNonOwner(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
 	}
 	decodeAPIError(t, rec)
-	if _, ok := repo.stored("owner", "hello-world"); !ok {
+	if _, ok := repo.stored("hello-world"); !ok {
 		t.Error("blog was deleted despite forbidden caller")
 	}
 }
@@ -642,21 +665,21 @@ func TestDeleteBlog_Owner(t *testing.T) {
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	req := blogPathRequest(http.MethodDelete, "sly-dancing-monkey", "hello-world", nil)
+	req := blogPathRequest(http.MethodDelete, "hello-world", nil)
 	rec := httptest.NewRecorder()
 	s.DeleteBlog(rec, withUID(req, "owner"))
 
 	if rec.Result().StatusCode != http.StatusNoContent {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
 	}
-	stored, ok := repo.stored("owner", "hello-world")
+	stored, ok := repo.stored("hello-world")
 	if !ok {
 		t.Fatal("blog document was removed by delete, want it kept and soft-deleted")
 	}
 	if stored.DeletedAt == nil {
 		t.Error("DeletedAt is nil after delete, want it stamped")
 	}
-	if _, err := repo.Get(context.Background(), "owner", "hello-world"); !errors.Is(err, repository.ErrNotFound) {
+	if _, err := repo.Get(context.Background(), "hello-world"); !errors.Is(err, repository.ErrNotFound) {
 		t.Errorf("Get after delete = %v, want ErrNotFound", err)
 	}
 }
@@ -667,14 +690,14 @@ func TestDeleteBlog_PostIsNoLongerReadableOrListed(t *testing.T) {
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	req := blogPathRequest(http.MethodDelete, "sly-dancing-monkey", "hello-world", nil)
+	req := blogPathRequest(http.MethodDelete, "hello-world", nil)
 	rec := httptest.NewRecorder()
 	s.DeleteBlog(rec, withUID(req, "owner"))
 	if rec.Result().StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
 	}
 
-	getReq := blogPathRequest(http.MethodGet, "sly-dancing-monkey", "hello-world", nil)
+	getReq := blogPathRequest(http.MethodGet, "hello-world", nil)
 	getRec := httptest.NewRecorder()
 	s.GetBlog(getRec, withUID(getReq, "owner"))
 	if getRec.Result().StatusCode != http.StatusNotFound {
@@ -693,13 +716,14 @@ func TestDeleteBlog_PostIsNoLongerReadableOrListed(t *testing.T) {
 }
 
 // A post carries its author's username, because a client cannot resolve one: profiles are
-// addressable only by username, and a post records its owner by uid.
+// addressable only by username, a post records its owner by uid, and the address no longer names
+// the author at all.
 func TestGetBlog_CarriesTheAuthor(t *testing.T) {
 	blogs := newFakeBlogRepository()
 	blogs.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic})
 	s := newBlogService(blogs, author("owner", "sly-dancing-monkey"))
 
-	req := blogPathRequest(http.MethodGet, "sly-dancing-monkey", "hello-world", nil)
+	req := blogPathRequest(http.MethodGet, "hello-world", nil)
 	rec := httptest.NewRecorder()
 	s.GetBlog(rec, withUID(req, "reader"))
 

@@ -65,8 +65,8 @@ func TestHandler_WriteRoutesRequireAuth(t *testing.T) {
 
 	for _, tt := range []struct{ method, path string }{
 		{http.MethodPost, "/blogs"},
-		{http.MethodPut, "/blogs/sly-dancing-monkey/hello-world"},
-		{http.MethodDelete, "/blogs/sly-dancing-monkey/hello-world"},
+		{http.MethodPut, "/blogs/hello-world"},
+		{http.MethodDelete, "/blogs/hello-world"},
 		{http.MethodGet, "/users/me"},
 		{http.MethodPut, "/users/me"},
 		{http.MethodDelete, "/users/me"},
@@ -82,8 +82,8 @@ func TestHandler_WriteRoutesRequireAuth(t *testing.T) {
 	}
 }
 
-// GET /blogs and GET /blogs/{username}/{slug} admit anonymous callers - they 401 only for a
-// credential that is present but invalid, never merely absent.
+// GET /blogs and GET /blogs/{slug} admit anonymous callers - they 401 only for a credential that
+// is present but invalid, never merely absent.
 func TestHandler_BlogReadRoutesAdmitAnonymousCallers(t *testing.T) {
 	repo := newFakeBlogRepository()
 	repo.seed(entity.Blog{Slug: "public", OwnerID: "owner", Visibility: entity.VisibilityPublic})
@@ -91,7 +91,7 @@ func TestHandler_BlogReadRoutesAdmitAnonymousCallers(t *testing.T) {
 
 	for _, tt := range []struct{ method, path string }{
 		{http.MethodGet, "/blogs"},
-		{http.MethodGet, "/blogs/sly-dancing-monkey/public"},
+		{http.MethodGet, "/blogs/public"},
 	} {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
 			rec := httptest.NewRecorder()
@@ -104,17 +104,16 @@ func TestHandler_BlogReadRoutesAdmitAnonymousCallers(t *testing.T) {
 	}
 }
 
-// An anonymous GET /blogs/{username}/{slug} for a private post is a 404, the same outcome a
-// signed-in caller who isn't the owner or on the whitelist gets - not a 401, since no credential
-// was required, and not a 403, since the address is guessable from the author's username and the
-// post's own title.
+// An anonymous GET /blogs/{slug} for a private post is a 404, the same outcome a signed-in caller
+// who isn't the owner or on the whitelist gets - not a 401, since no credential was required, and
+// not a 403, since the address is guessable from the post's own title.
 func TestHandler_AnonymousCallerCannotReadPrivateBlog(t *testing.T) {
 	repo := newFakeBlogRepository()
 	repo.seed(entity.Blog{Slug: "private", OwnerID: "owner", Visibility: entity.VisibilityPrivate})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/blogs/sly-dancing-monkey/private", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/blogs/private", nil))
 
 	if rec.Result().StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)

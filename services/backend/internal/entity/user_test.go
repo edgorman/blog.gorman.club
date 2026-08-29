@@ -46,7 +46,6 @@ func TestUser_SetUsername(t *testing.T) {
 		{"inner space is rejected", "sly dancing monkey", "", false},
 		{"underscores are rejected", "sly_dancing_monkey", "", false},
 		{"a reserved name is rejected", "me", "", false},
-		{"the profile editor's path is reserved too", "edit", "", false},
 		{"a reserved name is rejected whatever its case", "ME", "", false},
 		{"other punctuation is rejected", "sly.dancing.monkey", "", false},
 		{"a slash is rejected", "sly/monkey", "", false},

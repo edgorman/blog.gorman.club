@@ -38,7 +38,7 @@ func (s *Service) Handler() http.Handler {
 	authed := func(h http.HandlerFunc) http.Handler {
 		return requireAuth(s.verifier, h)
 	}
-	// GET /blogs, GET /blogs/{username}/{slug}, and GET /users/{username} admit anonymous callers. Blog visibility is
+	// GET /blogs, GET /blogs/{slug}, and GET /users/{username} admit anonymous callers. Blog visibility is
 	// enforced downstream: entity.Blog.CanBeReadBy already treats the zero Caller as seeing only
 	// public posts, so no handler change was needed to support this - only relaxing which requests
 	// reach it. A profile has nothing caller-specific to hide, so GetUser needed no change either -
@@ -52,14 +52,15 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("/health", s.Debug)
 	mux.HandleFunc("/debug", s.Debug)
 	mux.Handle("GET /blogs", optional(s.ListBlogs))
-	// A post is addressed by its author and its slug together, since slugs are unique per author
-	// rather than globally: "hello-world" means one post under one username and a different one
-	// under another. The author appears as their username for the same reason a profile does -
-	// the uid a post records its owner by is never public.
-	mux.Handle("GET /blogs/{username}/{slug}", optional(s.GetBlog))
+	// A post is addressed by its slug alone, since slugs are unique across every author rather than
+	// only within one: "hello-world" names at most one post anywhere, and the second post under
+	// that title takes a suffixed slug instead (see entity.NewBlogSlug). The author is reported as
+	// a field on the response rather than as part of the address - the uid a post records its owner
+	// by is never public, and now nothing has to resolve one to reach a post.
+	mux.Handle("GET /blogs/{slug}", optional(s.GetBlog))
 	mux.Handle("POST /blogs", authed(s.CreateBlog))
-	mux.Handle("PUT /blogs/{username}/{slug}", authed(s.UpdateBlog))
-	mux.Handle("DELETE /blogs/{username}/{slug}", authed(s.DeleteBlog))
+	mux.Handle("PUT /blogs/{slug}", authed(s.UpdateBlog))
+	mux.Handle("DELETE /blogs/{slug}", authed(s.DeleteBlog))
 	// A profile is addressed by its username, never by the Google `sub` it is keyed by, so the id
 	// stays an internal detail rather than a public handle. "me" is the one exception, for a client
 	// that holds a credential but does not yet know which name it was given; ServeMux prefers that

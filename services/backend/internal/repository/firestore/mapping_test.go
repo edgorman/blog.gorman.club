@@ -75,34 +75,37 @@ func TestUserMappingRoundTrip(t *testing.T) {
 }
 
 // A user's id is its document key, so storing it in the body too would duplicate it. A post is
-// keyed by owner and slug together, which it carries as ordinary fields - the key is derived from
-// them (see blogKey), so the body is what identifies the post and the key is what enforces it.
+// keyed by its slug, which it also carries as an ordinary field, so the body is what identifies
+// the post and the key is what enforces its uniqueness.
 func TestUserDocumentExcludesID(t *testing.T) {
 	if _, ok := reflect.TypeOf(userToDocument(entity.User{ID: "user-1"})).FieldByName("ID"); ok {
 		t.Error("user document type has an ID field, which would duplicate the document key")
 	}
 }
 
-// Two posts collide only when their owner and slug both match: an author may reuse a slug nobody
-// else's post can take from them, and may not reuse their own.
-func TestBlogKeyIsScopedToTheOwner(t *testing.T) {
-	mine := blogKey("owner", "hello-world")
+// A post is stored at its slug alone, so the slug is the whole of what makes two posts collide:
+// no two posts hold one whoever wrote them, which is what lets a post be addressed without naming
+// its author. Every slug also has to survive Firestore's rules for a document key on its own,
+// since nothing else qualifies it any more.
+func TestBlogSlugIsUsableAsADocumentKey(t *testing.T) {
+	for _, slug := range []string{
+		"hello-world",
+		"hello-world-k3m9x",
+		"untitled",
+		strings.Repeat("a", entity.MaxBlogSlugLength),
+	} {
+		var blog entity.Blog
+		if err := blog.SetSlug(slug); err != nil {
+			t.Errorf("SetSlug(%q) = %v, want a slug a post can be stored at", slug, err)
+		}
+	}
 
-	if same := blogKey("owner", "hello-world"); same != mine {
-		t.Errorf("blogKey is not stable: %q then %q", mine, same)
-	}
-	if other := blogKey("another-owner", "hello-world"); other == mine {
-		t.Errorf("blogKey(%q) = %q for two owners, want one slug per author to be free of the other", "hello-world", mine)
-	}
-	if other := blogKey("owner", "hello-world-k3m9x"); other == mine {
-		t.Errorf("blogKey collides for two of one owner's slugs at %q", mine)
-	}
-	// A slug cannot hold the separator, so no owner/slug pair can be spelled two ways.
-	if strings.Contains(mine, blogKeySeparator+blogKeySeparator) {
-		t.Errorf("blogKey = %q, want a single separator", mine)
-	}
-	var blog entity.Blog
-	if err := blog.SetSlug("hello" + blogKeySeparator + "world"); err == nil {
-		t.Errorf("SetSlug admitted the key separator %q, which would make two pairs share a key", blogKeySeparator)
+	// Firestore refuses these outright in a document path, and a slug is now the whole path
+	// segment, so SetSlug is the only thing standing between a title and an unstorable key.
+	for _, slug := range []string{".", "..", "hello/world", "__reserved__", ""} {
+		var blog entity.Blog
+		if err := blog.SetSlug(slug); err == nil {
+			t.Errorf("SetSlug(%q) = nil, want a slug Firestore refuses as a key to be rejected", slug)
+		}
 	}
 }

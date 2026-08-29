@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { userPath } from '../lib/api'
 import { GoogleSignInButton } from './GoogleSignInButton'
 
 const CloseIcon = () => (
@@ -17,6 +18,9 @@ interface Props {
 /** The account overlay opened from NavBar's account button: sign in/out and a New post shortcut. */
 export function AccountPanel({ onClose }: Props) {
   const { user, profile, authError, authReady, renderSignInButton, signOut } = useApp()
+  // The profile page and its editor are both addressed by the username, and the editor sits under
+  // the profile it edits - so neither has a path until the profile has loaded.
+  const profileHref = profile ? userPath(profile.username) : null
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -47,17 +51,19 @@ export function AccountPanel({ onClose }: Props) {
                 <div className="text-muted panel-identity-email">{user.email}</div>
               </div>
             </div>
-            <Link to="/new" className="btn btn-primary btn-block" onClick={onClose}>
+            <Link to="/post/new" className="btn btn-primary btn-block" onClick={onClose}>
               New post
             </Link>
-            {profile && (
-              <Link to={`/profile/${profile.username}`} className="btn btn-secondary btn-block" onClick={onClose}>
-                View profile
-              </Link>
+            {profileHref && (
+              <>
+                <Link to={profileHref} className="btn btn-secondary btn-block" onClick={onClose}>
+                  View profile
+                </Link>
+                <Link to={`${profileHref}/edit`} className="btn btn-secondary btn-block" onClick={onClose}>
+                  Edit profile
+                </Link>
+              </>
             )}
-            <Link to="/profile/edit" className="btn btn-secondary btn-block" onClick={onClose}>
-              Edit profile
-            </Link>
             <button type="button" className="btn btn-ghost btn-block" onClick={() => { signOut(); onClose() }}>
               Sign out
             </button>

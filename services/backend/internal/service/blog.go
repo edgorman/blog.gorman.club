@@ -11,7 +11,7 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
-// blogSlugAttempts bounds how many suffixed slugs a post draws once its author already holds the
+// blogSlugAttempts bounds how many suffixed slugs a post draws once some post already holds the
 // plain form of its title. Each draw is one of about 28 million per title, so reaching even the
 // second is unlikely and exhausting all of them is not something a real post will do.
 const blogSlugAttempts = 5
@@ -19,11 +19,11 @@ const blogSlugAttempts = 5
 // blogResponse is a blog as clients see it: the stored post, plus who wrote it. A username is the
 // whole of an author's public identity, so it is carried directly rather than wrapped.
 //
-// It is resolved on read rather than stored on the post, so renaming reaches every post at once
-// instead of leaving old ones attributed to a name nobody holds, and a client never has to resolve
-// one itself - which it could not do anyway, since a profile is only addressable by a username and
-// a post records its owner by uid. It is empty when the owner never created a profile, which a
-// post does not require.
+// It is what a client links an author by: a post is addressed by its slug alone, so the username
+// here is the only handle it holds for the profile behind the post - a post records its owner by
+// uid, which is never public. Resolving it on read rather than storing it on the post means
+// renaming reaches every post at once instead of leaving old ones attributed to a name nobody
+// holds. It is empty when the owner never created a profile, which a post does not require.
 type blogResponse struct {
 	entity.Blog
 	AuthorUsername string `json:"authorUsername"`
@@ -77,14 +77,15 @@ func (s *Service) withAuthor(ctx context.Context, blog entity.Blog) (blogRespons
 }
 
 // saveBlog writes a new post under a slug derived from its title, e.g. "Hello, world!" at
-// "hello-world". The plain slug is tried first, so an author's first post under a title reads as
-// itself in the URL; only once they already hold that slug does a post fall back to a suffixed one
-// like "hello-world-k3m9x".
+// "hello-world". The plain slug is tried first, so the first post anywhere under a title reads as
+// itself in the URL; only once some post already holds that slug does one fall back to a suffixed
+// slug like "hello-world-k3m9x".
 //
-// Slugs are scoped to the author (see the repository's document key), so a title is only ever
-// contended with the author's own posts - two people may both hold "hello-world". As with
-// usernames, only the write can tell whether a slug is free, so a collision is answered by drawing
-// another rather than by checking beforehand, which would be slower and still racy.
+// Slugs are unique across every author (see the repository's document key), which is what lets a
+// post be addressed by its slug with no author beside it - so a title is contended with every
+// other post, not only the author's own. As with usernames, only the write can tell whether a slug
+// is free, so a collision is answered by drawing another rather than by checking beforehand, which
+// would be slower and still racy.
 func (s *Service) saveBlog(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
 	blog.Slug = entity.NewBlogSlug(blog.Title)
 
@@ -106,9 +107,9 @@ func (s *Service) saveBlog(ctx context.Context, blog entity.Blog) (entity.Blog, 
 }
 
 // ensureAuthor gives uid a profile if it has none, so that the post about to be written can be
-// reached: a post is addressed as /blogs/{username}/{slug}, which an author with no username has
-// no form of. The client creates a profile for itself the first time it signs in, but nothing
-// stops a caller reaching this endpoint before it ever has.
+// attributed: a username is the only public handle an author has, and without one a post shows and
+// links to nobody (see blogResponse). The client creates a profile for itself the first time it
+// signs in, but nothing stops a caller reaching this endpoint before it ever has.
 func (s *Service) ensureAuthor(ctx context.Context, uid string) error {
 	_, err := s.users.Get(ctx, uid)
 	if !errors.Is(err, repository.ErrNotFound) {
@@ -164,43 +165,26 @@ func decodeBlogRequest(w http.ResponseWriter, r *http.Request, blog *entity.Blog
 	return true
 }
 
-// blogFromPath loads the post named by the {username}/{slug} pair it is addressed by, writing a
-// 404 and returning false if either half is malformed or names nothing.
+// blogFromPath loads the post named by the {slug} it is addressed by, writing a 404 and returning
+// false if the slug is malformed or names nothing.
 //
-// The author is resolved through their profile because a post records its owner by uid, and a uid
-// is never public: the username is the only handle a caller holds, and the uid behind it is what
-// the post is keyed by. A malformed half answers as 404 rather than as the 400 SetUsername or
-// SetSlug would give: the path is a URL a reader followed, not a form they filled in, and a rule it
-// broke is exactly what the address of a private post looks like from the outside - so it is
-// folded into the same "nothing here" every other kind of miss gets, rather than distinguished
-// from them.
+// A malformed slug answers as 404 rather than as the 400 SetSlug would give: the path is a URL a
+// reader followed, not a form they filled in, and a rule it broke is exactly what the address of a
+// private post looks like from the outside - so it is folded into the same "nothing here" every
+// other kind of miss gets, rather than distinguished from them. A slug the frontend reserves
+// (/post/new) is refused by SetSlug and so lands here too, which is right: no post holds one.
 func (s *Service) blogFromPath(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
 	notFound := func() (entity.Blog, bool) {
 		writeError(w, http.StatusNotFound, "blog not found")
 		return entity.Blog{}, false
 	}
 
-	var author entity.User
-	if err := author.SetUsername(r.PathValue("username")); err != nil {
-		return notFound()
-	}
 	var candidate entity.Blog
 	if err := candidate.SetSlug(r.PathValue("slug")); err != nil {
 		return notFound()
 	}
 
-	// A username nobody holds and a username whose holder has no such post are the same 404: the
-	// post asked for does not exist either way, and which half missed is not the caller's business.
-	owner, err := s.users.GetByUsername(r.Context(), author.Username)
-	if errors.Is(err, repository.ErrNotFound) {
-		return notFound()
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return entity.Blog{}, false
-	}
-
-	blog, err := s.blogs.Get(r.Context(), owner.ID, candidate.Slug)
+	blog, err := s.blogs.Get(r.Context(), candidate.Slug)
 	if errors.Is(err, repository.ErrNotFound) {
 		return notFound()
 	}
@@ -214,8 +198,7 @@ func (s *Service) blogFromPath(w http.ResponseWriter, r *http.Request) (entity.B
 // requireReadableBlog loads the post the request addresses and checks the caller may read it,
 // writing a 404 and returning false otherwise. A caller who cannot read a post is shown the same
 // "not found" a missing one gets, rather than a 403 that would out its existence - which is
-// exactly what a URL built from the author's username and the post's own title lets a stranger
-// probe for.
+// exactly what a URL built from the post's own title lets a stranger probe for.
 func (s *Service) requireReadableBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
 	blog, ok := s.blogFromPath(w, r)
 	if !ok {
@@ -281,8 +264,8 @@ func (s *Service) GetBlog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-// CreateBlog makes a new blog owned by the caller, addressed by their username and a slug taken
-// from its title (see saveBlog).
+// CreateBlog makes a new blog owned by the caller, addressed by a slug taken from its title (see
+// saveBlog).
 func (s *Service) CreateBlog(w http.ResponseWriter, r *http.Request) {
 	blog := entity.Blog{OwnerID: uidFromContext(r.Context())}
 	if !decodeBlogRequest(w, r, &blog) {
@@ -343,7 +326,7 @@ func (s *Service) DeleteBlog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.blogs.Delete(r.Context(), blog.OwnerID, blog.Slug); err != nil {
+	if err := s.blogs.Delete(r.Context(), blog.Slug); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

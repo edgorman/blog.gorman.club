@@ -11,8 +11,8 @@ export function FeedList({ posts }: Props) {
   return (
     <div>
       {posts.map((post, i) => (
-        // A slug is unique to its author, so the author is part of what identifies a row.
-        <FeedRow key={`${post.ownerId}/${post.slug}`} post={post} delayMs={i * 20} />
+        // A slug names one post anywhere, so it identifies a row on its own.
+        <FeedRow key={post.slug} post={post} delayMs={i * 20} />
       ))}
     </div>
   )
@@ -20,8 +20,6 @@ export function FeedList({ posts }: Props) {
 
 function FeedRow({ post, delayMs }: { post: Blog; delayMs: number }) {
   const author = post.authorUsername
-  // A post is addressed through its author, so one whose owner holds no username has nowhere to
-  // link to. It still belongs in the feed - it is simply not clickable.
   const href = postPath(post)
 
   const body = (
@@ -37,13 +35,6 @@ function FeedRow({ post, delayMs }: { post: Blog; delayMs: number }) {
   )
   const style = { animationDelay: `${delayMs}ms` }
 
-  if (!href) {
-    return (
-      <div className="feed-row" style={style}>
-        {body}
-      </div>
-    )
-  }
   return (
     <Link to={href} className="feed-row" style={style}>
       {body}

@@ -15,8 +15,8 @@ import (
 )
 
 // fakeBlogRepository is an in-memory repository.BlogRepository. Like the real one it stores posts
-// under their owner and slug together and refuses to overwrite an occupied pair, so the per-author
-// slugs a handler derives from titles are exercised here rather than assumed.
+// under their slug alone and refuses to overwrite an occupied one, so the globally unique slugs a
+// handler derives from titles are exercised here rather than assumed.
 type fakeBlogRepository struct {
 	blogs map[string]entity.Blog
 	// beforeCreate lets a test fail a write the in-memory state would otherwise allow, which is
@@ -28,27 +28,22 @@ func newFakeBlogRepository() *fakeBlogRepository {
 	return &fakeBlogRepository{blogs: make(map[string]entity.Blog)}
 }
 
-// fakeBlogKey mirrors the Firestore repository's document key: a slug belongs to one author, so
-// the same slug under two owners is two posts.
-func fakeBlogKey(ownerID, slug string) string {
-	return ownerID + "/" + slug
-}
-
-// seed stores posts as a real write would, at the key their owner and slug name.
+// seed stores posts as a real write would, at the slug that names them - which, as in the
+// Firestore repository, is the whole of the key, so two authors cannot both hold one slug.
 func (r *fakeBlogRepository) seed(blogs ...entity.Blog) {
 	for _, blog := range blogs {
-		r.blogs[fakeBlogKey(blog.OwnerID, blog.Slug)] = blog
+		r.blogs[blog.Slug] = blog
 	}
 }
 
-// stored returns the post held at a key, for a test asserting on what a handler wrote.
-func (r *fakeBlogRepository) stored(ownerID, slug string) (entity.Blog, bool) {
-	blog, ok := r.blogs[fakeBlogKey(ownerID, slug)]
+// stored returns the post held at a slug, for a test asserting on what a handler wrote.
+func (r *fakeBlogRepository) stored(slug string) (entity.Blog, bool) {
+	blog, ok := r.blogs[slug]
 	return blog, ok
 }
 
-func (r *fakeBlogRepository) Get(_ context.Context, ownerID, slug string) (entity.Blog, error) {
-	blog, ok := r.stored(ownerID, slug)
+func (r *fakeBlogRepository) Get(_ context.Context, slug string) (entity.Blog, error) {
+	blog, ok := r.stored(slug)
 	if !ok || blog.IsDeleted() {
 		return entity.Blog{}, repository.ErrNotFound
 	}
@@ -75,7 +70,7 @@ func (r *fakeBlogRepository) Create(_ context.Context, blog entity.Blog) (entity
 			return entity.Blog{}, err
 		}
 	}
-	if _, taken := r.stored(blog.OwnerID, blog.Slug); taken {
+	if _, taken := r.stored(blog.Slug); taken {
 		return entity.Blog{}, repository.ErrSlugTaken
 	}
 
@@ -96,8 +91,8 @@ func (r *fakeBlogRepository) Update(_ context.Context, blog entity.Blog) (entity
 }
 
 // Delete mirrors the Firestore repository: the document stays, only DeletedAt is stamped.
-func (r *fakeBlogRepository) Delete(_ context.Context, ownerID, slug string) error {
-	blog, ok := r.stored(ownerID, slug)
+func (r *fakeBlogRepository) Delete(_ context.Context, slug string) error {
+	blog, ok := r.stored(slug)
 	if !ok || blog.IsDeleted() {
 		return repository.ErrNotFound
 	}

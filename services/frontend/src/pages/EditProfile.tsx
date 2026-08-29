@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { ApiError, errorMessage } from '../lib/api'
+import { ApiError, errorMessage, userPath } from '../lib/api'
 
 /** Lets a signed-in user edit their own username and bio (PUT /users/me). */
 export function EditProfile() {
+  // The editor sits under the profile it edits, so the path names whose profile is being edited.
+  // The write itself still goes to /users/me and takes its owner from the credential, so this is
+  // only ever a claim about which profile the visitor meant - checked below against the one they
+  // actually hold, never trusted as authority to edit it.
+  const { username: routeUsername } = useParams<{ username: string }>()
   const { api, user, refreshProfile } = useApp()
   // The name as saved, which is where Cancel and the post-save redirect point. `draft` is what the
   // field holds, so an unsaved edit never changes where they go.
@@ -85,7 +90,22 @@ export function EditProfile() {
     )
   }
 
-  if (saved && username) return <Navigate to={`/profile/${username}`} replace />
+  // Checked before the mismatch guard below: a rename leaves the path naming the old username, and
+  // a redirect to the new one must not be mistaken for someone editing a profile they don't hold.
+  if (saved && username) return <Navigate to={userPath(username) ?? '/'} replace />
+
+  // A visitor who follows another user's edit path is turned away here rather than by the backend,
+  // which would have let the write through against their own profile - the path names a profile,
+  // but /users/me decides whose is written, so the two have to be reconciled before the form is
+  // shown. Lookups fold case server-side, so the comparison does too.
+  if (!loading && username && routeUsername?.toLowerCase() !== username.toLowerCase()) {
+    return (
+      <div className="page">
+        <p className="center-note">You can only edit your own profile.</p>
+        <Link to={userPath(username) ?? '/'}>← Back to your profile</Link>
+      </div>
+    )
+  }
 
   return (
     <div className="page">
@@ -131,7 +151,7 @@ export function EditProfile() {
             <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
               {saving ? 'Saving…' : 'Save'}
             </button>
-            <Link to={username ? `/profile/${username}` : '/'} className="btn btn-secondary">
+            <Link to={(username && userPath(username)) || '/'} className="btn btn-secondary">
               Cancel
             </Link>
           </div>

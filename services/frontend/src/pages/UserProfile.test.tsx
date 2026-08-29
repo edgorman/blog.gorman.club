@@ -48,8 +48,8 @@ describe('UserProfile', () => {
   it("shows the profile header and only that author's posts", async () => {
     renderWithApp(<UserProfile />, {
       context: { api: fakeApi() },
-      route: '/profile/calm-smiling-kestrel',
-      path: '/profile/:username',
+      route: '/user/calm-smiling-kestrel',
+      path: '/user/:username',
     })
 
     expect(await screen.findByRole('heading', { name: 'calm-smiling-kestrel' })).toBeInTheDocument()
@@ -64,8 +64,8 @@ describe('UserProfile', () => {
     const api = fakeApi({ getUser: vi.fn().mockRejectedValue(new Error('not found')) })
     renderWithApp(<UserProfile />, {
       context: { api },
-      route: '/profile/nobody-here-at-all',
-      path: '/profile/:username',
+      route: '/user/nobody-here-at-all',
+      path: '/user/:username',
     })
 
     expect(await screen.findByText('No such user.')).toBeInTheDocument()
@@ -76,8 +76,8 @@ describe('UserProfile', () => {
   it('leaves the Edit profile link to the account panel', async () => {
     renderWithApp(<UserProfile />, {
       context: { api: fakeApi(), profile: user },
-      route: '/profile/calm-smiling-kestrel',
-      path: '/profile/:username',
+      route: '/user/calm-smiling-kestrel',
+      path: '/user/:username',
     })
 
     expect(await screen.findByRole('heading', { name: 'calm-smiling-kestrel' })).toBeInTheDocument()
@@ -89,8 +89,8 @@ describe('UserProfile', () => {
   it('matches the author regardless of the case in the URL', async () => {
     renderWithApp(<UserProfile />, {
       context: { api: fakeApi(), profile: user },
-      route: '/profile/CALM-Smiling-Kestrel',
-      path: '/profile/:username',
+      route: '/user/CALM-Smiling-Kestrel',
+      path: '/user/:username',
     })
 
     expect(await screen.findByRole('heading', { name: 'calm-smiling-kestrel' })).toBeInTheDocument()

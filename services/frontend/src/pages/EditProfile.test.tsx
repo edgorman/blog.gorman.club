@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ApiError, type Api, type User } from '../lib/api'
+import type { AppContextValue } from '../context/AppContext'
 import { renderWithApp } from '../testUtils'
 import { EditProfile } from './EditProfile'
 
@@ -30,9 +31,21 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
   } as unknown as Api
 }
 
+/**
+ * Renders the editor at the path it lives at: under the profile it edits. `at` names the profile
+ * in the URL, which defaults to the caller's own - the mismatch case passes somebody else's.
+ */
+function renderEditor(context: Partial<AppContextValue>, at = 'calm-smiling-kestrel') {
+  return renderWithApp(<EditProfile />, {
+    context,
+    route: `/user/${at}/edit`,
+    path: '/user/:username/edit',
+  })
+}
+
 describe('EditProfile', () => {
   it('pre-fills the form with the existing profile', async () => {
-    renderWithApp(<EditProfile />, { context: { api: fakeApi(), user: me } })
+    renderEditor({ api: fakeApi(), user: me })
 
     expect(await screen.findByDisplayValue('calm-smiling-kestrel')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Writes things.')).toBeInTheDocument()
@@ -43,7 +56,7 @@ describe('EditProfile', () => {
     const api = fakeApi({
       getCurrentUser: vi.fn().mockRejectedValue(new ApiError(404, 'user not found')),
     })
-    renderWithApp(<EditProfile />, { context: { api, user: me } })
+    renderEditor({ api, user: me })
 
     expect(await screen.findByLabelText('Username')).toHaveValue('')
   })
@@ -54,7 +67,7 @@ describe('EditProfile', () => {
     const api = fakeApi({
       getCurrentUser: vi.fn().mockRejectedValue(new ApiError(500, 'internal error')),
     })
-    renderWithApp(<EditProfile />, { context: { api, user: me } })
+    renderEditor({ api, user: me })
 
     expect(await screen.findByRole('alert')).toHaveTextContent('internal error')
     expect(screen.queryByLabelText('Username')).not.toBeInTheDocument()
@@ -64,7 +77,7 @@ describe('EditProfile', () => {
   // No id argument: the backend takes the owner from the credential.
   it('saves a renamed username via putUser', async () => {
     const api = fakeApi()
-    renderWithApp(<EditProfile />, { context: { api, user: me } })
+    renderEditor({ api, user: me })
 
     const nameInput = await screen.findByDisplayValue('calm-smiling-kestrel')
     await userEvent.clear(nameInput)
@@ -83,7 +96,7 @@ describe('EditProfile', () => {
     const api = fakeApi({
       getCurrentUser: vi.fn().mockRejectedValue(new ApiError(404, 'user not found')),
     })
-    renderWithApp(<EditProfile />, { context: { api, user: me } })
+    renderEditor({ api, user: me })
 
     const bioInput = await screen.findByLabelText('Bio')
     await userEvent.type(bioInput, 'Hello.')
@@ -96,7 +109,7 @@ describe('EditProfile', () => {
   // which would otherwise conflict with the name the profile already holds.
   it('omits an unchanged username', async () => {
     const api = fakeApi()
-    renderWithApp(<EditProfile />, { context: { api, user: me } })
+    renderEditor({ api, user: me })
 
     const bioInput = await screen.findByDisplayValue('Writes things.')
     await userEvent.clear(bioInput)
@@ -109,8 +122,25 @@ describe('EditProfile', () => {
     })
   })
 
+  // The path names a profile but /users/me decides whose is written, so a visitor following
+  // somebody else's edit link has to be turned away here - the backend would have applied the
+  // write to their own profile instead.
+  it('refuses to edit a profile the caller does not hold', async () => {
+    renderEditor({ api: fakeApi(), user: me }, 'bold-leaping-lynx')
+
+    expect(await screen.findByText('You can only edit your own profile.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Username')).not.toBeInTheDocument()
+  })
+
+  // Lookups fold case server-side, so a link that differs only in case is still the caller's own.
+  it("edits the caller's own profile whatever the case in the path", async () => {
+    renderEditor({ api: fakeApi(), user: me }, 'CALM-Smiling-Kestrel')
+
+    expect(await screen.findByDisplayValue('calm-smiling-kestrel')).toBeInTheDocument()
+  })
+
   it('prompts sign-in when signed out', () => {
-    renderWithApp(<EditProfile />, { context: { api: fakeApi() } })
+    renderEditor({ api: fakeApi() })
 
     expect(screen.getByText('Sign in to edit your profile.')).toBeInTheDocument()
   })

@@ -17,8 +17,8 @@ type Mode = 'write' | 'preview'
 type Visibility = Blog['visibility']
 
 export function EditPost() {
-  // Both halves address the post: a slug belongs to one author, so neither identifies it alone.
-  const { username, slug } = useParams<{ username: string; slug: string }>()
+  // The slug addresses the post on its own: slugs are unique across every author.
+  const { slug } = useParams<{ slug: string }>()
   const { api, user } = useApp()
   const [state, setState] = useState<State>(api ? { phase: 'loading' } : { phase: 'unconfigured' })
   const [title, setTitle] = useState('')
@@ -32,10 +32,10 @@ export function EditPost() {
   const [deleted, setDeleted] = useState(false)
 
   useEffect(() => {
-    if (!api || !username || !slug) return
+    if (!api || !slug) return
     setState({ phase: 'loading' })
     api
-      .getBlog(username, slug)
+      .getBlog(slug)
       .then((post) => {
         setState({ phase: 'ready', post })
         setTitle(post.title)
@@ -46,17 +46,17 @@ export function EditPost() {
         if (e instanceof ApiError && e.status === 404) return setState({ phase: 'not-found' })
         setState({ phase: 'error', message: e instanceof Error ? e.message : 'Failed to load post' })
       })
-  }, [api, username, slug])
+  }, [api, slug])
 
   const save = () => {
-    if (!api || !username || !slug || state.phase !== 'ready') return
+    if (!api || !slug || state.phase !== 'ready') return
     setSaving(true)
     setError(null)
     api
       // updateBlog is a full replace, so the private-post whitelist has to be carried through even
       // though this editor doesn't expose it for editing.
       // The slug is not editable, so a retitle saves against the address the post already has.
-      .updateBlog(username, slug, {
+      .updateBlog(slug, {
         title,
         content: markdown,
         visibility,
@@ -70,12 +70,12 @@ export function EditPost() {
   // The backend soft-deletes a post rather than erasing it, but nothing here lets the owner get it
   // back, so the prompt still has to warn them as if it were permanent.
   const remove = () => {
-    if (!api || !username || !slug) return
+    if (!api || !slug) return
     if (!window.confirm('Delete this post? This cannot be undone.')) return
     setDeleting(true)
     setError(null)
     api
-      .deleteBlog(username, slug)
+      .deleteBlog(slug)
       .then(() => setDeleted(true))
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to delete')))
       .finally(() => setDeleting(false))
@@ -119,12 +119,12 @@ export function EditPost() {
     return (
       <div className="page">
         <p className="center-note">You don't have permission to edit this post.</p>
-        <Link to={postPath(post) ?? '/'}>← Back to post</Link>
+        <Link to={postPath(post)}>← Back to post</Link>
       </div>
     )
   }
 
-  if (saved) return <Navigate to={postPath(post) ?? '/'} replace />
+  if (saved) return <Navigate to={postPath(post)} replace />
   if (deleted) return <Navigate to="/" replace />
 
   return (
@@ -204,7 +204,7 @@ export function EditPost() {
         <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
           {saving ? 'Saving…' : 'Save'}
         </button>
-        <Link to={postPath(post) ?? '/'} className="btn btn-secondary">
+        <Link to={postPath(post)} className="btn btn-secondary">
           Cancel
         </Link>
         <button type="button" className="btn btn-danger" onClick={remove} disabled={deleting}>

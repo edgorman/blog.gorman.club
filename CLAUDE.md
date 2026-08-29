@@ -39,6 +39,12 @@ Workflows authenticate to GCP using Workload Identity Federation (WIF) over shor
 
 The one credential WIF can't replace is the GitHub PAT root's own Terraform needs to write those repository variables in the first place. It's supplied by hand only once, at bootstrap; every apply after that (including CI's) reads it back from a `github_provider_token` secret in GCP Secret Manager, fetched at the start of each workflow run using the WIF identity above — so it's never stored as a GitHub Actions secret.
 
+### AI Writing Assistant
+
+The backend calls Gemini on **Vertex AI** in the same environment project it already runs in, so the writing assistant authenticates as the Cloud Run runtime service account (`roles/aiplatform.user`) over Application Default Credentials. This is the same reasoning that put CI on Workload Identity Federation: there is no API key to store in Secret Manager, rotate, or leak. The model id and its location are Terraform variables (`assistant_model`, `assistant_location`) rather than constants, since model availability is regional and model ids change faster than this service is redeployed.
+
+Access is an allowlist of usernames (`assistant_allowed_usernames`), configured per environment and enforced by the backend on every assistant route. It is deliberately the simplest thing that works: it is the seam a real entitlement - a tier and an expiry tied to a payment - replaces later, and every caller already asks the question in those terms.
+
 ### Resource Naming
 
 Strict environment suffixes (`backend-stag`, `backend-prod`) and scoped secrets (`stag-db-pass` vs `prod-db-pass`) ensure services in staging cannot accidentally reach production resources.

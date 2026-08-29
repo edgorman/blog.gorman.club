@@ -24,8 +24,9 @@ cmd/backend/          Entrypoint: reads config, builds adapters, hands them to t
 internal/
   entity/             Domain types and their rules - no I/O, no HTTP, no persistence tags
   repository/         Interfaces for everything external, plus ErrNotFound
-    firestore/        Firestore implementations of BlogRepository and UserRepository
+    firestore/        Firestore implementations of BlogRepository, UserRepository, ChatRepository
     google/           Google Identity Services implementation of TokenVerifier
+    vertex/           Gemini-on-Vertex-AI implementation of Assistant
   service/            HTTP server: routes, middleware, and logic spanning more than one entity
 ```
 
@@ -166,6 +167,9 @@ Adding another provider means extending `authProvider` and the switch in
 | GET    | `/users/me`   | Fetch your own profile, including the username you were assigned.      |
 | PUT    | `/users/me`   | Create or replace your own profile. An omitted `username` keeps the one you hold; a taken one is a `409`. |
 | DELETE | `/users/me`   | Delete your own profile, releasing its username.                       |
+| GET    | `/blogs/{slug}/chat` | Fetch the assistant conversation about a post. A post nobody has discussed is an empty conversation, not a `404`. |
+| POST   | `/blogs/{slug}/chat` | Send the assistant a message. Applies whatever it edits to the post and answers with the exchange plus the post as it now stands. |
+| DELETE | `/blogs/{slug}/chat` | Throw the conversation away. The post, edits included, is untouched. |
 
 ### Response shape
 
@@ -176,6 +180,50 @@ parse success and failure the same way:
 ```json
 { "error": "blog not found" }
 ```
+
+## The writing assistant
+
+The `/blogs/{slug}/chat` routes let an author talk to Gemini about a post and
+have it make the changes itself, rather than handing back text to paste. Three
+things are worth knowing about how it is bounded:
+
+- **What it can touch.** The model is given three tools - `set_title`,
+  `set_content`, `replace_text` - and they operate on an `entity.Draft`, which
+  is a post's title and body and nothing else. Visibility, the private-post
+  whitelist, the owner, and the slug are not reachable from any tool, so the
+  worst a misbehaving model can do is write a bad post: it cannot publish a
+  private one, reassign it, or touch a post other than the one being discussed.
+  Nothing behind `repository.Assistant` writes at all - the adapter edits a copy
+  and hands it back, and `service` decides whether to persist it.
+- **Who may use it.** `entity.AssistantAllowlist` is a static list of usernames,
+  configured per environment (`ASSISTANT_ALLOWED_USERNAMES`). It is a type of
+  its own rather than a string comparison in a handler because it is the seam
+  the real thing replaces: when access becomes something bought, an entitlement
+  carrying a tier and an expiry takes its place and `Allows` becomes a lookup
+  that can also answer "expired". Every caller already asks the question in
+  those terms. `GET /users/me` reports the answer as `assistantEnabled`, so a
+  client can keep the panel off the screen for an account that would be refused;
+  the routes enforce it either way, and a public profile never discloses it.
+- **What the draft is.** A chat request carries the title and body the author
+  has on screen, unsaved changes included - asking to tighten a paragraph has to
+  mean the paragraph they can see, not the one last written to Firestore. The
+  post is written back only when the model actually edited it, and the response
+  says so (`updated`), so an author who only asked a question keeps their
+  unsaved work unsaved.
+
+Conversations are stored in Firestore under `chats/{slug}`, keyed exactly as the
+post is. The turns live in an array inside that one document rather than in a
+subcollection: a chat is only ever read whole, since the model is given the
+whole history each turn. That trades unbounded growth for simplicity, which is
+why `entity.MaxChatMessages` trims the oldest turns rather than failing a write.
+
+Gemini is reached through **Vertex AI**, not the Generative Language API, so the
+backend authenticates as its own Cloud Run runtime service account
+(`roles/aiplatform.user`, see `infrastructure/env/cloud_run.tf`) over
+Application Default Credentials. There is no API key to mint, store, rotate, or
+leak - the same argument that put GitHub Actions on Workload Identity
+Federation. Credentials are resolved on first use, so a backend started without
+them still serves every other route and fails only this one, with the reason.
 
 ## Development
 
@@ -196,6 +244,10 @@ make build     # builds bin/backend
 | `ENVIRONMENT`          | Deployment environment reported by `/debug` (e.g. `stag`, `prod`). Defaults to `development`. |
 | `CORS_ALLOWED_ORIGIN`  | Origin allowed to call this API from a browser (the frontend's URL). Unset disables CORS headers entirely. |
 | `GOOGLE_CLIENT_ID`     | OAuth 2.0 client ID that ID tokens must be minted for. Set by Terraform from the `GOOGLE_CLIENT_ID` GitHub Actions variable; unset means no request can authenticate. |
+| `GCP_PROJECT_ID`       | Project Vertex AI is called through and billed to. Unset disables the writing assistant. |
+| `ASSISTANT_MODEL`      | Vertex model id, e.g. `gemini-3.7-flash`. It has to be one Vertex serves in `ASSISTANT_LOCATION`. Unset disables the writing assistant. |
+| `ASSISTANT_LOCATION`   | Vertex location: a region such as `europe-west1`, or `global` for the multi-region endpoint. Defaults to `global`. |
+| `ASSISTANT_ALLOWED_USERNAMES` | Comma-separated usernames permitted to use the writing assistant. Unset enables it for nobody. |
 
 `commit` is not an env var — it's baked into the binary at build time via
 `-ldflags "-X main.commit=..."` (see `Dockerfile`), since the same image is

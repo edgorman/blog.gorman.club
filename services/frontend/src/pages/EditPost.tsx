@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
+import { AssistantPanel } from '../components/AssistantPanel'
 import { useApp } from '../context/AppContext'
 import { ApiError, errorMessage, postPath, type Blog } from '../lib/api'
 import { renderMarkdown } from '../lib/markdown'
@@ -19,7 +20,7 @@ type Visibility = Blog['visibility']
 export function EditPost() {
   // The slug addresses the post on its own: slugs are unique across every author.
   const { slug } = useParams<{ slug: string }>()
-  const { api, user } = useApp()
+  const { api, user, profile } = useApp()
   const [state, setState] = useState<State>(api ? { phase: 'loading' } : { phase: 'unconfigured' })
   const [title, setTitle] = useState('')
   const [markdown, setMarkdown] = useState('')
@@ -177,22 +178,40 @@ export function EditPost() {
         </label>
       </div>
 
-      {mode === 'write' ? (
-        <div className="gc-pane">
-          <textarea
-            className="gc-editor"
-            placeholder="Write in markdown..."
-            value={markdown}
-            onChange={(e) => setMarkdown(e.target.value)}
+      <div className={profile?.assistantEnabled ? 'editor-with-assistant' : undefined}>
+        {mode === 'write' ? (
+          <div className="gc-pane">
+            <textarea
+              className="gc-editor"
+              placeholder="Write in markdown..."
+              value={markdown}
+              onChange={(e) => setMarkdown(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div
+            className="gc-pane post-body"
+            style={{ minHeight: 360, padding: 'var(--space-3) 0' }}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }}
           />
-        </div>
-      ) : (
-        <div
-          className="gc-pane post-body"
-          style={{ minHeight: 360, padding: 'var(--space-3) 0' }}
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }}
-        />
-      )}
+        )}
+
+        {/* The assistant edits the post server-side, so what it leaves behind replaces what is in
+            these fields - otherwise the next save would write the pre-assistant text back over it.
+            The panel is only rendered for an account the backend would actually let use it; the
+            routes enforce that either way. */}
+        {profile?.assistantEnabled && (
+          <AssistantPanel
+            slug={post.slug}
+            title={title}
+            content={markdown}
+            onEdited={(draft) => {
+              setTitle(draft.title)
+              setMarkdown(draft.content)
+            }}
+          />
+        )}
+      </div>
 
       {error && (
         <p role="alert" style={{ marginTop: 'var(--space-3)' }}>

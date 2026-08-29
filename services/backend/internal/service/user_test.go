@@ -595,3 +595,58 @@ func TestPutUser_OmittedUsernameKeepsTheStoredName(t *testing.T) {
 		t.Errorf("Username = %q, want it unchanged", got)
 	}
 }
+
+// The capability rides on /users/me rather than on a route of its own: a client uses it to decide
+// whether to offer the assistant at all, and a public profile must not disclose who has it.
+func TestGetCurrentUser_ReportsAssistantAccess(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		allowed []string
+		want    bool
+	}{
+		{"on the list", []string{"edgorman"}, true},
+		{"not on the list", []string{"somebody-else"}, false},
+		{"nobody is", nil, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			users := newFakeUserRepository()
+			users.seed(entity.User{ID: "caller", Username: "edgorman"})
+			s := newAssistantService(nil, users, nil, nil, tt.allowed)
+
+			rec := httptest.NewRecorder()
+			s.GetCurrentUser(rec, selfHTTPRequest(http.MethodGet, "caller", nil))
+
+			var got currentUserResponse
+			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got.AssistantEnabled != tt.want {
+				t.Errorf("assistantEnabled = %v, want %v", got.AssistantEnabled, tt.want)
+			}
+			// The profile itself still comes back whole, so a client needs one request, not two.
+			if got.Username != "edgorman" {
+				t.Errorf("username = %q, want the profile alongside the capability", got.Username)
+			}
+		})
+	}
+}
+
+// A client that has just created its profile learns what it may do without a second request.
+func TestPutUser_ReportsAssistantAccess(t *testing.T) {
+	s := newAssistantService(nil, nil, nil, nil, []string{"edgorman"})
+
+	body := userRequestBody(t, userRequest{Username: ptr("edgorman")})
+	rec := httptest.NewRecorder()
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
+
+	if rec.Result().StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
+	}
+	var got currentUserResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !got.AssistantEnabled {
+		t.Error("assistantEnabled = false, want true for a profile that just claimed an allowed name")
+	}
+}

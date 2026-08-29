@@ -5,6 +5,7 @@ package service
 import (
 	"net/http"
 
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
@@ -18,18 +19,31 @@ type Config struct {
 	// AllowedOrigin is the frontend origin permitted to call this API from a browser. Empty
 	// disables CORS headers entirely.
 	AllowedOrigin string
+	// AssistantAllowlist decides which profiles may use the AI writing assistant. An empty list
+	// disables it for everybody, which is what a deployment with no model configured looks like
+	// (see cmd/backend).
+	AssistantAllowlist entity.AssistantAllowlist
 }
 
 // Service owns the API's dependencies and serves its routes.
 type Service struct {
-	cfg      Config
-	blogs    repository.BlogRepository
-	users    repository.UserRepository
-	verifier repository.TokenVerifier
+	cfg       Config
+	blogs     repository.BlogRepository
+	users     repository.UserRepository
+	chats     repository.ChatRepository
+	verifier  repository.TokenVerifier
+	assistant repository.Assistant
 }
 
-func New(cfg Config, blogs repository.BlogRepository, users repository.UserRepository, verifier repository.TokenVerifier) *Service {
-	return &Service{cfg: cfg, blogs: blogs, users: users, verifier: verifier}
+func New(
+	cfg Config,
+	blogs repository.BlogRepository,
+	users repository.UserRepository,
+	chats repository.ChatRepository,
+	verifier repository.TokenVerifier,
+	assistant repository.Assistant,
+) *Service {
+	return &Service{cfg: cfg, blogs: blogs, users: users, chats: chats, verifier: verifier, assistant: assistant}
 }
 
 // Handler returns the fully-wired API, ready to serve.
@@ -69,6 +83,13 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("PUT /users/me", authed(s.PutUser))
 	mux.Handle("DELETE /users/me", authed(s.DeleteUser))
 	mux.Handle("GET /users/{username}", optional(s.GetUser))
+	// The assistant conversation hangs off the post it is about rather than living at a collection
+	// of its own, because that is exactly what it is: a chat has no identity apart from its post,
+	// and no route here could name one that a /blogs/{slug} route would not have resolved first.
+	// Every one of them requires the caller to own the post and to be on the assistant allowlist.
+	mux.Handle("GET /blogs/{slug}/chat", authed(s.GetChat))
+	mux.Handle("POST /blogs/{slug}/chat", authed(s.SendChatMessage))
+	mux.Handle("DELETE /blogs/{slug}/chat", authed(s.DeleteChat))
 
 	// CORS wraps the whole mux rather than individual routes: routes are registered under a
 	// specific method, so ServeMux would 405 an OPTIONS preflight before a per-route wrapper ran.

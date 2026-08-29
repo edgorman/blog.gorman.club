@@ -44,6 +44,22 @@ func (u userRequest) applyTo(user *entity.User) error {
 	return nil
 }
 
+// currentUserResponse is the caller's own profile, plus what this deployment lets that account do.
+//
+// The capability rides on /users/me rather than on a route of its own because it is a property of
+// the profile a client has just fetched, and because it belongs nowhere else: a public profile
+// must not disclose who has the assistant, so it cannot go on entity.User itself. A client uses it
+// to decide whether to offer the assistant at all - the routes enforce it either way, this only
+// keeps a button off the screen for somebody who would be told no.
+type currentUserResponse struct {
+	entity.User
+	AssistantEnabled bool `json:"assistantEnabled"`
+}
+
+func (s *Service) currentUser(user entity.User) currentUserResponse {
+	return currentUserResponse{User: user, AssistantEnabled: s.cfg.AssistantAllowlist.Allows(user)}
+}
+
 // GetCurrentUser returns the caller's own profile. It exists because a client holds a credential,
 // not a username: this is how it discovers the name it was given at sign-up, and the only route
 // that addresses a profile by the caller's uid rather than by a username.
@@ -58,7 +74,7 @@ func (s *Service) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, user)
+	writeJSON(w, http.StatusOK, s.currentUser(user))
 }
 
 // GetUser returns the profile holding a username. Any caller, signed in or not, may read any
@@ -153,7 +169,9 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 	if created {
 		status = http.StatusCreated
 	}
-	writeJSON(w, status, saved)
+	// The same shape GetCurrentUser answers with, so a client that has just created its profile
+	// learns what it may do without a second request.
+	writeJSON(w, status, s.currentUser(saved))
 }
 
 // DeleteUser removes the caller's own profile, addressed as /users/me for the same reason PutUser

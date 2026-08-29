@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { GoogleUser } from '../hooks/useGoogleAuth'
-import type { Api, User } from '../lib/api'
+import type { Api, CurrentUser } from '../lib/api'
 import type { Theme } from '../lib/theme'
 
 export interface AppContextValue {
@@ -19,8 +19,11 @@ export interface AppContextValue {
    *
    * Post authors do not come from here - a post carries its own, since resolving one from ownerId
    * is exactly what the API no longer allows.
+   *
+   * It carries what this account may do as well as who they are (`assistantEnabled`), which is why
+   * it is the caller's own profile type rather than the public one.
    */
-  profile: User | null
+  profile: CurrentUser | null
   /** Re-reads `profile`, for after an edit that may have changed the username. */
   refreshProfile: () => void
 }

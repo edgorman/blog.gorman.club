@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { Api, Blog, User } from '../lib/api'
+import type { Api, Blog, CurrentUser, User } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { UserProfile } from './UserProfile'
 
@@ -11,6 +11,9 @@ const user: User = {
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 }
+// The caller's own profile carries what their account may do as well as who they are; a public
+// profile (`user` above) deliberately does not.
+const profile: CurrentUser = { ...user, assistantEnabled: false }
 const mine: Blog = {
   slug: 'mine',
   ownerId: 'uid-1',
@@ -75,7 +78,7 @@ describe('UserProfile', () => {
   // Edit link either.
   it('leaves the Edit profile link to the account panel', async () => {
     renderWithApp(<UserProfile />, {
-      context: { api: fakeApi(), profile: user },
+      context: { api: fakeApi(), profile },
       route: '/user/calm-smiling-kestrel',
       path: '/user/:username',
     })
@@ -88,7 +91,7 @@ describe('UserProfile', () => {
   // behave identically here - header and posts alike.
   it('matches the author regardless of the case in the URL', async () => {
     renderWithApp(<UserProfile />, {
-      context: { api: fakeApi(), profile: user },
+      context: { api: fakeApi(), profile },
       route: '/user/CALM-Smiling-Kestrel',
       path: '/user/:username',
     })

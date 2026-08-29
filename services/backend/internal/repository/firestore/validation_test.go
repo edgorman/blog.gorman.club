@@ -41,6 +41,29 @@ func TestRepositoriesRejectInvalidEntitiesBeforeWriting(t *testing.T) {
 		assertValidationError(t, err)
 	})
 
+	// A chat is keyed by the slug of its post, so the same rule applies: a write with no slug, or
+	// one Firestore could not hold in a document path, has nowhere to go.
+	t.Run("chat with no slug", func(t *testing.T) {
+		_, err := (&ChatRepository{}).Append(ctx, "", "owner", entity.ChatMessage{Role: entity.ChatRoleUser, Content: "hi"})
+		assertValidationError(t, err)
+	})
+
+	t.Run("chat with a malformed slug", func(t *testing.T) {
+		_, err := (&ChatRepository{}).Append(ctx, "hello world", "owner", entity.ChatMessage{Role: entity.ChatRoleUser, Content: "hi"})
+		assertValidationError(t, err)
+	})
+
+	t.Run("chat with no owner", func(t *testing.T) {
+		_, err := (&ChatRepository{}).Append(ctx, "hello-world", "", entity.ChatMessage{Role: entity.ChatRoleUser, Content: "hi"})
+		assertValidationError(t, err)
+	})
+
+	// A turn is validated before the transaction too, so a bad message costs no round trip.
+	t.Run("chat with an empty turn", func(t *testing.T) {
+		_, err := (&ChatRepository{}).Append(ctx, "hello-world", "owner", entity.ChatMessage{Role: entity.ChatRoleUser})
+		assertValidationError(t, err)
+	})
+
 	t.Run("user put", func(t *testing.T) {
 		_, err := (&UserRepository{}).Put(ctx, entity.User{Username: "sly-dancing-monkey"})
 		assertValidationError(t, err)

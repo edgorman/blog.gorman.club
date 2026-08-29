@@ -1,12 +1,16 @@
-// Package gemini talks to the Gemini API (generativelanguage.googleapis.com).
+// Package gemini calls Gemini models on the Gemini Enterprise Agent Platform
+// (aiplatform.googleapis.com, which its discovery document now titles "Agent Platform API" - the
+// same service that was called Vertex AI, renamed).
 //
-// It authenticates with a bearer token from Application Default Credentials - on Cloud Run, the
-// runtime service account - rather than with the API key the Gemini API is more often reached
-// with. Both are supported; the token is chosen for the same reason GitHub Actions runs on
-// Workload Identity Federation, which is that there is then no long-lived credential to mint,
-// store in Secret Manager, rotate, or leak. The cost is one header: a request authorized by a
-// token rather than a key carries no project of its own, so the billing project is named
-// explicitly (see quotaProjectHeader).
+// The platform is chosen over the Gemini API (generativelanguage.googleapis.com) for one concrete
+// reason: authentication. This backend authenticates with a bearer token from Application Default
+// Credentials - on Cloud Run, its own runtime service account - so that there is no long-lived
+// credential to mint, store in Secret Manager, rotate, or leak, which is the same argument that
+// put GitHub Actions on Workload Identity Federation. The Gemini API cannot be used that way:
+// its discovery document declares no OAuth scope on generateContent at all, so that endpoint
+// takes an API key and nothing else, and a token-authorized request to it is refused with a 403.
+// This platform's generateContent does declare a scope - cloud-platform, the one below - and so
+// accepts the credential the deployment already has.
 package gemini
 
 import (
@@ -16,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -28,21 +33,12 @@ import (
 )
 
 const (
-	// defaultBaseURL is the Gemini API: one global host, with no project or location in the path.
-	// The model is named in the URL alone and the project rides in the quota header below.
-	defaultBaseURL = "https://generativelanguage.googleapis.com"
-	// apiVersion is v1beta rather than v1 because that is where the Gemini API's function-calling
-	// surface is complete, and function calling is the whole mechanism here.
-	apiVersion = "v1beta"
-	// cloudPlatformScope is what the bearer token is minted for; it is the scope the Gemini API
-	// accepts for an OAuth-authorized (rather than key-authorized) request.
+	// apiVersion is the platform's stable version, which is what serves generateContent.
+	apiVersion = "v1"
+	// cloudPlatformScope is what the bearer token is minted for. It is the scope the platform's
+	// generateContent method declares in its discovery document, which is what makes an
+	// OAuth-authorized call to it possible at all.
 	cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
-	// quotaProjectHeader names the project a token-authorized request is billed and rate-limited
-	// against. An API key carries its project implicitly; a bearer token does not, so without this
-	// the request has no project to charge and is refused. The runtime service account needs
-	// serviceusage.services.use on that project to name it - hence
-	// roles/serviceusage.serviceUsageConsumer in infrastructure/env/cloud_run.tf.
-	quotaProjectHeader = "x-goog-user-project"
 	// requestTimeout bounds one call to the model. A request that has not answered by then has
 	// already outlasted anyone waiting on the other end of the editor.
 	requestTimeout = 60 * time.Second
@@ -62,18 +58,21 @@ const (
 
 var _ repository.Assistant = (*Assistant)(nil)
 
-// Config names the model to call and the project to bill it to.
+// Config names the model to call and where it lives.
 type Config struct {
-	// Model is the Gemini model id, e.g. "gemini-3.7-flash". It is configuration rather than a
-	// constant because model ids come and go far faster than this service is redeployed. Empty
-	// disables the assistant entirely, in the same way an empty client ID disables authentication.
+	// Model is the model id, e.g. "gemini-3.7-flash". It is configuration rather than a constant
+	// because model ids come and go far faster than this service is redeployed. Empty disables the
+	// assistant entirely, in the same way an empty client ID disables authentication.
 	Model string
-	// ProjectID is the GCP project requests are billed and rate-limited against (see
-	// quotaProjectHeader). Empty sends no quota header, which is right when the credentials carry
-	// a project of their own and wrong on Cloud Run - so Terraform always sets it.
+	// ProjectID is the GCP project the model is called through and billed to. It is part of the
+	// request path here rather than a header, so it is required: empty disables the assistant.
 	ProjectID string
-	// BaseURL overrides the Gemini API host. It exists for tests, which point it at an httptest
-	// server; a deployment leaves it empty.
+	// Location is the platform region, e.g. "europe-west1", or "global" for the multi-region
+	// endpoint. Model availability is regional, so this is the knob that moves a deployment onto
+	// an endpoint that actually serves the model above.
+	Location string
+	// BaseURL overrides the platform host. It exists for tests, which point it at an httptest
+	// server; a deployment leaves it empty and gets the host Location implies.
 	BaseURL string
 	// HTTPClient overrides the authenticated client built from Application Default Credentials,
 	// for the same reason.
@@ -96,15 +95,15 @@ type Assistant struct {
 // that cannot reach a model is reported by Reply as repository.ErrAssistantNotConfigured, which is
 // how repository.TokenVerifier reports the same situation.
 func NewAssistant(cfg Config) *Assistant {
-	if cfg.BaseURL == "" {
-		cfg.BaseURL = defaultBaseURL
+	if cfg.Location == "" {
+		cfg.Location = "global"
 	}
 	return &Assistant{cfg: cfg}
 }
 
 // Configured reports whether this deployment has a model to call at all.
 func (a *Assistant) Configured() bool {
-	return a.cfg.Model != ""
+	return a.cfg.ProjectID != "" && a.cfg.Model != ""
 }
 
 // httpClient resolves Application Default Credentials once and reuses the client after, so a token
@@ -128,10 +127,19 @@ func (a *Assistant) httpClient(ctx context.Context) (*http.Client, error) {
 	return a.client, a.err
 }
 
-// endpoint is the generateContent URL for the configured model.
+// endpoint is the generateContent URL for the configured model. The global endpoint is not
+// prefixed with its location, unlike every regional one.
 func (a *Assistant) endpoint() string {
-	return fmt.Sprintf("%s/%s/models/%s:generateContent",
-		strings.TrimSuffix(a.cfg.BaseURL, "/"), apiVersion, a.cfg.Model)
+	base := a.cfg.BaseURL
+	if base == "" {
+		base = "https://aiplatform.googleapis.com"
+		if a.cfg.Location != "global" {
+			base = fmt.Sprintf("https://%s-aiplatform.googleapis.com", a.cfg.Location)
+		}
+	}
+
+	return fmt.Sprintf("%s/%s/projects/%s/locations/%s/publishers/google/models/%s:generateContent",
+		strings.TrimSuffix(base, "/"), apiVersion, a.cfg.ProjectID, a.cfg.Location, a.cfg.Model)
 }
 
 // Reply runs one turn of the conversation, including however many rounds of tool calls the model
@@ -220,9 +228,6 @@ func (a *Assistant) generate(ctx context.Context, client *http.Client, system st
 		return generateResponse{}, err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	if a.cfg.ProjectID != "" {
-		request.Header.Set(quotaProjectHeader, a.cfg.ProjectID)
-	}
 
 	response, err := client.Do(request)
 	if err != nil {
@@ -237,9 +242,13 @@ func (a *Assistant) generate(ctx context.Context, client *http.Client, system st
 		return generateResponse{}, err
 	}
 	if response.StatusCode != http.StatusOK {
-		// The status is what a caller acts on, so the provider's message is summarized rather than
-		// forwarded - it can carry the request back verbatim, and the request holds the post.
-		return generateResponse{}, fmt.Errorf("gemini returned %d", response.StatusCode)
+		// The provider's own message is never repeated: it can quote the request back, and the
+		// request holds the post. Its machine-readable status and reason are not free text
+		// though - they are enums naming what was refused (PERMISSION_DENIED,
+		// ACCESS_TOKEN_SCOPE_INSUFFICIENT, SERVICE_DISABLED) - so those are carried, because a
+		// bare status code cannot tell an operator whether the deployment is missing a role, a
+		// scope, an enabled API, or a model that exists.
+		return generateResponse{}, fmt.Errorf("gemini returned %d%s", response.StatusCode, failureDetail(payload))
 	}
 
 	var decoded generateResponse
@@ -255,6 +264,37 @@ func (a *Assistant) generate(ctx context.Context, client *http.Client, system st
 		return generateResponse{}, fmt.Errorf("gemini returned no candidates")
 	}
 	return decoded, nil
+}
+
+// failureDetail summarizes an error response as " (STATUS: REASON)", or as nothing at all when the
+// body is not the shape Google's errors take. Only the enum fields are read; the human-readable
+// message deliberately is not.
+func failureDetail(payload []byte) string {
+	var body struct {
+		Error struct {
+			Status  string `json:"status"`
+			Details []struct {
+				Reason string `json:"reason"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil {
+		return ""
+	}
+
+	parts := make([]string, 0, 1+len(body.Error.Details))
+	if body.Error.Status != "" {
+		parts = append(parts, body.Error.Status)
+	}
+	for _, detail := range body.Error.Details {
+		if detail.Reason != "" && !slices.Contains(parts, detail.Reason) {
+			parts = append(parts, detail.Reason)
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, ": ") + ")"
 }
 
 // truncate cuts text to at most limit runes, so a reply that outruns what a chat message can hold

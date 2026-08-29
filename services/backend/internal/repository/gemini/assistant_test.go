@@ -67,6 +67,7 @@ func (m *modelServer) assistant() *Assistant {
 	return NewAssistant(Config{
 		Model:      "gemini-test",
 		ProjectID:  "test-project",
+		Location:   "europe-west1",
 		BaseURL:    m.server.URL,
 		HTTPClient: m.server.Client(),
 	})
@@ -246,19 +247,22 @@ func TestAssistant_ReplySendsHistory(t *testing.T) {
 	}
 }
 
-// A deployment with no model configured says so, in the same way an unconfigured verifier does,
-// rather than failing as though the provider were down.
+// A deployment with no model or no project configured says so, in the same way an unconfigured
+// verifier does, rather than failing as though the provider were down.
 func TestAssistant_ReplyUnconfigured(t *testing.T) {
-	_, err := NewAssistant(Config{ProjectID: "test-project"}).
-		Reply(context.Background(), repository.AssistantRequest{Message: "hello"})
+	for _, cfg := range []Config{{ProjectID: "test-project"}, {Model: "gemini-test"}} {
+		_, err := NewAssistant(cfg).Reply(context.Background(), repository.AssistantRequest{Message: "hello"})
 
-	if !errors.Is(err, repository.ErrAssistantNotConfigured) {
-		t.Errorf("Reply with no model = %v, want ErrAssistantNotConfigured", err)
+		if !errors.Is(err, repository.ErrAssistantNotConfigured) {
+			t.Errorf("Reply with %+v = %v, want ErrAssistantNotConfigured", cfg, err)
+		}
 	}
 }
 
 // The provider's own message is never forwarded: it can quote the request, and the request holds
-// the post.
+// the post. Its status and reason are enums rather than free text, so those are carried - a bare
+// status code cannot tell an operator whether a deployment is missing a role, a scope, an enabled
+// API, or a model that exists.
 func TestAssistant_ReplyProviderError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -284,47 +288,58 @@ func TestAssistant_ReplyProviderError(t *testing.T) {
 	}
 }
 
-// The Gemini API is one global host: the model is named in the path and the project is not there
-// at all - it rides in the quota header instead.
+// The model is addressed under a project and a location, and the global endpoint is not prefixed
+// with its location the way every regional one is.
 func TestAssistant_Endpoint(t *testing.T) {
-	got := NewAssistant(Config{Model: "gemini-3.7-flash", ProjectID: "p"}).endpoint()
+	for _, tt := range []struct {
+		location string
+		want     string
+	}{
+		{"", "https://aiplatform.googleapis.com/v1/projects/p/locations/global/publishers/google/models/m:generateContent"},
+		{"global", "https://aiplatform.googleapis.com/v1/projects/p/locations/global/publishers/google/models/m:generateContent"},
+		{"europe-west1", "https://europe-west1-aiplatform.googleapis.com/v1/projects/p/locations/europe-west1/publishers/google/models/m:generateContent"},
+	} {
+		t.Run(tt.location, func(t *testing.T) {
+			got := NewAssistant(Config{Model: "m", ProjectID: "p", Location: tt.location}).endpoint()
 
-	want := "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent"
-	if got != want {
-		t.Errorf("endpoint() = %q, want %q", got, want)
+			if got != tt.want {
+				t.Errorf("endpoint() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
-// A token-authorized request carries no project of its own, so the billing project is named in a
-// header. Without it the request has nothing to charge and is refused.
-func TestAssistant_SendsTheQuotaProject(t *testing.T) {
-	model := newModelServer(t, []part{{Text: "ok"}})
+// The reason an operator actually needs is the enum, not the prose. A 403 alone cannot be acted
+// on; a 403 naming ACCESS_TOKEN_SCOPE_INSUFFICIENT points straight at the credential.
+func TestFailureDetail(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{
+			"status and reason",
+			`{"error":{"code":403,"message":"the prompt was: secret","status":"PERMISSION_DENIED",` +
+				`"details":[{"reason":"ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}}`,
+			" (PERMISSION_DENIED: ACCESS_TOKEN_SCOPE_INSUFFICIENT)",
+		},
+		{"status only", `{"error":{"status":"NOT_FOUND","message":"no such model"}}`, " (NOT_FOUND)"},
+		{"reason only", `{"error":{"details":[{"reason":"SERVICE_DISABLED"}]}}`, " (SERVICE_DISABLED)"},
+		{"a reason repeated across details", `{"error":{"status":"X","details":[{"reason":"X"}]}}`, " (X)"},
+		{"nothing machine-readable", `{"error":{"message":"the prompt was: secret"}}`, ""},
+		{"not json at all", `<html>502 Bad Gateway</html>`, ""},
+		{"empty", ``, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := failureDetail([]byte(tt.payload))
 
-	if _, err := model.assistant().Reply(context.Background(), repository.AssistantRequest{
-		Draft:   entity.Draft{Title: "Hello"},
-		Message: "hello",
-	}); err != nil {
-		t.Fatalf("Reply = %v, want no error", err)
-	}
-
-	if got := model.headers[0].Get(quotaProjectHeader); got != "test-project" {
-		t.Errorf("%s = %q, want %q", quotaProjectHeader, got, "test-project")
-	}
-}
-
-// A deployment that has not named a project sends no header at all, rather than an empty one the
-// API would reject outright.
-func TestAssistant_OmitsAnUnsetQuotaProject(t *testing.T) {
-	model := newModelServer(t, []part{{Text: "ok"}})
-	assistant := NewAssistant(Config{
-		Model: "gemini-test", BaseURL: model.server.URL, HTTPClient: model.server.Client(),
-	})
-
-	if _, err := assistant.Reply(context.Background(), repository.AssistantRequest{Message: "hello"}); err != nil {
-		t.Fatalf("Reply = %v, want no error", err)
-	}
-
-	if _, sent := model.headers[0][http.CanonicalHeaderKey(quotaProjectHeader)]; sent {
-		t.Errorf("%s was sent with no project configured", quotaProjectHeader)
+			if got != tt.want {
+				t.Errorf("failureDetail = %q, want %q", got, tt.want)
+			}
+			// Whatever it summarizes, it never repeats the provider's prose.
+			if strings.Contains(got, "secret") {
+				t.Errorf("failureDetail = %q, want the message not to be carried", got)
+			}
+		})
 	}
 }

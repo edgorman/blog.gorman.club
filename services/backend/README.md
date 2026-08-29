@@ -26,7 +26,7 @@ internal/
   repository/         Interfaces for everything external, plus ErrNotFound
     firestore/        Firestore implementations of BlogRepository, UserRepository, ChatRepository
     google/           Google Identity Services implementation of TokenVerifier
-    gemini/           Gemini API implementation of Assistant
+    gemini/           Gemini Enterprise Agent Platform implementation of Assistant
   service/            HTTP server: routes, middleware, and logic spanning more than one entity
 ```
 
@@ -223,19 +223,32 @@ subcollection: a chat is only ever read whole, since the model is given the
 whole history each turn. That trades unbounded growth for simplicity, which is
 why `entity.MaxChatMessages` trims the oldest turns rather than failing a write.
 
-The model is reached through the **Gemini API**
-(`generativelanguage.googleapis.com`). The Gemini API accepts either an API key
-or an OAuth bearer token; this backend sends a token from Application Default
-Credentials - on Cloud Run, its own runtime service account - so there is no
-long-lived credential to mint, store, rotate, or leak, which is the same
-argument that put GitHub Actions on Workload Identity Federation. The cost is
-one header: a token-authorized request carries no project of its own, so the
-billing project is named in `x-goog-user-project`, and naming a project that way
-needs `serviceusage.services.use` on it - hence
-`roles/serviceusage.serviceUsageConsumer` in
-`infrastructure/env/cloud_run.tf`. Credentials are resolved on first use, so a
-backend started without them still serves every other route and fails only this
-one, with the reason.
+The model is reached through the **Gemini Enterprise Agent Platform** - the
+product formerly called Vertex AI, whose API is still served at
+`aiplatform.googleapis.com` and whose discovery document now titles itself
+"Agent Platform API". The backend sends a bearer token from Application Default
+Credentials - on Cloud Run, its own runtime service account, holding
+`roles/aiplatform.user` - so there is no long-lived credential to mint, store,
+rotate, or leak, the same argument that put GitHub Actions on Workload Identity
+Federation. Credentials are resolved on first use, so a backend started without
+them still serves every other route and fails only this one, with the reason.
+
+It is deliberately **not** the Gemini API (`generativelanguage.googleapis.com`),
+and the reason is worth recording because it is not obvious: that API's
+`generateContent` declares no OAuth scope at all in its discovery document, so
+it takes an API key and nothing else. A service-account token sent to it is
+refused with a `403`. This platform's `generateContent` does declare the
+`cloud-platform` scope, which is what makes key-free authentication possible
+here. Using the Gemini API instead would mean adding the one long-lived secret
+this deployment is built to avoid.
+
+When a call does fail, the adapter logs the provider's machine-readable
+`status` and `details[].reason` (`PERMISSION_DENIED`,
+`ACCESS_TOKEN_SCOPE_INSUFFICIENT`, `SERVICE_DISABLED`, ...) alongside the status
+code, and never its human-readable message - which can quote the request back,
+and the request holds the post. A bare status code cannot tell an operator
+whether a deployment is missing a role, a scope, an enabled API, or a model that
+exists; the enums can.
 
 ## Development
 
@@ -256,8 +269,9 @@ make build     # builds bin/backend
 | `ENVIRONMENT`          | Deployment environment reported by `/debug` (e.g. `stag`, `prod`). Defaults to `development`. |
 | `CORS_ALLOWED_ORIGIN`  | Origin allowed to call this API from a browser (the frontend's URL). Unset disables CORS headers entirely. |
 | `GOOGLE_CLIENT_ID`     | OAuth 2.0 client ID that ID tokens must be minted for. Set by Terraform from the `GOOGLE_CLIENT_ID` GitHub Actions variable; unset means no request can authenticate. |
-| `GCP_PROJECT_ID`       | Project Gemini API requests are billed and rate-limited against, sent as `x-goog-user-project`. Unset sends no quota header, which a token-authorized request needs. |
-| `ASSISTANT_MODEL`      | Gemini model id, e.g. `gemini-3.7-flash`. Unset disables the writing assistant. |
+| `GCP_PROJECT_ID`       | Project the model is called through and billed to. Unset disables the writing assistant. |
+| `ASSISTANT_MODEL`      | Model id, e.g. `gemini-3.7-flash`. It has to be one the platform serves in `ASSISTANT_LOCATION`. Unset disables the writing assistant. |
+| `ASSISTANT_LOCATION`   | Location the model is called in: a region such as `europe-west1`, or `global` for the multi-region endpoint. Defaults to `global`. |
 | `ASSISTANT_ALLOWED_EMAILS` | Comma-separated verified account addresses permitted to use the writing assistant. Unset enables it for nobody. |
 
 `commit` is not an env var — it's baked into the binary at build time via

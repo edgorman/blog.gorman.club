@@ -50,14 +50,15 @@ func run() error {
 	}
 	defer client.Close()
 
-	// The Gemini API is reached with the runtime service account's own credentials, so there is no
-	// key to configure here - only which model, and which project to bill it to. GCP_PROJECT_ID is
-	// passed explicitly rather than detected, because the deployment already knows it (see
+	// The model is reached with the runtime service account's own credentials, so there is no key
+	// to configure here - only which model, in which project, and where. GCP_PROJECT_ID is passed
+	// explicitly rather than detected, because the deployment already knows it (see
 	// infrastructure/env/cloud_run.tf) and a metadata lookup would only be a way of being told
 	// something Terraform could have said.
 	assistant := gemini.NewAssistant(gemini.Config{
 		Model:     os.Getenv("ASSISTANT_MODEL"),
 		ProjectID: os.Getenv("GCP_PROJECT_ID"),
+		Location:  envOr("ASSISTANT_LOCATION", "global"),
 	})
 
 	// A deployment with no model has nobody on the allowlist, whatever the allowlist says: the
@@ -65,7 +66,7 @@ func run() error {
 	// could only answer 503.
 	allowlist := entity.NewAssistantAllowlist(splitList(os.Getenv("ASSISTANT_ALLOWED_EMAILS")))
 	if !assistant.Configured() {
-		log.Print("warning: ASSISTANT_MODEL is unset, so the writing assistant is disabled")
+		log.Print("warning: ASSISTANT_MODEL or GCP_PROJECT_ID is unset, so the writing assistant is disabled")
 		allowlist = entity.NewAssistantAllowlist(nil)
 	} else if allowlist.Empty() {
 		log.Print("warning: ASSISTANT_ALLOWED_EMAILS is unset, so the writing assistant is enabled for nobody")

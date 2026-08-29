@@ -9,9 +9,12 @@ resource "google_project_service" "artifact_registry" {
   service = "artifactregistry.googleapis.com"
 }
 
-# The Gemini API the writing assistant calls. The backend authenticates against it with its own
-# runtime service account rather than an API key (see cloud_run.tf).
-resource "google_project_service" "generative_language" {
+# The Gemini Enterprise Agent Platform, which serves the models the writing assistant calls. Its
+# API is still named aiplatform - the product was renamed, the service was not. The backend
+# authenticates against it with its own runtime service account rather than an API key; the Gemini
+# API (generativelanguage) cannot be reached that way at all, which is why this is the platform in
+# use (see services/backend/internal/repository/gemini).
+resource "google_project_service" "agent_platform" {
   project = var.gcp_project_id
-  service = "generativelanguage.googleapis.com"
+  service = "aiplatform.googleapis.com"
 }

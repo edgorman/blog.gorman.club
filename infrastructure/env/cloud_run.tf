@@ -11,17 +11,16 @@ resource "google_project_iam_member" "backend_runtime_datastore_user" {
   member  = "serviceAccount:${google_service_account.backend_runtime.email}"
 }
 
-# The writing assistant calls the Gemini API as this service account, which is the whole reason
-# there is no API key anywhere in this deployment: the credential is the runtime identity itself,
-# minted by the metadata server and short-lived, exactly as CI's is under WIF.
+# The writing assistant calls the model as this service account, which is the whole reason there is
+# no API key anywhere in this deployment: the credential is the runtime identity itself, minted by
+# the metadata server and short-lived, exactly as CI's is under WIF.
 #
-# A request authorized by a bearer token rather than an API key carries no project of its own, so
-# the backend names the billing project in an x-goog-user-project header - and naming a project
-# that way requires serviceusage.services.use on it, which is what this role grants and nothing
-# broader does.
-resource "google_project_iam_member" "backend_runtime_service_usage_consumer" {
+# The role id is still aiplatform.user - the product is now the Gemini Enterprise Agent Platform,
+# but role ids do not change when a product is renamed. It is the user role rather than the admin
+# one: the backend calls a published model and never creates, trains, or deploys one.
+resource "google_project_iam_member" "backend_runtime_agent_platform_user" {
   project = var.gcp_project_id
-  role    = "roles/serviceusage.serviceUsageConsumer"
+  role    = "roles/aiplatform.user"
   member  = "serviceAccount:${google_service_account.backend_runtime.email}"
 }
 
@@ -33,7 +32,7 @@ resource "google_service_account_iam_member" "backend_runtime_actas" {
 }
 
 resource "google_cloud_run_v2_service" "backend" {
-  depends_on = [google_project_service.run, google_project_service.generative_language]
+  depends_on = [google_project_service.run, google_project_service.agent_platform]
 
   project  = var.gcp_project_id
   name     = "backend-${var.environment}"
@@ -69,9 +68,9 @@ resource "google_cloud_run_v2_service" "backend" {
         value = var.google_client_id
       }
 
-      # The project Gemini API requests are billed and rate-limited against. It is passed rather
-      # than detected from the metadata server: Terraform already knows it, so a lookup would only
-      # be a way of being told something this file could have said.
+      # The project the model is called through and billed to. It is passed rather than detected
+      # from the metadata server: Terraform already knows it, so a lookup would only be a way of
+      # being told something this file could have said.
       env {
         name  = "GCP_PROJECT_ID"
         value = var.gcp_project_id
@@ -80,6 +79,11 @@ resource "google_cloud_run_v2_service" "backend" {
       env {
         name  = "ASSISTANT_MODEL"
         value = var.assistant_model
+      }
+
+      env {
+        name  = "ASSISTANT_LOCATION"
+        value = var.assistant_location
       }
 
       # Who may use the assistant. It is plain configuration rather than a secret - it names

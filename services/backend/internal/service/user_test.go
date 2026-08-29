@@ -595,3 +595,63 @@ func TestPutUser_OmittedUsernameKeepsTheStoredName(t *testing.T) {
 		t.Errorf("Username = %q, want it unchanged", got)
 	}
 }
+
+// The capability rides on /users/me rather than on a route of its own: a client uses it to decide
+// whether to offer the assistant at all, and a public profile must not disclose who has it.
+func TestGetCurrentUser_ReportsAssistantAccess(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		allowed []string
+		want    bool
+	}{
+		{"on the list", []string{"ejgorman@gmail.com"}, true},
+		{"not on the list", []string{"somebody-else@example.com"}, false},
+		{"nobody is", nil, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			users := newFakeUserRepository()
+			users.seed(entity.User{ID: "caller", Username: "calm-smiling-kestrel"})
+			s := newAssistantService(nil, users, nil, nil, tt.allowed)
+
+			req := withVerifiedCaller(
+				httptest.NewRequest(http.MethodGet, "/users/me", nil), "caller", "ejgorman@gmail.com")
+			rec := httptest.NewRecorder()
+			s.GetCurrentUser(rec, req)
+
+			var got currentUserResponse
+			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got.AssistantEnabled != tt.want {
+				t.Errorf("assistantEnabled = %v, want %v", got.AssistantEnabled, tt.want)
+			}
+			// The profile itself still comes back whole, so a client needs one request, not two.
+			if got.Username != "calm-smiling-kestrel" {
+				t.Errorf("username = %q, want the profile alongside the capability", got.Username)
+			}
+		})
+	}
+}
+
+// A client that has just created its profile learns what it may do without a second request. The
+// capability follows the credential, not the name the profile happens to hold.
+func TestPutUser_ReportsAssistantAccess(t *testing.T) {
+	s := newAssistantService(nil, nil, nil, nil, []string{"ejgorman@gmail.com"})
+
+	body := userRequestBody(t, userRequest{Bio: "hello"})
+	req := withVerifiedCaller(
+		httptest.NewRequest(http.MethodPut, "/users/me", bytes.NewReader(body)), "caller", "ejgorman@gmail.com")
+	rec := httptest.NewRecorder()
+	s.PutUser(rec, req)
+
+	if rec.Result().StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
+	}
+	var got currentUserResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !got.AssistantEnabled {
+		t.Error("assistantEnabled = false, want true for a caller on the list")
+	}
+}

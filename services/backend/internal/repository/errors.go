@@ -20,3 +20,7 @@ var ErrSlugTaken = errors.New("slug taken")
 // ErrAuthNotConfigured means the deployment cannot verify credentials at all - an operator
 // problem rather than a caller one.
 var ErrAuthNotConfigured = errors.New("authentication is not configured")
+
+// ErrAssistantNotConfigured means the deployment has no model to call - an operator problem rather
+// than a caller one, in the same way ErrAuthNotConfigured is.
+var ErrAssistantNotConfigured = errors.New("assistant is not configured")

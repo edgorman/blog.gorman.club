@@ -657,3 +657,123 @@ a {
 .center-note {
   padding: var(--space-6) 0;
 }
+
+/* — writing assistant — */
+/* The editor and the assistant sit side by side where there is room for both, and stack on a
+   narrow screen so neither is squeezed into a column too thin to write in. */
+.editor-with-assistant {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+@media (min-width: 960px) {
+  .editor-with-assistant {
+    grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
+  }
+}
+
+.assistant {
+  display: flex;
+  flex-direction: column;
+  min-height: 360px;
+  border: 1px solid var(--color-divider);
+  background: var(--color-surface);
+}
+.assistant-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-divider);
+}
+.assistant-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.assistant-transcript {
+  flex: 1;
+  overflow-y: auto;
+  /* Bounded so a long conversation scrolls inside the panel rather than stretching the page past
+     the editor it sits beside. */
+  max-height: 420px;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.assistant-empty,
+.assistant-thinking {
+  margin: 0;
+  font-size: 13px;
+}
+.assistant-turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 14px;
+  line-height: 1.5;
+}
+/* The author's own turns are set off from the assistant's by an accent rule rather than by a
+   bubble, which keeps the transcript reading as a document rather than as a messaging app. */
+.assistant-turn-user {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-accent);
+}
+.assistant-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+/* What the assistant actually changed, listed beneath what it said - the post itself is the record
+   of its contents, so this is a note rather than a diff. */
+.assistant-edit {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-accent);
+}
+.assistant-error {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-3);
+  font-size: 13px;
+}
+.assistant-compose {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+  padding: var(--space-3);
+  border-top: 1px solid var(--color-divider);
+}
+.assistant-input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  resize: vertical;
+}
+.assistant-input:focus-visible {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+/* Labels that a screen reader needs and the layout does not. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

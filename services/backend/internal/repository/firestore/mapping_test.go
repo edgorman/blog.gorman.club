@@ -58,6 +58,47 @@ func TestBlogMappingRoundTrip_DeletedAt(t *testing.T) {
 	}
 }
 
+// A chat is stored as one document with its turns inside it, so the whole conversation - edits
+// included - has to survive the round trip; a mapping that dropped the edits would lose the record
+// of what the assistant actually did.
+func TestChatMappingRoundTrip(t *testing.T) {
+	chat := entity.Chat{
+		BlogSlug: "hello-world",
+		OwnerID:  "owner",
+		Messages: []entity.ChatMessage{
+			{Role: entity.ChatRoleUser, Content: "tighten the intro", CreatedAt: created},
+			{
+				Role:      entity.ChatRoleAssistant,
+				Content:   "Done.",
+				Edits:     []entity.ChatEdit{{Tool: "set_content", Summary: "Rewrote the post"}},
+				CreatedAt: updated,
+			},
+		},
+		CreatedAt: created,
+		UpdatedAt: updated,
+	}
+
+	got := chatToDocument(chat).toEntity()
+
+	if !reflect.DeepEqual(got, chat) {
+		t.Errorf("round trip = %+v, want %+v", got, chat)
+	}
+}
+
+// An empty conversation round-trips to an empty one rather than to a nil that reads as absent.
+func TestChatMappingRoundTrip_NoMessages(t *testing.T) {
+	chat := entity.Chat{BlogSlug: "hello-world", OwnerID: "owner", CreatedAt: created, UpdatedAt: updated}
+
+	got := chatToDocument(chat).toEntity()
+
+	if len(got.Messages) != 0 {
+		t.Errorf("Messages = %+v, want none", got.Messages)
+	}
+	if got.BlogSlug != chat.BlogSlug || got.OwnerID != chat.OwnerID {
+		t.Errorf("round trip = %+v, want %+v", got, chat)
+	}
+}
+
 func TestUserMappingRoundTrip(t *testing.T) {
 	user := entity.User{
 		ID:        "user-1",

@@ -46,5 +46,24 @@ func (v *TokenVerifier) Verify(ctx context.Context, idToken string) (entity.Call
 	if name == "" {
 		name = email
 	}
-	return entity.Caller{UID: payload.Subject, Email: email, Name: name}, nil
+	return entity.Caller{
+		UID:           payload.Subject,
+		Email:         email,
+		Name:          name,
+		EmailVerified: emailVerified(payload.Claims["email_verified"]),
+	}, nil
+}
+
+// emailVerified reads the email_verified claim, which Google has minted both as a JSON boolean and
+// as the string "true" over the years. Anything else - absent, malformed, false - is not verified,
+// which is the safe way to be wrong about it.
+func emailVerified(claim any) bool {
+	switch value := claim.(type) {
+	case bool:
+		return value
+	case string:
+		return value == "true"
+	default:
+		return false
+	}
 }

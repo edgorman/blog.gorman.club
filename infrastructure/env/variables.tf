@@ -30,3 +30,15 @@ variable "google_client_id" {
   type        = string
   default     = ""
 }
+
+variable "assistant_model" {
+  description = "Gemini API model id the writing assistant calls, e.g. gemini-3.7-flash. It must be a model the Gemini API actually serves - model ids come and go faster than this service is redeployed, so this is configuration rather than a constant in the backend. Empty disables the feature."
+  type        = string
+  default     = "gemini-3.7-flash"
+}
+
+variable "assistant_allowed_emails" {
+  description = "Verified Google account addresses permitted to use the AI writing assistant. Everybody else is refused by the backend, whatever they own. Empty disables the feature for everyone. This is the placeholder for real entitlements: when access becomes something bought rather than configured, it is replaced by a per-user record carrying a tier and an expiry (see internal/entity/assistant.go)."
+  type        = list(string)
+  default     = []
+}

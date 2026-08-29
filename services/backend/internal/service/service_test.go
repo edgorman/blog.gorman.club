@@ -187,6 +187,74 @@ func (r *fakeUserRepository) Delete(_ context.Context, id string) error {
 	return nil
 }
 
+// fakeChatRepository is an in-memory repository.ChatRepository. Like the real one it keys a chat
+// by the slug of the post it is about and keeps the owner of an existing chat rather than taking
+// the caller's, so ownership cannot be reassigned by appending to one.
+type fakeChatRepository struct {
+	chats map[string]entity.Chat
+	// appendErr fails a write the in-memory state would otherwise allow.
+	appendErr error
+}
+
+func newFakeChatRepository() *fakeChatRepository {
+	return &fakeChatRepository{chats: make(map[string]entity.Chat)}
+}
+
+func (r *fakeChatRepository) seed(chat entity.Chat) {
+	r.chats[chat.BlogSlug] = chat
+}
+
+func (r *fakeChatRepository) Get(_ context.Context, blogSlug string) (entity.Chat, error) {
+	chat, ok := r.chats[blogSlug]
+	if !ok {
+		return entity.Chat{}, repository.ErrNotFound
+	}
+	return chat, nil
+}
+
+func (r *fakeChatRepository) Append(_ context.Context, blogSlug, ownerID string, messages ...entity.ChatMessage) (entity.Chat, error) {
+	if r.appendErr != nil {
+		return entity.Chat{}, r.appendErr
+	}
+
+	chat, ok := r.chats[blogSlug]
+	if !ok {
+		chat = entity.Chat{BlogSlug: blogSlug, OwnerID: ownerID, CreatedAt: time.Now().UTC()}
+	}
+	if err := chat.Validate(); err != nil {
+		return entity.Chat{}, err
+	}
+	if err := chat.Append(messages...); err != nil {
+		return entity.Chat{}, err
+	}
+	chat.UpdatedAt = time.Now().UTC()
+
+	r.seed(chat)
+	return chat, nil
+}
+
+func (r *fakeChatRepository) Delete(_ context.Context, blogSlug string) error {
+	delete(r.chats, blogSlug)
+	return nil
+}
+
+// fakeAssistant is an in-memory repository.Assistant. reply stands in for the model, so a test
+// decides what it says and what it edits without a provider anywhere in the picture.
+type fakeAssistant struct {
+	reply func(repository.AssistantRequest) (repository.AssistantReply, error)
+	// requests records what the service asked, for a test asserting on the draft or the history it
+	// was handed.
+	requests []repository.AssistantRequest
+}
+
+func (a *fakeAssistant) Reply(_ context.Context, req repository.AssistantRequest) (repository.AssistantReply, error) {
+	a.requests = append(a.requests, req)
+	if a.reply == nil {
+		return repository.AssistantReply{Text: "ok", Draft: req.Draft}, nil
+	}
+	return a.reply(req)
+}
+
 // fakeVerifier is an in-memory repository.TokenVerifier.
 type fakeVerifier struct {
 	uid string
@@ -200,19 +268,54 @@ func (f fakeVerifier) Verify(_ context.Context, _ string) (entity.Caller, error)
 	return entity.Caller{UID: f.uid, Email: "user@example.com", Name: "User"}, nil
 }
 
-// newTestService builds a Service over the given fakes, filling in whichever are not needed.
+// newTestService builds a Service over the given fakes, filling in whichever are not needed. The
+// assistant allowlist is empty, so a test that does not opt in is testing a deployment where the
+// assistant is off - which is every deployment but the one account it is enabled for.
 func newTestService(blogs repository.BlogRepository, users repository.UserRepository) *Service {
+	return newAssistantService(blogs, users, nil, nil, nil)
+}
+
+// newAssistantService builds a Service with the assistant enabled for the named addresses.
+func newAssistantService(
+	blogs repository.BlogRepository,
+	users repository.UserRepository,
+	chats repository.ChatRepository,
+	assistant repository.Assistant,
+	allowed []string,
+) *Service {
 	if blogs == nil {
 		blogs = newFakeBlogRepository()
 	}
 	if users == nil {
 		users = newFakeUserRepository()
 	}
-	return New(Config{Environment: "test", Commit: "abc123"}, blogs, users, fakeVerifier{uid: "caller"})
+	if chats == nil {
+		chats = newFakeChatRepository()
+	}
+	if assistant == nil {
+		assistant = &fakeAssistant{}
+	}
+
+	return New(
+		Config{
+			Environment:        "test",
+			Commit:             "abc123",
+			AssistantAllowlist: entity.NewAssistantAllowlist(allowed),
+		},
+		blogs, users, chats, fakeVerifier{uid: "caller"}, assistant,
+	)
 }
 
 func withUID(req *http.Request, uid string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), callerContextKey, entity.Caller{UID: uid}))
+}
+
+// withVerifiedCaller carries an address the provider vouched for, which is what the assistant
+// allowlist is keyed on. withUID's caller deliberately has none: most routes do not care, and the
+// ones that do must not be satisfied by an address nobody verified.
+func withVerifiedCaller(req *http.Request, uid, email string) *http.Request {
+	caller := entity.Caller{UID: uid, Email: email, EmailVerified: true}
+	return req.WithContext(context.WithValue(req.Context(), callerContextKey, caller))
 }
 
 // decodeAPIError asserts the response carries a JSON error body rather than plain text.

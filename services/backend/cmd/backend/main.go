@@ -11,10 +11,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	fs "cloud.google.com/go/firestore"
 
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/firestore"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/gemini"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/google"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/service"
 )
@@ -47,19 +50,52 @@ func run() error {
 	}
 	defer client.Close()
 
+	// The Gemini API is reached with the runtime service account's own credentials, so there is no
+	// key to configure here - only which model, and which project to bill it to. GCP_PROJECT_ID is
+	// passed explicitly rather than detected, because the deployment already knows it (see
+	// infrastructure/env/cloud_run.tf) and a metadata lookup would only be a way of being told
+	// something Terraform could have said.
+	assistant := gemini.NewAssistant(gemini.Config{
+		Model:     os.Getenv("ASSISTANT_MODEL"),
+		ProjectID: os.Getenv("GCP_PROJECT_ID"),
+	})
+
+	// A deployment with no model has nobody on the allowlist, whatever the allowlist says: the
+	// capability /users/me reports is then accurate, and a client never offers an assistant that
+	// could only answer 503.
+	allowlist := entity.NewAssistantAllowlist(splitList(os.Getenv("ASSISTANT_ALLOWED_EMAILS")))
+	if !assistant.Configured() {
+		log.Print("warning: ASSISTANT_MODEL is unset, so the writing assistant is disabled")
+		allowlist = entity.NewAssistantAllowlist(nil)
+	} else if allowlist.Empty() {
+		log.Print("warning: ASSISTANT_ALLOWED_EMAILS is unset, so the writing assistant is enabled for nobody")
+	}
+
 	api := service.New(
 		service.Config{
-			Environment:   environment,
-			Commit:        commit,
-			AllowedOrigin: os.Getenv("CORS_ALLOWED_ORIGIN"),
+			Environment:        environment,
+			Commit:             commit,
+			AllowedOrigin:      os.Getenv("CORS_ALLOWED_ORIGIN"),
+			AssistantAllowlist: allowlist,
 		},
 		firestore.NewBlogRepository(client),
 		firestore.NewUserRepository(client),
+		firestore.NewChatRepository(client),
 		google.NewTokenVerifier(googleClientID),
+		assistant,
 	)
 
 	log.Printf("backend listening on :%s (environment=%s, commit=%s)", port, environment, commit)
 	return http.ListenAndServe(":"+port, api.Handler())
+}
+
+// splitList reads a comma-separated environment variable. Blanks are left in for the consumer to
+// drop, since what counts as an empty entry is the consumer's rule rather than this function's.
+func splitList(value string) []string {
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, ",")
 }
 
 func envOr(key, fallback string) string {

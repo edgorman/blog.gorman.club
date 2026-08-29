@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useGoogleAuth } from '../hooks/useGoogleAuth'
-import { ApiError, createApi, type User } from '../lib/api'
+import { ApiError, createApi, type CurrentUser } from '../lib/api'
 import { useTheme } from '../lib/theme'
 import { AppContext, type AppContextValue } from './AppContext'
 
@@ -15,7 +15,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [authHeaders],
   )
 
-  const [profile, setProfile] = useState<User | null>(null)
+  const [profile, setProfile] = useState<CurrentUser | null>(null)
   // Bumped by refreshProfile to re-run the fetch below, so a rename is picked up without a reload.
   const [profileNonce, setProfileNonce] = useState(0)
   const refreshProfile = useCallback(() => setProfileNonce((n) => n + 1), [])

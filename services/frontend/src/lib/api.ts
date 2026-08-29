@@ -36,6 +36,59 @@ export interface User {
   updatedAt: string
 }
 
+/**
+ * The signed-in caller's own profile, which carries what this deployment lets that account do as
+ * well as who they are. It is not what `getUser` returns: a public profile must not disclose who
+ * has the assistant.
+ */
+export interface CurrentUser extends User {
+  /**
+   * Whether this account may use the AI writing assistant. The backend enforces it either way -
+   * this only keeps the panel off the screen for somebody who would be told no.
+   */
+  assistantEnabled: boolean
+}
+
+/** One change the assistant made to the post, shown beneath the message that made it. */
+export interface ChatEdit {
+  tool: string
+  summary: string
+}
+
+/** One turn of the conversation with the assistant. */
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  /** Absent for a user turn and for an assistant turn that only answered a question. */
+  edits?: ChatEdit[]
+  createdAt: string
+}
+
+/**
+ * One exchange with the assistant: what was said on both sides, and the post as it now stands.
+ *
+ * The post comes back whole because the assistant edits the live draft server-side. When `updated`
+ * is true the editor has to replace what is in its fields with `blog`, or the next save would
+ * write the pre-assistant text back over it.
+ */
+export interface ChatReply {
+  messages: ChatMessage[]
+  blog: Blog
+  updated: boolean
+}
+
+/** What the author is sending the assistant, along with the draft they are looking at. */
+export interface ChatRequest {
+  message: string
+  /**
+   * The unsaved draft on screen. Omitting these means "use the post as it was saved", which is why
+   * they are sent even when unchanged: asking to tighten a paragraph has to mean the paragraph the
+   * author can see.
+   */
+  title?: string
+  content?: string
+}
+
 /** Thrown for any non-2xx response, carrying the status so callers can treat 404 as "absent". */
 export class ApiError extends Error {
   status: number
@@ -105,6 +158,11 @@ function blogPath(slug: string): string {
   return `/blogs/${encodeURIComponent(slug)}`
 }
 
+/** The API path for one post's assistant conversation. */
+function chatPath(slug: string): string {
+  return `${blogPath(slug)}/chat`
+}
+
 export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
   return {
     listBlogs: () => request<Blog[]>(baseUrl, authHeaders, 'GET', '/blogs'),
@@ -123,9 +181,19 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
       request<User>(baseUrl, authHeaders, 'GET', `/users/${encodeURIComponent(username)}`),
     // The caller's own profile needs no name: the backend takes the owner from the credential,
     // which is also how a client discovers the username it was given at sign-up.
-    getCurrentUser: () => request<User>(baseUrl, authHeaders, 'GET', '/users/me'),
-    putUser: (user: Partial<User>) => request<User>(baseUrl, authHeaders, 'PUT', '/users/me', user),
+    getCurrentUser: () => request<CurrentUser>(baseUrl, authHeaders, 'GET', '/users/me'),
+    putUser: (user: Partial<User>) =>
+      request<CurrentUser>(baseUrl, authHeaders, 'PUT', '/users/me', user),
     deleteUser: () => request<void>(baseUrl, authHeaders, 'DELETE', '/users/me'),
+
+    // The assistant conversation hangs off the post it is about, since that is all a chat is: it
+    // has no identity apart from its post. Every one of these requires the caller to own the post
+    // and to have the assistant enabled.
+    getChat: (slug: string) =>
+      request<{ messages: ChatMessage[] }>(baseUrl, authHeaders, 'GET', chatPath(slug)),
+    sendChatMessage: (slug: string, body: ChatRequest) =>
+      request<ChatReply>(baseUrl, authHeaders, 'POST', chatPath(slug), body),
+    clearChat: (slug: string) => request<void>(baseUrl, authHeaders, 'DELETE', chatPath(slug)),
   }
 }
 

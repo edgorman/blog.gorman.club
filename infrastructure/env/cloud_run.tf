@@ -11,6 +11,20 @@ resource "google_project_iam_member" "backend_runtime_datastore_user" {
   member  = "serviceAccount:${google_service_account.backend_runtime.email}"
 }
 
+# The writing assistant calls the Gemini API as this service account, which is the whole reason
+# there is no API key anywhere in this deployment: the credential is the runtime identity itself,
+# minted by the metadata server and short-lived, exactly as CI's is under WIF.
+#
+# A request authorized by a bearer token rather than an API key carries no project of its own, so
+# the backend names the billing project in an x-goog-user-project header - and naming a project
+# that way requires serviceusage.services.use on it, which is what this role grants and nothing
+# broader does.
+resource "google_project_iam_member" "backend_runtime_service_usage_consumer" {
+  project = var.gcp_project_id
+  role    = "roles/serviceusage.serviceUsageConsumer"
+  member  = "serviceAccount:${google_service_account.backend_runtime.email}"
+}
+
 # CI needs actAs to attach this service account below; no role in github_cicd.tf covers it.
 resource "google_service_account_iam_member" "backend_runtime_actas" {
   service_account_id = google_service_account.backend_runtime.name
@@ -19,7 +33,7 @@ resource "google_service_account_iam_member" "backend_runtime_actas" {
 }
 
 resource "google_cloud_run_v2_service" "backend" {
-  depends_on = [google_project_service.run]
+  depends_on = [google_project_service.run, google_project_service.generative_language]
 
   project  = var.gcp_project_id
   name     = "backend-${var.environment}"
@@ -53,6 +67,27 @@ resource "google_cloud_run_v2_service" "backend" {
       env {
         name  = "GOOGLE_CLIENT_ID"
         value = var.google_client_id
+      }
+
+      # The project Gemini API requests are billed and rate-limited against. It is passed rather
+      # than detected from the metadata server: Terraform already knows it, so a lookup would only
+      # be a way of being told something this file could have said.
+      env {
+        name  = "GCP_PROJECT_ID"
+        value = var.gcp_project_id
+      }
+
+      env {
+        name  = "ASSISTANT_MODEL"
+        value = var.assistant_model
+      }
+
+      # Who may use the assistant. It is plain configuration rather than a secret - it names
+      # accounts, not credentials - so it lives in this environment's tfvars alongside everything
+      # else that differs between staging and prod.
+      env {
+        name  = "ASSISTANT_ALLOWED_EMAILS"
+        value = join(",", var.assistant_allowed_emails)
       }
     }
   }

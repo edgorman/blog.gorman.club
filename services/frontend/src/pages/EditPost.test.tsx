@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { ApiError, type Api, type Blog } from '../lib/api'
+import { ApiError, type Api, type Blog, type CurrentUser } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { EditPost } from './EditPost'
 
@@ -19,6 +19,14 @@ const blog: Blog = {
   updatedAt: '2026-08-01T00:00:00Z',
 }
 
+const profile: CurrentUser = {
+  id: 'uid-1',
+  username: 'edgorman',
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+  assistantEnabled: true,
+}
+
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
     listBlogs: vi.fn(),
@@ -29,6 +37,9 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
     getUser: vi.fn(),
     putUser: vi.fn(),
     deleteUser: vi.fn(),
+    getChat: vi.fn().mockResolvedValue({ messages: [] }),
+    sendChatMessage: vi.fn(),
+    clearChat: vi.fn(),
     ...overrides,
   } as unknown as Api
 }
@@ -167,5 +178,29 @@ describe('EditPost', () => {
 
     expect(await screen.findByText('nope')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Hello world')).toBeInTheDocument()
+  })
+
+  // The routes enforce the allowlist either way; rendering the panel only for an account the
+  // backend would let use it is what keeps a button off the screen for somebody who would be told
+  // no.
+  it('offers the assistant to an account it is enabled for', async () => {
+    renderWithApp(<EditPost />, {
+      context: { api: fakeApi(), user: owner, profile },
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
+    })
+
+    expect(await screen.findByRole('region', { name: 'Writing assistant' })).toBeInTheDocument()
+  })
+
+  it('hides the assistant from an account it is not enabled for', async () => {
+    renderWithApp(<EditPost />, {
+      context: { api: fakeApi(), user: owner, profile: { ...profile, assistantEnabled: false } },
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
+    })
+
+    expect(await screen.findByDisplayValue('Hello world')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Writing assistant' })).not.toBeInTheDocument()
   })
 })

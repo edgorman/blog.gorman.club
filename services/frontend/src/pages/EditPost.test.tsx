@@ -37,8 +37,8 @@ describe('EditPost', () => {
   it('pre-fills the editor with the existing post for its owner', async () => {
     renderWithApp(<EditPost />, {
       context: { api: fakeApi(), user: owner },
-      route: '/post/calm-smiling-kestrel/hello-world/edit',
-      path: '/post/:username/:slug/edit',
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
     })
 
     expect(await screen.findByDisplayValue('Hello world')).toBeInTheDocument()
@@ -48,8 +48,8 @@ describe('EditPost', () => {
     const api = fakeApi()
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
-      route: '/post/calm-smiling-kestrel/hello-world/edit',
-      path: '/post/:username/:slug/edit',
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
     })
 
     const titleInput = await screen.findByDisplayValue('Hello world')
@@ -58,7 +58,6 @@ describe('EditPost', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(api.updateBlog).toHaveBeenCalledWith(
-      'calm-smiling-kestrel',
       'hello-world',
       expect.objectContaining({ title: 'Updated title', visibility: 'public' }),
     )
@@ -69,15 +68,14 @@ describe('EditPost', () => {
     const api = fakeApi({ getBlog: vi.fn().mockResolvedValue(privateBlog) })
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
-      route: '/post/calm-smiling-kestrel/hello-world/edit',
-      path: '/post/:username/:slug/edit',
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
     })
 
     await screen.findByDisplayValue('Hello world')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(api.updateBlog).toHaveBeenCalledWith(
-      'calm-smiling-kestrel',
       'hello-world',
       expect.objectContaining({ visibility: 'private', allowedUserIds: ['u2', 'u3'] }),
     )
@@ -87,8 +85,8 @@ describe('EditPost', () => {
     const api = fakeApi()
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
-      route: '/post/calm-smiling-kestrel/hello-world/edit',
-      path: '/post/:username/:slug/edit',
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
     })
 
     await screen.findByDisplayValue('Hello world')
@@ -96,7 +94,6 @@ describe('EditPost', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(api.updateBlog).toHaveBeenCalledWith(
-      'calm-smiling-kestrel',
       'hello-world',
       expect.objectContaining({ visibility: 'private' }),
     )
@@ -105,8 +102,8 @@ describe('EditPost', () => {
   it('refuses to edit a post owned by someone else', async () => {
     renderWithApp(<EditPost />, {
       context: { api: fakeApi(), user: stranger },
-      route: '/post/calm-smiling-kestrel/hello-world/edit',
-      path: '/post/:username/:slug/edit',
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
     })
 
     expect(await screen.findByText("You don't have permission to edit this post.")).toBeInTheDocument()
@@ -119,8 +116,8 @@ describe('EditPost', () => {
     const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(404, 'blog not found')) })
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
-      route: '/post/calm-smiling-kestrel/hello-world/edit',
-      path: '/post/:username/:slug/edit',
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
     })
 
     expect(await screen.findByText('Post not found.')).toBeInTheDocument()
@@ -131,14 +128,14 @@ describe('EditPost', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
-      route: '/post/calm-smiling-kestrel/hello-world/edit',
-      path: '/post/:username/:slug/edit',
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
     })
 
     await screen.findByDisplayValue('Hello world')
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
-    expect(api.deleteBlog).toHaveBeenCalledWith('calm-smiling-kestrel', 'hello-world')
+    expect(api.deleteBlog).toHaveBeenCalledWith('hello-world')
   })
 
   it('does not delete the post when the owner declines the confirmation', async () => {
@@ -146,8 +143,8 @@ describe('EditPost', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
-      route: '/post/calm-smiling-kestrel/hello-world/edit',
-      path: '/post/:username/:slug/edit',
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
     })
 
     await screen.findByDisplayValue('Hello world')
@@ -161,8 +158,8 @@ describe('EditPost', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
-      route: '/post/calm-smiling-kestrel/hello-world/edit',
-      path: '/post/:username/:slug/edit',
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
     })
 
     await screen.findByDisplayValue('Hello world')

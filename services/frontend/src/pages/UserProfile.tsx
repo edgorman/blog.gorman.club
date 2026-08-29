@@ -25,7 +25,7 @@ export function UserProfile() {
   const { username } = useParams<{ username: string }>()
   const { api } = useApp()
   // Lookups fold case server-side, so a link may differ in case from the stored name. Posts are
-  // matched against the folded name too, or /profile/ed-gorman would show Ed-Gorman's header with
+  // matched against the folded name too, or /user/ed-gorman would show Ed-Gorman's header with
   // none of their posts.
   const key = username?.toLowerCase()
   const [profile, setProfile] = useState<ProfileInfo | null>(null)

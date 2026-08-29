@@ -61,7 +61,7 @@ export function NewPost() {
             "{published.title || 'Untitled post'}" is live.
           </p>
           <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-            <Link to={postPath(published) ?? '/'} className="btn btn-primary">
+            <Link to={postPath(published)} className="btn btn-primary">
               View post
             </Link>
             <Link to="/" className="btn btn-secondary">

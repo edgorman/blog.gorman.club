@@ -36,10 +36,11 @@ func (v Visibility) Valid() bool {
 // Blog is a post. This service holds the only credentials for the collection, so read and write
 // access is decided here (CanBeReadBy, IsOwnedBy) and nowhere else.
 //
-// A post has no identifier of its own beyond its author and its slug: the two together address it
-// (as /blogs/{username}/{slug}, resolved through the author's profile) and the two together are
-// what the repository keys it by, so an opaque id would be a third name for something already
-// named twice.
+// A post has no identifier of its own beyond its slug: the slug alone addresses it (as
+// /blogs/{slug}) and is what the repository keys it by, so an opaque id would be a second name for
+// something already named. Slugs are unique across every author rather than per author, which is
+// what lets the author be left out of the address entirely - OwnerID says who wrote a post, not
+// where it lives.
 //
 // Slug is derived from the title at creation (see NewBlogSlug), so a post is addressed at a URL
 // that reads as what it is called. It is assigned once and never revised, so retitling a post
@@ -72,6 +73,8 @@ func (b *Blog) SetSlug(slug string) error {
 		return ValidationError{Field: "slug", Message: lengthMessage(MaxBlogSlugLength)}
 	case !blogSlugPattern.MatchString(trimmed):
 		return ValidationError{Field: "slug", Message: "must be lowercase words of letters and digits joined by single hyphens"}
+	case reservedBlogSlugs[trimmed]:
+		return ValidationError{Field: "slug", Message: "is reserved"}
 	}
 
 	b.Slug = trimmed
@@ -146,8 +149,8 @@ func (b *Blog) SetAllowedUserIDs(uids []string) error {
 // Validate reports whether the blog is in a storable state: the server-set slug and owner are
 // present, and every other field holds a value the setters above would accept. Repositories call
 // it before each write, so a blog assembled outside the HTTP layer cannot sidestep the rules -
-// including one carrying a slug that could not be addressed, or that Firestore would refuse
-// inside a document key.
+// including one carrying a slug that could not be addressed, that a frontend route already
+// claims, or that Firestore would refuse inside a document key.
 func (b Blog) Validate() error {
 	if b.OwnerID == "" {
 		return ValidationError{Field: "ownerId", Message: "is required"}

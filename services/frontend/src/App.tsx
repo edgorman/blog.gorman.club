@@ -23,13 +23,17 @@ function App() {
       <NavBar />
       <Routes>
         <Route path="/" element={<Landing />} />
-        {/* A post is addressed by its author and its slug together: slugs are unique per author,
-            so the username is part of the address rather than decoration. */}
-        <Route path="/post/:username/:slug" element={<Post />} />
-        <Route path="/post/:username/:slug/edit" element={<EditPost />} />
-        <Route path="/profile/edit" element={<EditProfile />} />
-        <Route path="/profile/:username" element={<UserProfile />} />
-        <Route path="/new" element={<NewPost />} />
+        {/* A post is addressed by its slug alone: slugs are unique across every author, so the
+            author is who wrote a post rather than part of where it lives. "new" is the editor
+            rather than a post - React Router ranks the literal above the wildcard beside it, so
+            it wins here, and the backend reserves the slug so no post can claim it either. */}
+        <Route path="/post/new" element={<NewPost />} />
+        <Route path="/post/:slug" element={<Post />} />
+        <Route path="/post/:slug/edit" element={<EditPost />} />
+        {/* A profile and its editor both sit under the username they belong to, so the editor is
+            a segment after a username rather than a name competing with one. */}
+        <Route path="/user/:username" element={<UserProfile />} />
+        <Route path="/user/:username/edit" element={<EditProfile />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppProvider>

@@ -57,34 +57,40 @@ Firestore directly. Access rules therefore live in Go and nowhere else:
 - **Reads** — `Blog.CanBeReadBy` is the single definition of who may see a post
   (public posts for anyone, signed in or not; private ones for the owner or a
   uid in `allowedUserIds`). `GET /blogs` applies it as a Firestore query so
-  private posts are never fetched; `GET /blogs/{username}/{slug}` applies it to
+  private posts are never fetched; `GET /blogs/{slug}` applies it to
   the loaded document. Both routes run `optionalAuth`: a signed-in caller's own private
   and whitelisted posts are included, but no credential is required.
 - **Writes** — `requireOwnedBlog` restricts updates and deletes to the post's
   owner, and `createdAt`/`updatedAt` come from the server rather than a
   spoofable client clock.
 
-A post's address is a slug taken from its own title, sitting under an author
-whose username is public by design - so unlike the random key a Firestore-assigned
-id would have been, it is guessable. `blogFromPath` and `requireReadableBlog`
-(`internal/service/blog.go`) answer every way of missing - a malformed username or
-slug, a username nobody holds, a slug its holder doesn't have, and a post the caller
-is not allowed to read - with the same `404`. A `403` would tell a prober a private
-post exists at a path it merely guessed right; folding that case into "not found" is
-what keeps the guess from confirming anything. `requireOwnedBlog` layers ownership on
+A post's address is a slug taken from its own title - so unlike the random key a
+Firestore-assigned id would have been, it is guessable. `blogFromPath` and
+`requireReadableBlog` (`internal/service/blog.go`) answer every way of missing - a
+malformed slug, a slug nothing holds, and a post the caller is not allowed to read -
+with the same `404`. A `403` would tell a prober a private post exists at a path it
+merely guessed right; folding that case into "not found" is what keeps the guess from
+confirming anything. `requireOwnedBlog` layers ownership on
 top of readability: a caller who cannot read a post gets the masking `404` before
 ownership is even considered, and only a post they can see yields a `403` for not
 owning it - which discloses nothing they could not already see.
 
-A post has no id of its own. It is addressed by its author and a **slug** taken
-from its title (`Hello, world!` → `/blogs/{username}/hello-world`), and keyed in
-Firestore by the same pair, so uniqueness is a property of the document key
-rather than something checked: `Create` (unlike `Set`) refuses to overwrite an
-existing document. Slugs are therefore unique *per author* - two people may both
-hold `hello-world`, and only an author reusing one of their own titles falls
-back to a suffixed slug (`hello-world-k3m9x`), drawn rather than counted up
-because only the write can decide whether one is free. A slug is assigned once
-and never revised, so retitling a post leaves every link to it working.
+A post has no id of its own. It is addressed by a **slug** taken from its title
+(`Hello, world!` → `/blogs/hello-world`), and keyed in Firestore by that slug
+alone, so uniqueness is a property of the document key rather than something
+checked: `Create` (unlike `Set`) refuses to overwrite an existing document.
+Slugs are therefore unique *across every author*, which is what lets the author
+be left out of the address entirely - the second post under a title falls back
+to a suffixed slug (`hello-world-k3m9x`) whoever wrote it, drawn rather than
+counted up because only the write can decide whether one is free. A slug is
+assigned once and never revised, so retitling a post leaves every link to it
+working.
+
+A handful of slugs are reserved (`entity.reservedBlogSlugs`) because the
+frontend routes them elsewhere: `new` is its editor at `/post/new`, which
+outranks the `:slug` wildcard beside it, so a post there would be unreachable.
+A title that slugs to one takes the suffixed form straight away, and `SetSlug`
+refuses a reserved slug outright.
 
 Profiles are keyed by the owner's Google account ID, so there is no
 server-assigned ID to hand out and a profile is written with `PUT` rather than
@@ -107,14 +113,14 @@ exists because a client holds a credential, not a username, and is how it learns
 the name it was given.
 
 Because a post records its owner by uid, and a uid resolves to nothing over
-HTTP, blog responses carry an `authorUsername` resolved at read time - which is
-also half of the post's address, so a client needs it to build a link. Publishing
-therefore assigns a profile to an author who somehow reached `POST /blogs`
-without one, since a post by an unnamed author would have no address at all. It
-is empty only for a post written before that rule, whose owner still holds no
-profile.
+HTTP, blog responses carry an `authorUsername` resolved at read time - the only
+handle a client holds for the profile behind a post, and so what it links the
+author by. Publishing therefore assigns a profile to an author who somehow
+reached `POST /blogs` without one, since a post by an unnamed author would be
+attributed to nobody. It is empty only for a post written before that rule,
+whose owner still holds no profile.
 
-Every route below except `GET /blogs`, `GET /blogs/{username}/{slug}` and
+Every route below except `GET /blogs`, `GET /blogs/{slug}` and
 `GET /users/{username}` requires a Google Sign-In credential — those three run
 `optionalAuth` instead of `requireAuth`, so an anonymous request is answered as
 far as public posts allow rather than rejected. A profile has nothing
@@ -152,10 +158,10 @@ Adding another provider means extending `authProvider` and the switch in
 | Method | Path          | Description                                                           |
 | ------ | ------------- | --------------------------------------------------------------------- |
 | GET    | `/blogs`      | List the blogs the caller may read, newest first. No credential required. |
-| GET    | `/blogs/{username}/{slug}` | Fetch a single blog. No credential required for a public one; a private one the caller may not read is a `404`, the same as a missing one. |
+| GET    | `/blogs/{slug}` | Fetch a single blog. No credential required for a public one; a private one the caller may not read is a `404`, the same as a missing one. |
 | POST   | `/blogs`      | Create a blog. `ownerId` is always the caller, and the slug comes from the title, regardless of the body. |
-| PUT    | `/blogs/{username}/{slug}` | Replace a blog's fields. A post the caller may not read is a `404`; one they may read but do not own is a `403`. The slug does not move, even when the title changes. |
-| DELETE | `/blogs/{username}/{slug}` | Delete a blog. Same `404`/`403` split as `PUT`.            |
+| PUT    | `/blogs/{slug}` | Replace a blog's fields. A post the caller may not read is a `404`; one they may read but do not own is a `403`. The slug does not move, even when the title changes. |
+| DELETE | `/blogs/{slug}` | Delete a blog. Same `404`/`403` split as `PUT`.            |
 | GET    | `/users/{username}` | Fetch a profile by username. No credential required. A 404 doubles as the availability check. |
 | GET    | `/users/me`   | Fetch your own profile, including the username you were assigned.      |
 | PUT    | `/users/me`   | Create or replace your own profile. An omitted `username` keeps the one you hold; a taken one is a `409`. |

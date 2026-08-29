@@ -8,22 +8,31 @@ markdown, a per-author profile feed, and a markdown editor for publishing.
 
 - **Feed** (`/`) — the 10 most recent posts the caller can read (every public
   post, plus the signed-in caller's own private ones), across all authors.
-- **Post** (`/post/:username/:slug`) — `GET /blogs/{username}/{slug}`, rendered
-  from markdown to HTML. Both halves address the post: a slug is unique to its
-  author, so `lib/api.ts`'s `postPath` builds every link from the pair.
-- **Profile** (`/profile/:id`) — that author's recent posts, plus their
-  display name and bio from `GET /users/{id}` when the caller is signed in.
-- **New post** (`/new`) — a single-pane markdown editor with a Preview
-  toggle, publishing via `POST /blogs`. Requires sign-in.
+- **Post** (`/post/:slug`) — `GET /blogs/{slug}`, rendered from markdown to
+  HTML. The slug addresses the post on its own, since slugs are unique across
+  every author, so `lib/api.ts`'s `postPath` builds a link from it alone. The
+  author beside it is who wrote the post, and links to their profile.
+- **Edit post** (`/post/:slug/edit`) — the same editor over an existing post,
+  saving via `PUT /blogs/{slug}`. Only the owner sees the form.
+- **New post** (`/post/new`) — a single-pane markdown editor with a Preview
+  toggle, publishing via `POST /blogs`. Requires sign-in. The literal outranks
+  the `:slug` wildcard beside it, and the backend reserves `new` as a slug, so
+  no post can be published at a path the editor already occupies.
+- **Profile** (`/user/:username`) — that author's recent posts, plus their
+  username and bio from `GET /users/{username}`.
+- **Edit profile** (`/user/:username/edit`) — the signed-in caller's own
+  username and bio, saved via `PUT /users/me`. The path names a profile but the
+  credential decides whose is written, so following somebody else's edit link is
+  refused rather than silently applied to your own.
 
 Every page degrades to an explanatory message rather than an error when its
 configuration is missing, so the page is still useful before anything is
 deployed.
 
-`GET /users/{id}` requires a signed-in caller (it has no anonymous form), so a
-signed-out visitor sees a shortened id in place of an author's name and no
-bio. Signing in resolves every author on the page, including ones already
-rendered, since any signed-in caller may look up any user's id.
+`GET /users/{username}` admits anonymous callers, and a post carries its
+author's username resolved server-side, so a signed-out visitor sees the same
+authors and bios a signed-in one does. Only what is *readable* differs: private
+posts appear once their owner or a whitelisted caller signs in.
 
 ## Google Sign-In
 

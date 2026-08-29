@@ -43,7 +43,7 @@ describe('NewPost', () => {
     // The link is built from both halves of the address the backend assigned.
     expect(screen.getByRole('link', { name: 'View post' })).toHaveAttribute(
       'href',
-      '/post/calm-smiling-kestrel/my-post',
+      '/post/my-post',
     )
   })
 

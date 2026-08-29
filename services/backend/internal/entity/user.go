@@ -18,11 +18,15 @@ const (
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
 // reservedUsernames are names no profile may hold because a route already means something else at
-// that path: "me" addresses the caller's own profile, and "edit" is the frontend's profile editor
-// at /profile/edit, which outranks the username wildcard beside it. A user holding either would be
-// unreachable at their own URL. The minimum length happens to exclude "me" as well; naming both
-// here keeps the rule from depending on that coincidence.
-var reservedUsernames = map[string]bool{"me": true, "edit": true}
+// that path: "me" addresses the caller's own profile, so a user holding it would be unreachable at
+// their own URL. The minimum length happens to exclude it as well; naming it here keeps the rule
+// from depending on that coincidence.
+//
+// "edit" used to sit here too, back when the frontend edited a profile at /profile/edit and that
+// literal outranked the username wildcard beside it. The editor now lives under the profile it
+// edits (/user/{username}/edit), so "edit" only ever appears as a segment after a username and no
+// longer competes with one.
+var reservedUsernames = map[string]bool{"me": true}
 
 // User is a profile keyed by the owner's Google account ID (the token's `sub` claim), so profiles
 // are written with PUT rather than POSTed. Any caller, signed in or not, may read one; only its

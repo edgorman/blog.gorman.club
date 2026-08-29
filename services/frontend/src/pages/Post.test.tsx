@@ -31,7 +31,7 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
 
 describe('Post', () => {
   it('renders the fetched post, with its markdown rendered to HTML', async () => {
-    renderWithApp(<Post />, { context: { api: fakeApi() }, route: '/post/calm-smiling-kestrel/hello-world', path: '/post/:username/:slug' })
+    renderWithApp(<Post />, { context: { api: fakeApi() }, route: '/post/hello-world', path: '/post/:slug' })
 
     expect(await screen.findByText('Hello world')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1, name: 'Hi' })).toBeInTheDocument()
@@ -40,7 +40,7 @@ describe('Post', () => {
 
   it('shows a not-found message for a missing post', async () => {
     const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(404, 'not found')) })
-    renderWithApp(<Post />, { context: { api }, route: '/post/calm-smiling-kestrel/missing', path: '/post/:username/:slug' })
+    renderWithApp(<Post />, { context: { api }, route: '/post/missing', path: '/post/:slug' })
 
     expect(await screen.findByText('Post not found.')).toBeInTheDocument()
   })
@@ -50,7 +50,7 @@ describe('Post', () => {
   // reintroducing a "this post is private" state the API never triggers.
   it('treats a masked private post the same as a missing one', async () => {
     const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(404, 'blog not found')) })
-    renderWithApp(<Post />, { context: { api }, route: '/post/calm-smiling-kestrel/hello-world', path: '/post/:username/:slug' })
+    renderWithApp(<Post />, { context: { api }, route: '/post/hello-world', path: '/post/:slug' })
 
     expect(await screen.findByText('Post not found.')).toBeInTheDocument()
   })
@@ -66,8 +66,8 @@ describe('Post', () => {
 
     renderWithApp(<Post />, {
       context: { api: fakeApi({ getBlog: vi.fn().mockResolvedValue(namedAnchorBlog) }) },
-      route: '/post/calm-smiling-kestrel/hello-world#section',
-      path: '/post/:username/:slug',
+      route: '/post/hello-world#section',
+      path: '/post/:slug',
     })
 
     await screen.findByText('Body.')
@@ -78,20 +78,20 @@ describe('Post', () => {
   it('shows an Edit link only to the post owner', async () => {
     renderWithApp(<Post />, {
       context: { api: fakeApi(), user: { id: 'uid-1', email: 'a@b.com', name: 'Ada' } },
-      route: '/post/calm-smiling-kestrel/hello-world',
-      path: '/post/:username/:slug',
+      route: '/post/hello-world',
+      path: '/post/:slug',
     })
     expect(await screen.findByRole('link', { name: 'Edit' })).toHaveAttribute(
       'href',
-      '/post/calm-smiling-kestrel/hello-world/edit',
+      '/post/hello-world/edit',
     )
   })
 
   it('hides the Edit link from a signed-in visitor who is not the owner', async () => {
     renderWithApp(<Post />, {
       context: { api: fakeApi(), user: { id: 'someone-else', email: 'x@y.com', name: 'Bo' } },
-      route: '/post/calm-smiling-kestrel/hello-world',
-      path: '/post/:username/:slug',
+      route: '/post/hello-world',
+      path: '/post/:slug',
     })
     expect(await screen.findByText('Hello world')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument()

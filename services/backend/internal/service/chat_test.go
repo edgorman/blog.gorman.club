@@ -28,6 +28,7 @@ type chatFixture struct {
 const (
 	chatSlug  = "hello-world"
 	chatOwner = "caller"
+	chatEmail = "ejgorman@gmail.com"
 )
 
 // newChatFixture enables the assistant for the caller unless allowed says otherwise.
@@ -35,7 +36,7 @@ func newChatFixture(t *testing.T, allowed ...string) *chatFixture {
 	t.Helper()
 
 	if allowed == nil {
-		allowed = []string{"edgorman"}
+		allowed = []string{chatEmail}
 	}
 
 	blogs := newFakeBlogRepository()
@@ -48,7 +49,7 @@ func newChatFixture(t *testing.T, allowed ...string) *chatFixture {
 	})
 
 	users := newFakeUserRepository()
-	users.seed(entity.User{ID: chatOwner, Username: "edgorman"})
+	users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel"})
 
 	chats := newFakeChatRepository()
 	assistant := &fakeAssistant{}
@@ -61,11 +62,12 @@ func newChatFixture(t *testing.T, allowed ...string) *chatFixture {
 	}
 }
 
-// chatRequestFor addresses the chat the way its route does: by the slug of the post it is about.
+// chatRequestFor addresses the chat the way its route does: by the slug of the post it is about,
+// carrying the verified address the allowlist is keyed on.
 func chatRequestFor(method string, body io.Reader) *http.Request {
 	req := httptest.NewRequest(method, "/blogs/"+url.PathEscape(chatSlug)+"/chat", body)
 	req.SetPathValue("slug", chatSlug)
-	return withUID(req, chatOwner)
+	return withVerifiedCaller(req, chatOwner, chatEmail)
 }
 
 func chatBody(t *testing.T, body any) io.Reader {
@@ -240,7 +242,7 @@ func TestSendChatMessage_SendsHistory(t *testing.T) {
 func TestSendChatMessage_ProviderFailureStoresNothing(t *testing.T) {
 	f := newChatFixture(t)
 	f.assistant.reply = func(repository.AssistantRequest) (repository.AssistantReply, error) {
-		return repository.AssistantReply{}, errors.New("vertex returned 503")
+		return repository.AssistantReply{}, errors.New("gemini returned 503")
 	}
 
 	rec := f.send(t, map[string]any{"message": "rewrite it", "content": "unsaved body"})
@@ -305,9 +307,9 @@ func TestSendChatMessage_RejectsEmptyMessage(t *testing.T) {
 	}
 }
 
-// Access is a property of the profile, and it is checked before anything is spent on the model.
+// Access is decided from the verified credential, and checked before anything is spent on the model.
 func TestSendChatMessage_NotAllowed(t *testing.T) {
-	f := newChatFixture(t, "somebody-else")
+	f := newChatFixture(t, "somebody-else@example.com")
 
 	rec := f.send(t, map[string]string{"message": "rewrite it"})
 
@@ -328,7 +330,7 @@ func TestSendChatMessage_NotOwner(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/blogs/"+chatSlug+"/chat", chatBody(t, map[string]string{"message": "hi"}))
 	req.SetPathValue("slug", chatSlug)
 	rec := httptest.NewRecorder()
-	f.service.SendChatMessage(rec, withUID(req, "stranger"))
+	f.service.SendChatMessage(rec, withVerifiedCaller(req, "stranger", chatEmail))
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
@@ -375,7 +377,7 @@ func TestGetChat_ReturnsConversation(t *testing.T) {
 }
 
 func TestGetChat_NotAllowed(t *testing.T) {
-	f := newChatFixture(t, "somebody-else")
+	f := newChatFixture(t, "somebody-else@example.com")
 
 	rec := httptest.NewRecorder()
 	f.service.GetChat(rec, chatRequestFor(http.MethodGet, nil))

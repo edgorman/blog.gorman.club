@@ -11,14 +11,17 @@ resource "google_project_iam_member" "backend_runtime_datastore_user" {
   member  = "serviceAccount:${google_service_account.backend_runtime.email}"
 }
 
-# The writing assistant calls Gemini on Vertex AI as this service account, which is the whole
-# reason there is no API key anywhere in this deployment: the credential is the runtime identity
-# itself, minted by the metadata server and short-lived, exactly as CI's is under WIF. The role is
-# aiplatform.user rather than aiplatform.admin - the backend calls a published model and never
-# creates, trains, or deploys one.
-resource "google_project_iam_member" "backend_runtime_aiplatform_user" {
+# The writing assistant calls the Gemini API as this service account, which is the whole reason
+# there is no API key anywhere in this deployment: the credential is the runtime identity itself,
+# minted by the metadata server and short-lived, exactly as CI's is under WIF.
+#
+# A request authorized by a bearer token rather than an API key carries no project of its own, so
+# the backend names the billing project in an x-goog-user-project header - and naming a project
+# that way requires serviceusage.services.use on it, which is what this role grants and nothing
+# broader does.
+resource "google_project_iam_member" "backend_runtime_service_usage_consumer" {
   project = var.gcp_project_id
-  role    = "roles/aiplatform.user"
+  role    = "roles/serviceusage.serviceUsageConsumer"
   member  = "serviceAccount:${google_service_account.backend_runtime.email}"
 }
 
@@ -30,7 +33,7 @@ resource "google_service_account_iam_member" "backend_runtime_actas" {
 }
 
 resource "google_cloud_run_v2_service" "backend" {
-  depends_on = [google_project_service.run, google_project_service.aiplatform]
+  depends_on = [google_project_service.run, google_project_service.generative_language]
 
   project  = var.gcp_project_id
   name     = "backend-${var.environment}"
@@ -66,9 +69,9 @@ resource "google_cloud_run_v2_service" "backend" {
         value = var.google_client_id
       }
 
-      # Vertex is billed to and called through this project. It is passed rather than detected
-      # from the metadata server: Terraform already knows it, so a lookup would only be a way of
-      # being told something this file could have said.
+      # The project Gemini API requests are billed and rate-limited against. It is passed rather
+      # than detected from the metadata server: Terraform already knows it, so a lookup would only
+      # be a way of being told something this file could have said.
       env {
         name  = "GCP_PROJECT_ID"
         value = var.gcp_project_id
@@ -79,17 +82,12 @@ resource "google_cloud_run_v2_service" "backend" {
         value = var.assistant_model
       }
 
-      env {
-        name  = "ASSISTANT_LOCATION"
-        value = var.assistant_location
-      }
-
       # Who may use the assistant. It is plain configuration rather than a secret - it names
       # accounts, not credentials - so it lives in this environment's tfvars alongside everything
       # else that differs between staging and prod.
       env {
-        name  = "ASSISTANT_ALLOWED_USERNAMES"
-        value = join(",", var.assistant_allowed_usernames)
+        name  = "ASSISTANT_ALLOWED_EMAILS"
+        value = join(",", var.assistant_allowed_emails)
       }
     }
   }

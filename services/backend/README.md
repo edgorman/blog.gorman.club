@@ -26,7 +26,7 @@ internal/
   repository/         Interfaces for everything external, plus ErrNotFound
     firestore/        Firestore implementations of BlogRepository, UserRepository, ChatRepository
     google/           Google Identity Services implementation of TokenVerifier
-    vertex/           Gemini-on-Vertex-AI implementation of Assistant
+    gemini/           Gemini API implementation of Assistant
   service/            HTTP server: routes, middleware, and logic spanning more than one entity
 ```
 
@@ -195,15 +195,21 @@ things are worth knowing about how it is bounded:
   private one, reassign it, or touch a post other than the one being discussed.
   Nothing behind `repository.Assistant` writes at all - the adapter edits a copy
   and hands it back, and `service` decides whether to persist it.
-- **Who may use it.** `entity.AssistantAllowlist` is a static list of usernames,
-  configured per environment (`ASSISTANT_ALLOWED_USERNAMES`). It is a type of
-  its own rather than a string comparison in a handler because it is the seam
-  the real thing replaces: when access becomes something bought, an entitlement
-  carrying a tier and an expiry takes its place and `Allows` becomes a lookup
-  that can also answer "expired". Every caller already asks the question in
-  those terms. `GET /users/me` reports the answer as `assistantEnabled`, so a
-  client can keep the panel off the screen for an account that would be refused;
-  the routes enforce it either way, and a public profile never discloses it.
+- **Who may use it.** `entity.AssistantAllowlist` is a static list of email
+  addresses, configured per environment (`ASSISTANT_ALLOWED_EMAILS`) and matched
+  against the caller's verified credential - never against anything the request
+  asserts about itself, and never against an address the provider did not mark
+  `email_verified`. It is keyed on the address rather than on the profile's
+  username because a username is freely chosen and, once released, claimable by
+  anybody: a list naming one would follow the name rather than the account. It
+  is a type of its own rather than a comparison in a handler because it is the
+  seam the real thing replaces: when access becomes something bought, an
+  entitlement carrying a tier and an expiry takes its place and `Allows` becomes
+  a lookup that can also answer "expired". Every caller already asks the
+  question in those terms. `GET /users/me` reports the answer as
+  `assistantEnabled`, so a client can keep the panel off the screen for an
+  account that would be refused; the routes enforce it either way, and a public
+  profile never discloses it.
 - **What the draft is.** A chat request carries the title and body the author
   has on screen, unsaved changes included - asking to tighten a paragraph has to
   mean the paragraph they can see, not the one last written to Firestore. The
@@ -217,13 +223,19 @@ subcollection: a chat is only ever read whole, since the model is given the
 whole history each turn. That trades unbounded growth for simplicity, which is
 why `entity.MaxChatMessages` trims the oldest turns rather than failing a write.
 
-Gemini is reached through **Vertex AI**, not the Generative Language API, so the
-backend authenticates as its own Cloud Run runtime service account
-(`roles/aiplatform.user`, see `infrastructure/env/cloud_run.tf`) over
-Application Default Credentials. There is no API key to mint, store, rotate, or
-leak - the same argument that put GitHub Actions on Workload Identity
-Federation. Credentials are resolved on first use, so a backend started without
-them still serves every other route and fails only this one, with the reason.
+The model is reached through the **Gemini API**
+(`generativelanguage.googleapis.com`). The Gemini API accepts either an API key
+or an OAuth bearer token; this backend sends a token from Application Default
+Credentials - on Cloud Run, its own runtime service account - so there is no
+long-lived credential to mint, store, rotate, or leak, which is the same
+argument that put GitHub Actions on Workload Identity Federation. The cost is
+one header: a token-authorized request carries no project of its own, so the
+billing project is named in `x-goog-user-project`, and naming a project that way
+needs `serviceusage.services.use` on it - hence
+`roles/serviceusage.serviceUsageConsumer` in
+`infrastructure/env/cloud_run.tf`. Credentials are resolved on first use, so a
+backend started without them still serves every other route and fails only this
+one, with the reason.
 
 ## Development
 
@@ -244,10 +256,9 @@ make build     # builds bin/backend
 | `ENVIRONMENT`          | Deployment environment reported by `/debug` (e.g. `stag`, `prod`). Defaults to `development`. |
 | `CORS_ALLOWED_ORIGIN`  | Origin allowed to call this API from a browser (the frontend's URL). Unset disables CORS headers entirely. |
 | `GOOGLE_CLIENT_ID`     | OAuth 2.0 client ID that ID tokens must be minted for. Set by Terraform from the `GOOGLE_CLIENT_ID` GitHub Actions variable; unset means no request can authenticate. |
-| `GCP_PROJECT_ID`       | Project Vertex AI is called through and billed to. Unset disables the writing assistant. |
-| `ASSISTANT_MODEL`      | Vertex model id, e.g. `gemini-3.7-flash`. It has to be one Vertex serves in `ASSISTANT_LOCATION`. Unset disables the writing assistant. |
-| `ASSISTANT_LOCATION`   | Vertex location: a region such as `europe-west1`, or `global` for the multi-region endpoint. Defaults to `global`. |
-| `ASSISTANT_ALLOWED_USERNAMES` | Comma-separated usernames permitted to use the writing assistant. Unset enables it for nobody. |
+| `GCP_PROJECT_ID`       | Project Gemini API requests are billed and rate-limited against, sent as `x-goog-user-project`. Unset sends no quota header, which a token-authorized request needs. |
+| `ASSISTANT_MODEL`      | Gemini model id, e.g. `gemini-3.7-flash`. Unset disables the writing assistant. |
+| `ASSISTANT_ALLOWED_EMAILS` | Comma-separated verified account addresses permitted to use the writing assistant. Unset enables it for nobody. |
 
 `commit` is not an env var — it's baked into the binary at build time via
 `-ldflags "-X main.commit=..."` (see `Dockerfile`), since the same image is

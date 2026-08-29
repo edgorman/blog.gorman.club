@@ -1,4 +1,4 @@
-package vertex
+package gemini
 
 import (
 	"context"
@@ -13,13 +13,14 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
-// modelServer stands in for Vertex, answering each call with the next scripted response and
+// modelServer stands in for the Gemini API, answering each call with the next scripted response and
 // recording the requests it was sent. A scripted turn is written as the parts of one candidate,
 // which is the only part of the response this adapter reads.
 type modelServer struct {
 	t         *testing.T
 	responses [][]part
 	requests  []generateRequest
+	headers   []http.Header
 	server    *httptest.Server
 }
 
@@ -40,6 +41,7 @@ func (m *modelServer) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m.requests = append(m.requests, request)
+	m.headers = append(m.headers, r.Header.Clone())
 
 	if len(m.requests) > len(m.responses) {
 		m.t.Errorf("model called %d times, only %d responses scripted", len(m.requests), len(m.responses))
@@ -63,9 +65,8 @@ func (m *modelServer) handle(w http.ResponseWriter, r *http.Request) {
 // are resolved.
 func (m *modelServer) assistant() *Assistant {
 	return NewAssistant(Config{
-		ProjectID:  "test-project",
-		Location:   "europe-west1",
 		Model:      "gemini-test",
+		ProjectID:  "test-project",
 		BaseURL:    m.server.URL,
 		HTTPClient: m.server.Client(),
 	})
@@ -248,12 +249,11 @@ func TestAssistant_ReplySendsHistory(t *testing.T) {
 // A deployment with no model configured says so, in the same way an unconfigured verifier does,
 // rather than failing as though the provider were down.
 func TestAssistant_ReplyUnconfigured(t *testing.T) {
-	for _, cfg := range []Config{{Model: "gemini-test"}, {ProjectID: "test-project"}} {
-		_, err := NewAssistant(cfg).Reply(context.Background(), repository.AssistantRequest{Message: "hello"})
+	_, err := NewAssistant(Config{ProjectID: "test-project"}).
+		Reply(context.Background(), repository.AssistantRequest{Message: "hello"})
 
-		if !errors.Is(err, repository.ErrAssistantNotConfigured) {
-			t.Errorf("Reply with %+v = %v, want ErrAssistantNotConfigured", cfg, err)
-		}
+	if !errors.Is(err, repository.ErrAssistantNotConfigured) {
+		t.Errorf("Reply with no model = %v, want ErrAssistantNotConfigured", err)
 	}
 }
 
@@ -267,7 +267,7 @@ func TestAssistant_ReplyProviderError(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	assistant := NewAssistant(Config{
-		ProjectID: "test-project", Model: "gemini-test",
+		Model: "gemini-test", ProjectID: "test-project",
 		BaseURL: server.URL, HTTPClient: server.Client(),
 	})
 
@@ -284,22 +284,47 @@ func TestAssistant_ReplyProviderError(t *testing.T) {
 	}
 }
 
-// The global endpoint is not prefixed with its location, unlike every regional one.
+// The Gemini API is one global host: the model is named in the path and the project is not there
+// at all - it rides in the quota header instead.
 func TestAssistant_Endpoint(t *testing.T) {
-	for _, tt := range []struct {
-		location string
-		want     string
-	}{
-		{"", "https://aiplatform.googleapis.com/v1/projects/p/locations/global/publishers/google/models/m:generateContent"},
-		{"global", "https://aiplatform.googleapis.com/v1/projects/p/locations/global/publishers/google/models/m:generateContent"},
-		{"europe-west1", "https://europe-west1-aiplatform.googleapis.com/v1/projects/p/locations/europe-west1/publishers/google/models/m:generateContent"},
-	} {
-		t.Run(tt.location, func(t *testing.T) {
-			got := NewAssistant(Config{ProjectID: "p", Model: "m", Location: tt.location}).endpoint()
+	got := NewAssistant(Config{Model: "gemini-3.7-flash", ProjectID: "p"}).endpoint()
 
-			if got != tt.want {
-				t.Errorf("endpoint() = %q, want %q", got, tt.want)
-			}
-		})
+	want := "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent"
+	if got != want {
+		t.Errorf("endpoint() = %q, want %q", got, want)
+	}
+}
+
+// A token-authorized request carries no project of its own, so the billing project is named in a
+// header. Without it the request has nothing to charge and is refused.
+func TestAssistant_SendsTheQuotaProject(t *testing.T) {
+	model := newModelServer(t, []part{{Text: "ok"}})
+
+	if _, err := model.assistant().Reply(context.Background(), repository.AssistantRequest{
+		Draft:   entity.Draft{Title: "Hello"},
+		Message: "hello",
+	}); err != nil {
+		t.Fatalf("Reply = %v, want no error", err)
+	}
+
+	if got := model.headers[0].Get(quotaProjectHeader); got != "test-project" {
+		t.Errorf("%s = %q, want %q", quotaProjectHeader, got, "test-project")
+	}
+}
+
+// A deployment that has not named a project sends no header at all, rather than an empty one the
+// API would reject outright.
+func TestAssistant_OmitsAnUnsetQuotaProject(t *testing.T) {
+	model := newModelServer(t, []part{{Text: "ok"}})
+	assistant := NewAssistant(Config{
+		Model: "gemini-test", BaseURL: model.server.URL, HTTPClient: model.server.Client(),
+	})
+
+	if _, err := assistant.Reply(context.Background(), repository.AssistantRequest{Message: "hello"}); err != nil {
+		t.Fatalf("Reply = %v, want no error", err)
+	}
+
+	if _, sent := model.headers[0][http.CanonicalHeaderKey(quotaProjectHeader)]; sent {
+		t.Errorf("%s was sent with no project configured", quotaProjectHeader)
 	}
 }

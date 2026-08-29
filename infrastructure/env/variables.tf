@@ -32,19 +32,13 @@ variable "google_client_id" {
 }
 
 variable "assistant_model" {
-  description = "Vertex AI model id the writing assistant calls, e.g. gemini-3.7-flash. It must be a model Vertex actually serves in assistant_location - model ids come and go faster than this service is redeployed, so this is configuration rather than a constant in the backend."
+  description = "Gemini API model id the writing assistant calls, e.g. gemini-3.7-flash. It must be a model the Gemini API actually serves - model ids come and go faster than this service is redeployed, so this is configuration rather than a constant in the backend. Empty disables the feature."
   type        = string
   default     = "gemini-3.7-flash"
 }
 
-variable "assistant_location" {
-  description = "Vertex AI location the model is called in: a region such as europe-west1, or \"global\" for the multi-region endpoint. Model availability is regional, so this is what moves a deployment onto an endpoint that serves assistant_model."
-  type        = string
-  default     = "global"
-}
-
-variable "assistant_allowed_usernames" {
-  description = "Usernames permitted to use the AI writing assistant. Everybody else is refused by the backend, whatever they own. Empty disables the feature for everyone. This is the placeholder for real entitlements: when access becomes something bought rather than configured, it is replaced by a per-user record carrying a tier and an expiry (see internal/entity/assistant.go)."
+variable "assistant_allowed_emails" {
+  description = "Verified Google account addresses permitted to use the AI writing assistant. Everybody else is refused by the backend, whatever they own. Empty disables the feature for everyone. This is the placeholder for real entitlements: when access becomes something bought rather than configured, it is replaced by a per-user record carrying a tier and an expiry (see internal/entity/assistant.go)."
   type        = list(string)
   default     = []
 }

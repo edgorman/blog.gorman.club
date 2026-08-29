@@ -49,22 +49,13 @@ type chatReplyResponse struct {
 // requireAssistantAccess checks the caller may use the assistant at all, writing the error
 // response and returning false otherwise.
 //
-// Access is a property of the profile rather than of the credential, so this reads the caller's
-// profile rather than trusting anything in the request. A caller who is signed in and owns the
-// post but is not on the list gets a 403 saying so plainly: the feature's existence is not a
-// secret, and there is nothing to hide by pretending the route is not there.
+// Access is decided from the verified credential alone, so there is nothing to read and nothing a
+// request can assert about itself: the address the allowlist matches came out of a signed token
+// (see entity.AssistantAllowlist). A caller who is signed in and owns the post but is not on the
+// list gets a 403 saying so plainly - the feature's existence is not a secret, and there is
+// nothing to hide by pretending the route is not there.
 func (s *Service) requireAssistantAccess(w http.ResponseWriter, r *http.Request) bool {
-	user, err := s.users.Get(r.Context(), uidFromContext(r.Context()))
-	if errors.Is(err, repository.ErrNotFound) {
-		writeError(w, http.StatusForbidden, "the writing assistant is not enabled for your account")
-		return false
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return false
-	}
-
-	if !s.cfg.AssistantAllowlist.Allows(user) {
+	if !s.cfg.AssistantAllowlist.Allows(callerFromContext(r.Context())) {
 		writeError(w, http.StatusForbidden, "the writing assistant is not enabled for your account")
 		return false
 	}

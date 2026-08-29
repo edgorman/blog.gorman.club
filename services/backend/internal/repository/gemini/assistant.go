@@ -1,9 +1,13 @@
-// Package vertex talks to Gemini on Vertex AI, which is the same GCP project the rest of this
-// deployment already lives in. That is the whole reason it is Vertex rather than the Generative
-// Language API: Vertex authenticates with the Cloud Run runtime service account over Application
-// Default Credentials, so there is no API key to mint, store in Secret Manager, rotate, or leak -
-// exactly the argument that put GitHub Actions on Workload Identity Federation.
-package vertex
+// Package gemini talks to the Gemini API (generativelanguage.googleapis.com).
+//
+// It authenticates with a bearer token from Application Default Credentials - on Cloud Run, the
+// runtime service account - rather than with the API key the Gemini API is more often reached
+// with. Both are supported; the token is chosen for the same reason GitHub Actions runs on
+// Workload Identity Federation, which is that there is then no long-lived credential to mint,
+// store in Secret Manager, rotate, or leak. The cost is one header: a request authorized by a
+// token rather than a key carries no project of its own, so the billing project is named
+// explicitly (see quotaProjectHeader).
+package gemini
 
 import (
 	"bytes"
@@ -24,9 +28,21 @@ import (
 )
 
 const (
-	// cloudPlatformScope is what a Vertex call is authorized by; the runtime service account holds
-	// roles/aiplatform.user on the project (see infrastructure/env/cloud_run.tf).
+	// defaultBaseURL is the Gemini API: one global host, with no project or location in the path.
+	// The model is named in the URL alone and the project rides in the quota header below.
+	defaultBaseURL = "https://generativelanguage.googleapis.com"
+	// apiVersion is v1beta rather than v1 because that is where the Gemini API's function-calling
+	// surface is complete, and function calling is the whole mechanism here.
+	apiVersion = "v1beta"
+	// cloudPlatformScope is what the bearer token is minted for; it is the scope the Gemini API
+	// accepts for an OAuth-authorized (rather than key-authorized) request.
 	cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
+	// quotaProjectHeader names the project a token-authorized request is billed and rate-limited
+	// against. An API key carries its project implicitly; a bearer token does not, so without this
+	// the request has no project to charge and is refused. The runtime service account needs
+	// serviceusage.services.use on that project to name it - hence
+	// roles/serviceusage.serviceUsageConsumer in infrastructure/env/cloud_run.tf.
+	quotaProjectHeader = "x-goog-user-project"
 	// requestTimeout bounds one call to the model. A request that has not answered by then has
 	// already outlasted anyone waiting on the other end of the editor.
 	requestTimeout = 60 * time.Second
@@ -46,27 +62,25 @@ const (
 
 var _ repository.Assistant = (*Assistant)(nil)
 
-// Config names the model to call and where it lives.
+// Config names the model to call and the project to bill it to.
 type Config struct {
-	// ProjectID is the GCP project Vertex is billed to and called through. Empty disables the
-	// assistant entirely, in the same way an empty client ID disables authentication.
-	ProjectID string
-	// Location is the Vertex region, e.g. "europe-west1", or "global" for the multi-region
-	// endpoint. Model availability is regional, so this is the knob that moves a deployment onto
-	// an endpoint that actually serves the model below.
-	Location string
-	// Model is the Vertex model id, e.g. "gemini-3.7-flash". It is configuration rather than a
-	// constant because model ids come and go far faster than this service is redeployed.
+	// Model is the Gemini model id, e.g. "gemini-3.7-flash". It is configuration rather than a
+	// constant because model ids come and go far faster than this service is redeployed. Empty
+	// disables the assistant entirely, in the same way an empty client ID disables authentication.
 	Model string
-	// BaseURL overrides the Vertex host. It exists for tests, which point it at an httptest
-	// server; a deployment leaves it empty and gets the host Location implies.
+	// ProjectID is the GCP project requests are billed and rate-limited against (see
+	// quotaProjectHeader). Empty sends no quota header, which is right when the credentials carry
+	// a project of their own and wrong on Cloud Run - so Terraform always sets it.
+	ProjectID string
+	// BaseURL overrides the Gemini API host. It exists for tests, which point it at an httptest
+	// server; a deployment leaves it empty.
 	BaseURL string
 	// HTTPClient overrides the authenticated client built from Application Default Credentials,
 	// for the same reason.
 	HTTPClient *http.Client
 }
 
-// Assistant implements repository.Assistant against Gemini on Vertex AI.
+// Assistant implements repository.Assistant against the Gemini API.
 type Assistant struct {
 	cfg Config
 
@@ -82,15 +96,15 @@ type Assistant struct {
 // that cannot reach a model is reported by Reply as repository.ErrAssistantNotConfigured, which is
 // how repository.TokenVerifier reports the same situation.
 func NewAssistant(cfg Config) *Assistant {
-	if cfg.Location == "" {
-		cfg.Location = "global"
+	if cfg.BaseURL == "" {
+		cfg.BaseURL = defaultBaseURL
 	}
 	return &Assistant{cfg: cfg}
 }
 
 // Configured reports whether this deployment has a model to call at all.
 func (a *Assistant) Configured() bool {
-	return a.cfg.ProjectID != "" && a.cfg.Model != ""
+	return a.cfg.Model != ""
 }
 
 // httpClient resolves Application Default Credentials once and reuses the client after, so a token
@@ -114,20 +128,10 @@ func (a *Assistant) httpClient(ctx context.Context) (*http.Client, error) {
 	return a.client, a.err
 }
 
-// endpoint is the generateContent URL for the configured model. The global endpoint is not
-// prefixed with its location, unlike every regional one.
+// endpoint is the generateContent URL for the configured model.
 func (a *Assistant) endpoint() string {
-	base := a.cfg.BaseURL
-	if base == "" {
-		host := "https://aiplatform.googleapis.com"
-		if a.cfg.Location != "global" {
-			host = fmt.Sprintf("https://%s-aiplatform.googleapis.com", a.cfg.Location)
-		}
-		base = host
-	}
-
-	return fmt.Sprintf("%s/v1/projects/%s/locations/%s/publishers/google/models/%s:generateContent",
-		strings.TrimSuffix(base, "/"), a.cfg.ProjectID, a.cfg.Location, a.cfg.Model)
+	return fmt.Sprintf("%s/%s/models/%s:generateContent",
+		strings.TrimSuffix(a.cfg.BaseURL, "/"), apiVersion, a.cfg.Model)
 }
 
 // Reply runs one turn of the conversation, including however many rounds of tool calls the model
@@ -216,10 +220,13 @@ func (a *Assistant) generate(ctx context.Context, client *http.Client, system st
 		return generateResponse{}, err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	if a.cfg.ProjectID != "" {
+		request.Header.Set(quotaProjectHeader, a.cfg.ProjectID)
+	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		return generateResponse{}, fmt.Errorf("call vertex: %w", err)
+		return generateResponse{}, fmt.Errorf("call gemini: %w", err)
 	}
 	defer response.Body.Close()
 
@@ -232,20 +239,20 @@ func (a *Assistant) generate(ctx context.Context, client *http.Client, system st
 	if response.StatusCode != http.StatusOK {
 		// The status is what a caller acts on, so the provider's message is summarized rather than
 		// forwarded - it can carry the request back verbatim, and the request holds the post.
-		return generateResponse{}, fmt.Errorf("vertex returned %d", response.StatusCode)
+		return generateResponse{}, fmt.Errorf("gemini returned %d", response.StatusCode)
 	}
 
 	var decoded generateResponse
 	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return generateResponse{}, fmt.Errorf("decode vertex response: %w", err)
+		return generateResponse{}, fmt.Errorf("decode gemini response: %w", err)
 	}
 	if len(decoded.Candidates) == 0 {
 		// No candidate at all means the request or the answer was refused outright, which is the
 		// one failure worth naming: it is the model declining rather than anything being broken.
 		if reason := decoded.blockReason(); reason != "" {
-			return generateResponse{}, fmt.Errorf("vertex returned no candidates (%s)", reason)
+			return generateResponse{}, fmt.Errorf("gemini returned no candidates (%s)", reason)
 		}
-		return generateResponse{}, fmt.Errorf("vertex returned no candidates")
+		return generateResponse{}, fmt.Errorf("gemini returned no candidates")
 	}
 	return decoded, nil
 }

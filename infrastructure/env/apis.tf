@@ -9,9 +9,9 @@ resource "google_project_service" "artifact_registry" {
   service = "artifactregistry.googleapis.com"
 }
 
-# Gemini is called through Vertex AI rather than the Generative Language API, so the backend
-# authenticates with its own runtime service account instead of an API key (see cloud_run.tf).
-resource "google_project_service" "aiplatform" {
+# The Gemini API the writing assistant calls. The backend authenticates against it with its own
+# runtime service account rather than an API key (see cloud_run.tf).
+resource "google_project_service" "generative_language" {
   project = var.gcp_project_id
-  service = "aiplatform.googleapis.com"
+  service = "generativelanguage.googleapis.com"
 }

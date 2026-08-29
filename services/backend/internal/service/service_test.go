@@ -275,7 +275,7 @@ func newTestService(blogs repository.BlogRepository, users repository.UserReposi
 	return newAssistantService(blogs, users, nil, nil, nil)
 }
 
-// newAssistantService builds a Service with the assistant enabled for the named usernames.
+// newAssistantService builds a Service with the assistant enabled for the named addresses.
 func newAssistantService(
 	blogs repository.BlogRepository,
 	users repository.UserRepository,
@@ -308,6 +308,14 @@ func newAssistantService(
 
 func withUID(req *http.Request, uid string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), callerContextKey, entity.Caller{UID: uid}))
+}
+
+// withVerifiedCaller carries an address the provider vouched for, which is what the assistant
+// allowlist is keyed on. withUID's caller deliberately has none: most routes do not care, and the
+// ones that do must not be satisfied by an address nobody verified.
+func withVerifiedCaller(req *http.Request, uid, email string) *http.Request {
+	caller := entity.Caller{UID: uid, Email: email, EmailVerified: true}
+	return req.WithContext(context.WithValue(req.Context(), callerContextKey, caller))
 }
 
 // decodeAPIError asserts the response carries a JSON error body rather than plain text.

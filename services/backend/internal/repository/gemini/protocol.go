@@ -1,6 +1,7 @@
 package gemini
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 )
@@ -36,12 +37,48 @@ type content struct {
 	Parts []part `json:"parts"`
 }
 
-// part is a union: exactly one field is set. Everything is omitempty because sending a part with
-// two of the three present is a request the API rejects.
+// part is a union: exactly one of the fields below is set on a part this package builds.
+// Everything is omitempty because sending a part with two of them present is a request the API
+// rejects.
+//
+// A part that arrived from the model also keeps the exact bytes it arrived as, and is sent back as
+// those bytes rather than as a re-encoding of the three fields modelled here. That matters because
+// a turn has to be replayed into the conversation before its tool results can answer it, and the
+// model puts things on its own parts that this struct does not know about - a thinking model
+// returns a thoughtSignature, "an opaque signature for the thought so it can be reused in
+// subsequent requests", and re-encoding the turn would drop it. Losing a field the model requires
+// back is not a difference the type system can catch, so the fix is not to model more fields but
+// to stop paraphrasing what the model said.
 type part struct {
 	Text             string            `json:"text,omitempty"`
 	FunctionCall     *functionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *functionResponse `json:"functionResponse,omitempty"`
+
+	// raw is set only on a part decoded from a response, and is unexported so it is never a field
+	// of the JSON itself.
+	raw json.RawMessage
+}
+
+// partFields mirrors part without its methods, so the marshalling below can fall back to the
+// default encoding of the same fields without recursing into itself.
+type partFields part
+
+func (p part) MarshalJSON() ([]byte, error) {
+	if len(p.raw) > 0 {
+		return p.raw, nil
+	}
+	return json.Marshal(partFields(p))
+}
+
+func (p *part) UnmarshalJSON(data []byte) error {
+	var fields partFields
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	*p = part(fields)
+	p.raw = bytes.Clone(data)
+	return nil
 }
 
 // functionCall is the model asking for a tool to be run. Args stays raw so each tool decodes its
@@ -91,9 +128,15 @@ func (r generateResponse) blockReason() string {
 }
 
 // content is the model's turn, to be appended to the conversation before its tool results are.
+// Its parts carry the bytes they arrived as (see part), so replaying the turn hands back exactly
+// what the model said rather than this package's reading of it.
 func (r generateResponse) content() content {
 	turn := r.Candidates[0].Content
-	turn.Role = roleModel
+	// The API sets the role itself; it is filled in here only for a response that left it out, so
+	// the replayed turn is never attributed to the wrong speaker.
+	if turn.Role == "" {
+		turn.Role = roleModel
+	}
 	return turn
 }
 

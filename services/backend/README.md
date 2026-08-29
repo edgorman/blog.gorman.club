@@ -242,13 +242,25 @@ refused with a `403`. This platform's `generateContent` does declare the
 here. Using the Gemini API instead would mean adding the one long-lived secret
 this deployment is built to avoid.
 
-When a call does fail, the adapter logs the provider's machine-readable
-`status` and `details[].reason` (`PERMISSION_DENIED`,
-`ACCESS_TOKEN_SCOPE_INSUFFICIENT`, `SERVICE_DISABLED`, ...) alongside the status
-code, and never its human-readable message - which can quote the request back,
-and the request holds the post. A bare status code cannot tell an operator
-whether a deployment is missing a role, a scope, an enabled API, or a model that
-exists; the enums can.
+When a call does fail, the adapter logs the provider's machine-readable `status`,
+the `details[].reason` a denial carries (`PERMISSION_DENIED`,
+`ACCESS_TOKEN_SCOPE_INSUFFICIENT`, `SERVICE_DISABLED`, ...), and the
+`fieldViolations[].field` paths a rejected request carries. It never logs the
+human-readable message, which can quote the request back, and the request holds
+the post. A bare status code cannot tell an operator whether a deployment is
+missing a role, a scope, an enabled API, or a well-formed request; those three
+can.
+
+One consequence of talking to a thinking model is worth knowing about. A turn
+that has to be replayed into the conversation - which is every turn that makes a
+tool call, since the call has to be in the transcript before its result can
+answer it - is sent back as the exact bytes it arrived as, not re-encoded from
+the fields `part` models. A thinking model returns parts this package has no
+field for (`thought`, `thoughtSignature`, "an opaque signature for the thought so
+it can be reused in subsequent requests"), and paraphrasing such a part through
+a narrower struct turns it into `{}`, which the API rejects. The rule is
+therefore not to model more fields but to stop paraphrasing what the model
+said.
 
 ## Development
 

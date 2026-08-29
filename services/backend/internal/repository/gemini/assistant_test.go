@@ -324,6 +324,22 @@ func TestFailureDetail(t *testing.T) {
 			" (PERMISSION_DENIED: ACCESS_TOKEN_SCOPE_INSUFFICIENT)",
 		},
 		{"status only", `{"error":{"status":"NOT_FOUND","message":"no such model"}}`, " (NOT_FOUND)"},
+		{
+			// The field paths are what make a 400 actionable: INVALID_ARGUMENT alone says only
+			// that the request was wrong somewhere.
+			"rejected fields",
+			`{"error":{"code":400,"status":"INVALID_ARGUMENT","message":"the prompt was: secret",` +
+				`"details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[` +
+				`{"field":"contents[1].parts[0]","description":"the prompt was: secret"},` +
+				`{"field":"generation_config.temperature"}]}]}}`,
+			" (INVALID_ARGUMENT: contents[1].parts[0], generation_config.temperature)",
+		},
+		{
+			"a field repeated across details",
+			`{"error":{"status":"INVALID_ARGUMENT","details":[{"fieldViolations":[{"field":"f"}]},` +
+				`{"fieldViolations":[{"field":"f"}]}]}}`,
+			" (INVALID_ARGUMENT: f)",
+		},
 		{"reason only", `{"error":{"details":[{"reason":"SERVICE_DISABLED"}]}}`, " (SERVICE_DISABLED)"},
 		{"a reason repeated across details", `{"error":{"status":"X","details":[{"reason":"X"}]}}`, " (X)"},
 		{"nothing machine-readable", `{"error":{"message":"the prompt was: secret"}}`, ""},
@@ -341,5 +357,42 @@ func TestFailureDetail(t *testing.T) {
 				t.Errorf("failureDetail = %q, want the message not to be carried", got)
 			}
 		})
+	}
+}
+
+// A turn is replayed into the conversation as the exact bytes it arrived as. The model puts things
+// on its own parts that this package does not model - a thinking model returns a thoughtSignature
+// meant to be handed back - and re-encoding the turn through the three fields `part` knows about
+// would drop them, which the API rejects rather than ignores.
+func TestAssistant_ReplaysTheModelsTurnVerbatim(t *testing.T) {
+	model := newModelServer(t,
+		[]part{
+			{raw: json.RawMessage(`{"thought":true,"thoughtSignature":"c2ln"}`)},
+			call(toolSetTitle, map[string]any{"title": "A better title"}),
+		},
+		[]part{{Text: "Retitled it."}},
+	)
+
+	if _, err := model.assistant().Reply(context.Background(), repository.AssistantRequest{
+		Draft:   entity.Draft{Title: "Hello", Content: "body"},
+		Message: "give it a better title",
+	}); err != nil {
+		t.Fatalf("Reply = %v, want no error", err)
+	}
+
+	if len(model.requests) != 2 {
+		t.Fatalf("model called %d times, want 2", len(model.requests))
+	}
+	replayed, err := json.Marshal(model.requests[1].Contents[1])
+	if err != nil {
+		t.Fatalf("encode replayed turn: %v", err)
+	}
+
+	// Both the field this package cannot represent and the call it acts on have to survive.
+	if !strings.Contains(string(replayed), `"thoughtSignature":"c2ln"`) {
+		t.Errorf("replayed turn = %s, want the thought signature carried back", replayed)
+	}
+	if !strings.Contains(string(replayed), toolSetTitle) {
+		t.Errorf("replayed turn = %s, want the function call carried back", replayed)
 	}
 }

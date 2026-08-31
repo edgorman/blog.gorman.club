@@ -5,16 +5,9 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gorman Club</title>
-    <!-- Applied before paint so a dark-mode visitor never sees a light flash. -->
-    <script>
-      (function () {
-        try {
-          if (localStorage.getItem('gc-theme') === 'dark') {
-            document.documentElement.setAttribute('data-theme', 'dark');
-          }
-        } catch (e) {}
-      })();
-    </script>
+    <!-- Applied before paint so a dark-mode visitor never sees a light flash. External rather than
+         inline so the CSP in public/_headers can forbid inline scripts; see that file. -->
+    <script src="/theme.js"></script>
     <!-- Google Identity Services, loaded from Google rather than bundled; useGoogleAuth waits
          for this to load before initialising. -->
     <script id="google-identity-services" src="https://accounts.google.com/gsi/client" async defer></script>

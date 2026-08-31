@@ -16,14 +16,17 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Passed through the environment rather than interpolated; see terraform-pull-request.
     - name: Export Secrets
       shell: bash
-      run: echo "${{ inputs.secrets }}" >> "$GITHUB_ENV"
+      env:
+        SECRETS: ${{ inputs.secrets }}
+      run: printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
 
     # --branch=main is required: wrangler infers production vs. preview from GITHUB_REF_NAME, which
     # is the release tag on a `release` event, and would silently deploy as Preview.
     - name: Deploy to Cloudflare Pages
-      uses: cloudflare/wrangler-action@v3
+      uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
       with:
         apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
         accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}

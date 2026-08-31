@@ -19,15 +19,21 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # The values arrive as an environment variable rather than spliced into the script with ${{ }}.
+    # An expression is substituted into the source text before bash ever sees it, so a value holding
+    # a quote or a $(...) would stop being data and start being code; through the environment it can
+    # only ever be a string. See the same step in terraform-push-commit and frontend-deploy.
     - name: Export Secrets
       shell: bash
+      env:
+        SECRETS: ${{ inputs.secrets }}
       run: |
-        if [ -n "${{ inputs.secrets }}" ]; then
-          echo "${{ inputs.secrets }}" >> "$GITHUB_ENV"
+        if [ -n "$SECRETS" ]; then
+          printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
         fi
 
     - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
+      uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
       with:
         terraform_version: "1.15.8"
 
@@ -62,7 +68,7 @@ runs:
         terraform show -no-color tfplan.binary > tfplan.txt
 
     - name: Post Terraform Plan Comment
-      uses: actions/github-script@v7
+      uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
       with:
         github-token: ${{ inputs.github_token }}
         script: |

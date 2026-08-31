@@ -1,3 +1,4 @@
+import DOMPurify from 'dompurify'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
 import css from 'highlight.js/lib/languages/css'
@@ -77,8 +78,21 @@ marked.use({
   },
 })
 
-/** Renders markdown synchronously - safe as long as no async marked extension is registered. */
+/**
+ * Renders markdown to HTML synchronously - safe as long as no async marked extension is registered.
+ *
+ * The result is sanitized before it is handed back, because every caller passes it straight to
+ * `dangerouslySetInnerHTML`. Markdown is a superset of HTML: marked escapes what is inside a code
+ * fence but passes raw tags in the prose through untouched, by design. Without this an author could
+ * write `<img src=x onerror="...">` in a post and have it run in the browser of everyone who opens
+ * it - which, since the Google credential lives in sessionStorage (see useGoogleAuth), means
+ * handing a reader's identity to whoever wrote the post.
+ *
+ * It is done here rather than at each `dangerouslySetInnerHTML` because there are three of them
+ * (the post, and both editor previews) and this is the one place all of them come through: a fourth
+ * caller cannot forget a step it never has to take.
+ */
 export function renderMarkdown(markdown: string): string {
   usedSlugs.clear()
-  return marked.parse(markdown, { async: false })
+  return DOMPurify.sanitize(marked.parse(markdown, { async: false }))
 }

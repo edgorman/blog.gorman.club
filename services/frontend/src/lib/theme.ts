@@ -16,7 +16,7 @@ function currentTheme(): Theme {
   return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
 }
 
-/** Mirrors the attribute index.html's inline script sets before paint, so toggling stays in sync. */
+/** Mirrors the attribute public/theme.js sets before paint, so toggling stays in sync. */
 export function useTheme(): { theme: Theme; toggleTheme: () => void } {
   const [theme, setTheme] = useState<Theme>(currentTheme)
 

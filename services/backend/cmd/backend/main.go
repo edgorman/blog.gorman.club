@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	fs "cloud.google.com/go/firestore"
 
@@ -86,8 +87,28 @@ func run() error {
 		assistant,
 	)
 
+	// The server is built explicitly rather than handed to http.ListenAndServe, which supplies a
+	// zero-value http.Server: one with no timeouts of any kind. A connection that opens and then
+	// sends nothing, or dribbles a request a byte at a time, would hold a goroutine and a file
+	// descriptor until the peer gave up - which costs the sender nothing and is the cheapest denial
+	// of service there is. Cloud Run bounds the request it forwards but not the connection beneath
+	// it, so the bound has to be here.
+	//
+	// WriteTimeout is the loose one, deliberately: it spans the whole response, and an assistant
+	// turn legitimately runs to gemini.replyTimeout (two minutes) before it has anything to write.
+	// Setting it below that would cut off precisely the requests that took the longest to earn an
+	// answer, so it sits above replyTimeout with room, and still well inside Cloud Run's own limit.
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           api.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      3 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
+	}
+
 	log.Printf("backend listening on :%s (environment=%s, commit=%s)", port, environment, commit)
-	return http.ListenAndServe(":"+port, api.Handler())
+	return server.ListenAndServe()
 }
 
 // splitList reads a comma-separated environment variable. Blanks are left in for the consumer to

@@ -1,0 +1,26 @@
+# Response headers for the static site, in Cloudflare Pages' _headers format. Vite copies
+# everything in public/ to the root of dist/, which is what frontend-image-extract pulls out of the
+# image and frontend-deploy pushes to Pages - so this file ships with the build rather than being
+# configured per environment in the Cloudflare dashboard.
+#
+# The Content-Security-Policy is the second line of defence behind src/lib/markdown.ts, which
+# sanitizes every post before it is rendered. It matters because the two fail in different ways: a
+# sanitizer bug is a hole in one dependency, while script-src without 'unsafe-inline' means an
+# injected `onerror=` or `<script>` does not execute even if something does slip through.
+#
+# The Google Identity Services sources are the ones Google documents for GSI. The rest of the
+# allowances each answer to something the app already loads: fonts.googleapis.com and
+# fonts.gstatic.com for the @import at the top of src/index.css, *.run.app for the Cloud Run
+# backend the API client calls, and 'unsafe-inline' under style-src for the inline `style` props
+# React renders (an inline style cannot execute script, unlike an inline script).
+#
+# If sign-in, fonts, or API calls ever break after a change here, rename the header to
+# Content-Security-Policy-Report-Only, reload, and read the violations off the browser console -
+# that turns a broken page into a list of exactly which sources are missing.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://accounts.google.com/gsi/ https://*.run.app; frame-src https://accounts.google.com/gsi/; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()

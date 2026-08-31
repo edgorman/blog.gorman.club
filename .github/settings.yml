@@ -56,12 +56,24 @@ branches:
         dismiss_stale_reviews: true
         require_code_owner_reviews: true
 
-      # Status check contexts are intentionally empty until the CI workflows
-      # under /.github/workflow land; update this list with the real job
-      # names (e.g. "backend / test", "frontend / build") once they exist.
+      # The jobs of .github/workflows/pull-request.yaml, named by their job ids
+      # (none of them set a `name:`, so that is what the check run is called).
+      #
+      # Every one of these is safe to require even though most are conditional
+      # on what the PR touched: the workflow itself has no path filter, so it
+      # runs on every PR to main, and a job its `if:` skips still reports a
+      # check run - with conclusion "skipped", which branch protection counts
+      # as passing. It is a workflow that never runs at all that leaves a
+      # required check pending forever, and this one always runs.
       required_status_checks:
         strict: true
-        contexts: []
+        contexts:
+          - diff
+          - services-frontend
+          - services-backend
+          - infrastructure-root
+          - infrastructure-staging
+          - infrastructure-prod
 
       enforce_admins: false
       required_linear_history: true

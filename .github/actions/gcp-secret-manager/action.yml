@@ -13,7 +13,12 @@ inputs:
     required: true
   secrets_list:
     description: 'A newline-separated list of mapping between ENV_VAR and Secret name (e.g. DB_PASSWORD=database-pwd)'
-    required: true
+    required: false
+    default: ''
+  optional_secrets_list:
+    description: 'Same format as secrets_list, for secrets that may not exist yet. A name that does not resolve is skipped instead of failing the run.'
+    required: false
+    default: ''
 
 outputs:
   secrets:
@@ -41,6 +46,7 @@ runs:
       env:
         PROJECT_ID: ${{ inputs.project_id }}
         SECRETS_LIST: ${{ inputs.secrets_list }}
+        OPTIONAL_SECRETS_LIST: ${{ inputs.optional_secrets_list }}
       run: |
         RESULT=()
         # Each line is ENV_VAR=SECRET_NAME.
@@ -54,6 +60,23 @@ runs:
           echo "::add-mask::$VALUE"
           RESULT+=("$KEY=$VALUE")
         done <<< "$SECRETS_LIST"
+
+        # Optional secrets are skipped when they do not resolve, which is what lets a secret and
+        # the workflow reading it land in one commit: on the pull request the secret does not exist
+        # yet, and only the apply that follows the merge creates it. The consumer sees no value at
+        # all rather than an empty one, so it falls back to its own default.
+        while IFS='=' read -r KEY SECRET_NAME; do
+          [ -n "$KEY" ] || continue
+
+          echo "Fetching optional secret: $SECRET_NAME for $KEY"
+          if ! VALUE=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT_ID" 2>/dev/null); then
+            echo "Optional secret $SECRET_NAME does not exist yet; leaving $KEY unset"
+            continue
+          fi
+
+          echo "::add-mask::$VALUE"
+          RESULT+=("$KEY=$VALUE")
+        done <<< "$OPTIONAL_SECRETS_LIST"
 
         # The heredoc delimiter is randomized per run because the values between the markers are
         # secrets this step has never seen before: a fixed marker is one a value could contain,

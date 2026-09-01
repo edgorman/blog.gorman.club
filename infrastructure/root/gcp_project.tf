@@ -38,6 +38,10 @@ resource "google_project_service" "project_services" {
       "cloudresourcemanager.googleapis.com",
       "iamcredentials.googleapis.com",
       "sts.googleapis.com",
+      # Budgets are created against the billing account rather than a project, so the call is
+      # billed to whichever project the caller sits in - root for CI, an environment project for a
+      # local apply. Enabling it everywhere means neither has to be the special case.
+      "billingbudgets.googleapis.com",
       ]) : "${pair[0]}-${pair[1]}" => {
       project_id = local.all_projects[pair[0]].project_id
       service    = pair[1]

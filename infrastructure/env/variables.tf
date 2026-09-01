@@ -48,3 +48,56 @@ variable "assistant_allowed_emails" {
   type        = list(string)
   default     = []
 }
+
+variable "alert_notification_emails" {
+  description = "Addresses the monitoring alerts and budget notifications in monitoring.tf are sent to. Empty leaves the policies in place but silent - they still show in the console, nobody is told. These are recipients rather than an entitlement, so unlike assistant_allowed_emails there is nothing to verify: an address here is simply where a message goes."
+  type        = list(string)
+  default     = []
+}
+
+variable "alert_error_count_threshold" {
+  description = "How many 5xx responses in a five minute window the backend may serve before alerting. Counted rather than expressed as a rate because traffic here is low enough that any rate reads as noise."
+  type        = number
+  default     = 5
+}
+
+variable "alert_latency_threshold_ms" {
+  description = "The 95th percentile request latency, in milliseconds, the backend may exceed for ten minutes before alerting. Set above a cold start on purpose: the service scales to zero, so seconds-long first requests are normal and alerting under this would page for them."
+  type        = number
+  default     = 5000
+}
+
+variable "billing_account" {
+  description = "Billing account the budget in monitoring.tf is created under. Read from Secret Manager by CI rather than written down here, since it identifies the account paying for all of this. Empty disables the budget."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "budget_amount" {
+  description = <<-EOT
+    Monthly budget for this environment's project, in the billing account's own currency. Zero disables the budget.
+
+    It ships disabled because a budget is not a project resource: it belongs to the billing account, and creating one needs billing.budgets.create there, which none of the project-level roles CI holds includes. Grant it once, by hand, before setting this:
+
+      gcloud billing accounts add-iam-policy-binding <BILLING_ACCOUNT_ID> \
+        --member="serviceAccount:github-actions@blog-gorman-club-root.iam.gserviceaccount.com" \
+        --role="roles/billing.costsManager"
+
+    This is the same shape of exception as the GitHub PAT in infrastructure/root: one grant that the automation cannot make for itself, because it is the thing being authorised.
+  EOT
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.budget_amount >= 0
+    error_message = "budget_amount cannot be negative; use 0 to disable the budget."
+  }
+
+  # Checked here rather than by gating the resource, so asking for a budget with nothing to charge
+  # it against is an error rather than a budget that silently never appears.
+  validation {
+    condition     = var.budget_amount == 0 || var.billing_account != ""
+    error_message = "budget_amount is set but billing_account is empty. CI reads it from the gcp_billing_account secret, which infrastructure/root creates - apply that first."
+  }
+}

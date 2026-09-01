@@ -31,6 +31,7 @@ type Service struct {
 	blogs     repository.BlogRepository
 	users     repository.UserRepository
 	chats     repository.ChatRepository
+	comments  repository.CommentRepository
 	verifier  repository.TokenVerifier
 	assistant repository.Assistant
 }
@@ -40,10 +41,19 @@ func New(
 	blogs repository.BlogRepository,
 	users repository.UserRepository,
 	chats repository.ChatRepository,
+	comments repository.CommentRepository,
 	verifier repository.TokenVerifier,
 	assistant repository.Assistant,
 ) *Service {
-	return &Service{cfg: cfg, blogs: blogs, users: users, chats: chats, verifier: verifier, assistant: assistant}
+	return &Service{
+		cfg:       cfg,
+		blogs:     blogs,
+		users:     users,
+		chats:     chats,
+		comments:  comments,
+		verifier:  verifier,
+		assistant: assistant,
+	}
 }
 
 // Handler returns the fully-wired API, ready to serve.
@@ -90,6 +100,14 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("GET /blogs/{slug}/chat", authed(s.GetChat))
 	mux.Handle("POST /blogs/{slug}/chat", authed(s.SendChatMessage))
 	mux.Handle("DELETE /blogs/{slug}/chat", authed(s.DeleteChat))
+	// Comments hang off their post for the same reason the chat above does - a comment has no
+	// identity apart from the post it replies to - but they are the readers' half rather than the
+	// author's, so the rules are the post's own: whoever may read a post may read and write its
+	// comments, and a signed-out reader sees a public thread without being able to add to it.
+	// Deleting one is neither, being the comment's own rule (see entity.Comment.CanBeDeletedBy).
+	mux.Handle("GET /blogs/{slug}/comments", optional(s.ListComments))
+	mux.Handle("POST /blogs/{slug}/comments", authed(s.CreateComment))
+	mux.Handle("DELETE /blogs/{slug}/comments/{id}", authed(s.DeleteComment))
 
 	// CORS wraps the whole mux rather than individual routes: routes are registered under a
 	// specific method, so ServeMux would 405 an OPTIONS preflight before a per-route wrapper ran.

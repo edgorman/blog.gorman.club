@@ -77,6 +77,24 @@ describe('createApi', () => {
     expect(init.method).toBe('GET')
   })
 
+  // A comment is addressed beneath the post it is on, since it has no identity apart from it.
+  it('addresses comments beneath their post', async () => {
+    const fetchMock = mockFetch({ status: 201, json: () => Promise.resolve({ id: 'cmt1' }) })
+    const api = createApi('https://api.example.com', authHeaders)
+
+    await api.listComments('hello-world')
+    await api.createComment('hello-world', 'Nicely put.')
+    await api.deleteComment('hello-world', 'cmt1')
+
+    const calls = fetchMock.mock.calls as [string, RequestInit][]
+    expect(calls[0][0]).toBe('https://api.example.com/blogs/hello-world/comments')
+    expect(calls[0][1].method).toBe('GET')
+    expect(calls[1][1].method).toBe('POST')
+    expect(calls[1][1].body).toBe(JSON.stringify({ body: 'Nicely put.' }))
+    expect(calls[2][0]).toBe('https://api.example.com/blogs/hello-world/comments/cmt1')
+    expect(calls[2][1].method).toBe('DELETE')
+  })
+
   it('falls back to the status when the error body is not JSON', async () => {
     mockFetch({ ok: false, status: 502, json: () => Promise.reject(new Error('not json')) })
 

@@ -777,3 +777,91 @@ a {
   white-space: nowrap;
   border: 0;
 }
+
+/* The comment thread beneath a post: the readers' half of the page, set apart from the post by a
+   rule rather than by a panel, so it reads as a continuation of the document. */
+.comments {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-divider);
+}
+.comments-title {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.comments-empty,
+.comments-signed-out {
+  margin: 0;
+  font-size: 14px;
+}
+.comments-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.comment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.comment-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+}
+.comment-author {
+  font-weight: 600;
+}
+.comment-date {
+  font-size: 12px;
+}
+/* Pushed to the end of the row so the thread reads as a column of names and dates, with the
+   action out of the way of it. */
+.comment-delete {
+  margin-left: auto;
+  padding: 0;
+  font-size: 12px;
+}
+/* Comments are rendered as text rather than markdown (see Comments.tsx), so the line breaks
+   somebody typed are the only formatting they get - and `pre-wrap` is what keeps them. */
+.comment-body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.comments-error {
+  margin: var(--space-3) 0 0;
+  font-size: 13px;
+}
+.comments-compose {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+.comments-input {
+  width: 100%;
+  padding: var(--space-2);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  resize: vertical;
+}
+.comments-input:focus-visible {
+  border-color: var(--color-accent);
+  outline: none;
+}

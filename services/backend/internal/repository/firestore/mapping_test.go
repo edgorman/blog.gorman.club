@@ -150,3 +150,51 @@ func TestBlogSlugIsUsableAsADocumentKey(t *testing.T) {
 		}
 	}
 }
+
+// A comment's id is its document key, so - like a user's, and unlike a post's slug - it is not
+// stored in the body. Everything else about a comment has to survive the round trip, which is
+// asserted whole so a field added to the entity but not the mapping fails here rather than
+// silently stopping being persisted.
+func TestCommentMappingRoundTrip(t *testing.T) {
+	comment := entity.Comment{
+		ID:        "cmt1",
+		BlogSlug:  "hello-world",
+		AuthorID:  "reader",
+		Body:      "nicely put",
+		CreatedAt: created,
+	}
+
+	stored := commentToDocument(comment)
+	if _, ok := reflect.TypeOf(stored).FieldByName("ID"); ok {
+		t.Error("comment document type has an ID field, which would duplicate the document key")
+	}
+
+	// documentToComment reads the id back off the key, which is the one thing a snapshot supplies
+	// that the body does not - so it is filled in here as Firestore would.
+	got := entity.Comment{ID: comment.ID, BlogSlug: stored.BlogSlug, AuthorID: stored.AuthorID, Body: stored.Body, CreatedAt: stored.CreatedAt}
+	if !reflect.DeepEqual(got, comment) {
+		t.Errorf("round trip = %+v, want %+v", got, comment)
+	}
+}
+
+// Firestore's auto-generated ids are what a comment is keyed by, so entity.Comment.SetID has to
+// admit the shape they come in - and refuse everything Firestore would not hold in a path, since
+// an id read back off a URL is otherwise unqualified.
+func TestCommentIDIsUsableAsADocumentKey(t *testing.T) {
+	for _, id := range []string{
+		"aBc123XyZ",
+		strings.Repeat("a", entity.MaxCommentIDLength),
+	} {
+		var comment entity.Comment
+		if err := comment.SetID(id); err != nil {
+			t.Errorf("SetID(%q) = %v, want an id a comment can be stored at", id, err)
+		}
+	}
+
+	for _, id := range []string{".", "..", "a/b", "__reserved__", "a-b", ""} {
+		var comment entity.Comment
+		if err := comment.SetID(id); err == nil {
+			t.Errorf("SetID(%q) = nil, want an id Firestore refuses as a key to be rejected", id)
+		}
+	}
+}

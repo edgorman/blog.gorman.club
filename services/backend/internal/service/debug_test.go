@@ -67,6 +67,10 @@ func TestHandler_WriteRoutesRequireAuth(t *testing.T) {
 		{http.MethodPost, "/blogs"},
 		{http.MethodPut, "/blogs/hello-world"},
 		{http.MethodDelete, "/blogs/hello-world"},
+		// Reading a thread is anonymous (below), but writing one is not: a comment is signed by
+		// whoever wrote it, and deleting one is decided against that signature.
+		{http.MethodPost, "/blogs/hello-world/comments"},
+		{http.MethodDelete, "/blogs/hello-world/comments/c1"},
 		{http.MethodGet, "/users/me"},
 		{http.MethodPut, "/users/me"},
 		{http.MethodDelete, "/users/me"},
@@ -82,8 +86,8 @@ func TestHandler_WriteRoutesRequireAuth(t *testing.T) {
 	}
 }
 
-// GET /blogs and GET /blogs/{slug} admit anonymous callers - they 401 only for a credential that
-// is present but invalid, never merely absent.
+// GET /blogs, GET /blogs/{slug} and a public post's comments admit anonymous callers - they 401
+// only for a credential that is present but invalid, never merely absent.
 func TestHandler_BlogReadRoutesAdmitAnonymousCallers(t *testing.T) {
 	repo := newFakeBlogRepository()
 	repo.seed(entity.Blog{Slug: "public", OwnerID: "owner", Visibility: entity.VisibilityPublic})
@@ -92,6 +96,7 @@ func TestHandler_BlogReadRoutesAdmitAnonymousCallers(t *testing.T) {
 	for _, tt := range []struct{ method, path string }{
 		{http.MethodGet, "/blogs"},
 		{http.MethodGet, "/blogs/public"},
+		{http.MethodGet, "/blogs/public/comments"},
 	} {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
 			rec := httptest.NewRecorder()

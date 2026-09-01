@@ -29,28 +29,39 @@ type blogResponse struct {
 	AuthorUsername string `json:"authorUsername"`
 }
 
-// authorsFor resolves the username behind each distinct owner in blogs. Looking up owners rather
-// than posts means a feed dominated by one author costs one extra read, not one per post.
+// usernamesFor resolves the username behind each uid, looking up each distinct one once. That is
+// what keeps a feed dominated by one author - or a comment thread dominated by one commenter -
+// costing one read rather than one per row.
 //
-// A missing profile is an empty username rather than a failed request: posting never required one.
-func (s *Service) authorsFor(ctx context.Context, blogs []entity.Blog) (map[string]string, error) {
-	authors := make(map[string]string)
-	for _, blog := range blogs {
-		if _, resolved := authors[blog.OwnerID]; resolved {
+// A missing profile is an empty username rather than a failed request: neither posting nor
+// commenting ever required one.
+func (s *Service) usernamesFor(ctx context.Context, uids []string) (map[string]string, error) {
+	usernames := make(map[string]string)
+	for _, uid := range uids {
+		if _, resolved := usernames[uid]; resolved {
 			continue
 		}
 
-		user, err := s.users.Get(ctx, blog.OwnerID)
+		user, err := s.users.Get(ctx, uid)
 		if errors.Is(err, repository.ErrNotFound) {
-			authors[blog.OwnerID] = ""
+			usernames[uid] = ""
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		authors[blog.OwnerID] = user.Username
+		usernames[uid] = user.Username
 	}
-	return authors, nil
+	return usernames, nil
+}
+
+// authorsFor resolves the username behind each distinct owner in blogs.
+func (s *Service) authorsFor(ctx context.Context, blogs []entity.Blog) (map[string]string, error) {
+	uids := make([]string, 0, len(blogs))
+	for _, blog := range blogs {
+		uids = append(uids, blog.OwnerID)
+	}
+	return s.usernamesFor(ctx, uids)
 }
 
 // withAuthors pairs every blog with its owner's username.

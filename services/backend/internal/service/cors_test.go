@@ -57,7 +57,7 @@ func TestWithCORS_Preflight(t *testing.T) {
 // per-route wrapper runs - withCORS must wrap the whole mux to intercept it first.
 func TestHandler_PreflightAgainstMethodSpecificMux(t *testing.T) {
 	s := New(Config{AllowedOrigin: testOrigin}, newFakeBlogRepository(), newFakeUserRepository(),
-		newFakeChatRepository(), fakeVerifier{uid: "caller"}, &fakeAssistant{})
+		newFakeChatRepository(), newFakeCommentRepository(), fakeVerifier{uid: "caller"}, &fakeAssistant{})
 
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodOptions, "/blogs", nil))

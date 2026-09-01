@@ -24,7 +24,7 @@ cmd/backend/          Entrypoint: reads config, builds adapters, hands them to t
 internal/
   entity/             Domain types and their rules - no I/O, no HTTP, no persistence tags
   repository/         Interfaces for everything external, plus ErrNotFound
-    firestore/        Firestore implementations of the Blog, User, Chat and Comment repositories
+    firestore/        Firestore implementations of the Blog, User, Chat, Comment and Reaction repositories
     google/           Google Identity Services implementation of TokenVerifier
     gemini/           Gemini Enterprise Agent Platform implementation of Assistant
   service/            HTTP server: routes, middleware, and logic spanning more than one entity
@@ -122,8 +122,8 @@ attributed to nobody. It is empty only for a post written before that rule,
 whose owner still holds no profile.
 
 Every route below except `GET /blogs`, `GET /blogs/{slug}`,
-`GET /blogs/{slug}/comments` and `GET /users/{username}` requires a Google
-Sign-In credential — those four run
+`GET /blogs/{slug}/comments`, `GET /blogs/{slug}/reactions` and
+`GET /users/{username}` requires a Google Sign-In credential — those five run
 `optionalAuth` instead of `requireAuth`, so an anonymous request is answered as
 far as public posts allow rather than rejected. A profile has nothing
 caller-specific to hide, so it is readable either way. A signed-in caller sends the ID token Google issued, plus a header
@@ -174,6 +174,11 @@ Adding another provider means extending `authProvider` and the switch in
 | GET    | `/blogs/{slug}/comments` | List the comments on a post, oldest first. No credential required for a public post; a post the caller may not read is the same `404` the post itself gives. |
 | POST   | `/blogs/{slug}/comments` | Comment on a post. `authorId` is always the caller, whatever the body says. |
 | DELETE | `/blogs/{slug}/comments/{id}` | Delete a comment. Its author or the post's owner may; anybody else who can read the post gets a `403`, and an id naming nothing is a `404`. |
+| GET    | `/blogs/{slug}/reactions` | Every reaction on the post and on its comments, as counts. No credential required for a public post. |
+| PUT    | `/blogs/{slug}/reactions/{emoji}` | React to the post. Idempotent, and answers with the post's counts as they now stand. |
+| DELETE | `/blogs/{slug}/reactions/{emoji}` | Take your reaction back. Idempotent in the same way. |
+| PUT    | `/blogs/{slug}/comments/{id}/reactions/{emoji}` | React to one comment. A comment that does not exist is a `404`. |
+| DELETE | `/blogs/{slug}/comments/{id}/reactions/{emoji}` | Take that reaction back. |
 
 ### Response shape
 
@@ -219,6 +224,47 @@ actually remove what was said.
 The frontend renders a comment body as text rather than as markdown, unlike the
 post above it — the safe rendering of a stranger's input is the one with no
 syntax in it.
+
+## Reactions
+
+Readers react to a post and to the comments on it with an emoji, which is the
+lightest thing a reader can say. The rules follow the post, as comments' do: a
+reader who may read a post may see and add reactions to it and to its comments,
+and one who may not gets the post's own `404`.
+
+- **Any emoji, not five.** `entity.ValidEmoji` checks the *shape* of what is
+  sent rather than matching a list, so an emoji that postdates this code works
+  without a deployment. What it refuses is anything that is not a single glyph:
+  a word, a word with an emoji in it, and `👍👎` — two perfectly good emoji
+  that would let a reader invent chips nobody can reproduce and fragment a
+  post's bar into one-off combinations. A second pictograph is admitted only
+  where it really is part of one glyph: after a zero-width joiner
+  (`👨‍👩‍👧‍👦`), as a skin tone (`👍🏽`), or as the other half of a flag
+  (`🇬🇧`). The picker in the frontend is therefore a convenience, not the rule.
+- **Addressed, not toggled.** `PUT` puts a reaction there and `DELETE` takes it
+  back, both idempotent, so a retried click or a stale page lands where it was
+  aiming rather than undoing itself. The client decides which to send from what
+  it last read; the server never flips. Both answer with the target's counts as
+  they now stand, since a bar is a shared number that one client's own click
+  cannot predict.
+- **Counted, not named.** A reaction is reported as an emoji, a count, and
+  whether *you* are in it. Who else reacted is deliberately not disclosed:
+  naming them would turn a one-click gesture into a public record of who liked
+  what, which is a heavier thing than the button suggests.
+
+One reader's reactions to one thing are stored as a single document keyed by
+that pair (`blogs/{slug}/reactions/{target}-{uid}`), so "this reader, this
+target" is unique by construction — the same argument that keys a post by its
+slug — and two readers reacting at once write different documents and never
+contend. A comment's reactions live beside the post's rather than beneath the
+comment, which is what makes a page one query instead of one per comment.
+`entity.MaxReactionsPerTarget` bounds how many distinct emoji *one reader* may
+put on one thing, so a single enthusiast cannot fill a bar by themselves; how
+many readers may react is unbounded.
+
+Deleting a comment deletes its reactions too, so a moderated comment cannot
+survive as a row of numbers. That cleanup is best-effort and logged rather than
+returned: the caller asked for the comment to be gone, and it is.
 
 ## Rate limiting
 

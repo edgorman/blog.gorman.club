@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import type { Reactions } from '../hooks/useReactions'
 import { errorMessage, userPath, type Comment } from '../lib/api'
 import { formatDate } from '../lib/format'
+import { ReactionBar } from './ReactionBar'
 
 interface Props {
   /** The post being commented on. A comment has no identity apart from its post. */
@@ -13,6 +15,12 @@ interface Props {
    * told no.
    */
   ownerId: string
+  /**
+   * The page's reactions, loaded once by the post above rather than per comment: a comment's
+   * reactions come back with the post's in one response, so fetching them here would be asking
+   * for what the page already holds.
+   */
+  reactions: Reactions
 }
 
 /**
@@ -23,7 +31,7 @@ interface Props {
  * the safe rendering of a stranger's input is the one that has no syntax in it at all. Line breaks
  * are kept (see `.comment-body`), which is the whole of what a comment needs.
  */
-export function Comments({ slug, ownerId }: Props) {
+export function Comments({ slug, ownerId, reactions }: Props) {
   const { api, user } = useApp()
   const [comments, setComments] = useState<Comment[]>([])
   const [body, setBody] = useState('')
@@ -121,6 +129,12 @@ export function Comments({ slug, ownerId }: Props) {
                 )}
               </div>
               <p className="comment-body">{comment.body}</p>
+              <ReactionBar
+                counts={reactions.countsFor(comment.id)}
+                onToggle={(emoji) => reactions.toggle(emoji, comment.id)}
+                canReact={!!user}
+                label="comment"
+              />
             </li>
           )
         })}

@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
@@ -172,6 +173,14 @@ func (s *Service) DeleteComment(w http.ResponseWriter, r *http.Request) {
 	if err := s.comments.Delete(r.Context(), blog.Slug, comment.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+
+	// The reactions go with it. They are deleted after the comment rather than before, so a
+	// failure here leaves rows nothing renders rather than a comment nobody can react to; and it
+	// is logged rather than returned, because the caller asked for the comment to be gone and it
+	// is - reporting a 500 would have them retry a delete that already succeeded.
+	if err := s.reactions.DeleteTarget(r.Context(), entity.CommentReaction(blog.Slug, comment.ID)); err != nil {
+		log.Printf("deleting reactions to comment %q on %q failed: %v", comment.ID, blog.Slug, err)
 	}
 
 	w.WriteHeader(http.StatusNoContent)

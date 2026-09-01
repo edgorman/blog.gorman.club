@@ -111,6 +111,28 @@ export interface Comment {
   createdAt: string
 }
 
+/**
+ * One emoji on a post or a comment, as the bar draws it: the glyph, how many readers chose it, and
+ * whether you are one of them. Who else reacted is deliberately not reported - a count and a "you
+ * are in it" is the whole of what a bar shows, and naming the readers would make a one-click
+ * gesture into a public record.
+ */
+export interface ReactionCount {
+  emoji: string
+  count: number
+  reacted: boolean
+}
+
+/**
+ * Every reaction on a post page: the post's own, and each reacted-to comment's by id. It is one
+ * response because it is one query server-side - a comment's reactions are stored beneath the post
+ * alongside the post's - so a page costs one request rather than one per comment.
+ */
+export interface PageReactions {
+  post: ReactionCount[]
+  comments: Record<string, ReactionCount[]>
+}
+
 /** Thrown for any non-2xx response, carrying the status so callers can treat 404 as "absent". */
 export class ApiError extends Error {
   status: number
@@ -185,6 +207,15 @@ function commentsPath(slug: string): string {
   return `${blogPath(slug)}/comments`
 }
 
+/**
+ * The API path for one reaction: the thing reacted to, then the emoji. The emoji is escaped like
+ * any other path segment - it is not URL-safe by construction the way a slug is.
+ */
+function reactionPath(slug: string, emoji: string, commentId?: string): string {
+  const target = commentId === undefined ? blogPath(slug) : `${commentsPath(slug)}/${encodeURIComponent(commentId)}`
+  return `${target}/reactions/${encodeURIComponent(emoji)}`
+}
+
 /** The API path for one post's assistant conversation. */
 function chatPath(slug: string): string {
   return `${blogPath(slug)}/chat`
@@ -224,6 +255,18 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
     // own post; the backend decides, and answers a 403 for anybody else.
     deleteComment: (slug: string, id: string) =>
       request<void>(baseUrl, authHeaders, 'DELETE', `${commentsPath(slug)}/${encodeURIComponent(id)}`),
+
+    // Reactions are read for the whole page at once and written one at a time. A write is
+    // addressed rather than toggled - PUT puts the reaction there, DELETE takes it back - so a
+    // retried click or a stale page lands where it was aiming instead of undoing itself. Both
+    // answer with the target's counts as they now stand, since a bar is a shared number that this
+    // client's own click cannot predict.
+    getReactions: (slug: string) =>
+      request<PageReactions>(baseUrl, authHeaders, 'GET', `${blogPath(slug)}/reactions`),
+    addReaction: (slug: string, emoji: string, commentId?: string) =>
+      request<ReactionCount[]>(baseUrl, authHeaders, 'PUT', reactionPath(slug, emoji, commentId)),
+    removeReaction: (slug: string, emoji: string, commentId?: string) =>
+      request<ReactionCount[]>(baseUrl, authHeaders, 'DELETE', reactionPath(slug, emoji, commentId)),
 
     // The assistant conversation hangs off the post it is about, since that is all a chat is: it
     // has no identity apart from its post. Every one of these requires the caller to own the post

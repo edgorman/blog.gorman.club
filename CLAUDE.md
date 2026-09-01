@@ -49,6 +49,8 @@ The model id and its location are Terraform variables (`assistant_model`, `assis
 
 Access is an allowlist of verified Google account addresses (`assistant_allowed_emails`), configured per environment and enforced by the backend on every assistant route. It is matched against the `email` claim of the ID token, and only when that token also asserts `email_verified` - an address an account merely claimed is never a match. It is keyed on the address rather than the username deliberately: a username is freely chosen and, once released, claimable by anybody, so a list naming one would follow the name rather than the account. It is otherwise the simplest thing that works, and is the seam a real entitlement - a tier and an expiry tied to a payment - replaces later, since every caller already asks the question in those terms.
 
+The allowlist says who may spend, not how much, so volume is bounded separately: assistant turns are rate limited per account by the backend, on a much tighter budget than any other route, because a turn is the only request that calls a paid model. The buckets are held in the serving process, which makes them per-instance budgets and is the one thing to revisit if the service ever scales past a single instance (see `services/backend/README.md`).
+
 ### Resource Naming
 
 Strict environment suffixes (`backend-stag`, `backend-prod`) and scoped secrets (`stag-db-pass` vs `prod-db-pass`) ensure services in staging cannot accidentally reach production resources.

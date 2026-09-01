@@ -9,3 +9,7 @@ backend_cors_origin = "https://blog.gorman.club"
 # rather than the account. There is no expiry and no tier - access is configuration rather than
 # something bought, and this list is the seam the real entitlement check replaces later.
 assistant_allowed_emails = ["ejgorman@gmail.com"]
+
+# Where the monitoring alerts in infrastructure/env/monitoring.tf are sent. Unlike the list above
+# this one grants nothing - it is an address to notify, not an account to admit.
+alert_notification_emails = ["ejgorman@gmail.com"]

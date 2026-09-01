@@ -48,3 +48,21 @@ variable "assistant_allowed_emails" {
   type        = list(string)
   default     = []
 }
+
+variable "alert_notification_emails" {
+  description = "Addresses the monitoring alerts in monitoring.tf are sent to. Empty leaves the policies in place but silent - they still show in the console, nobody is told. These are recipients rather than an entitlement, so unlike assistant_allowed_emails there is nothing to verify: an address here is simply where a message goes."
+  type        = list(string)
+  default     = []
+}
+
+variable "alert_error_count_threshold" {
+  description = "How many 5xx responses in a five minute window the backend may serve before alerting. Counted rather than expressed as a rate because traffic here is low enough that any rate reads as noise."
+  type        = number
+  default     = 5
+}
+
+variable "alert_latency_threshold_ms" {
+  description = "The 95th percentile request latency, in milliseconds, the backend may exceed for ten minutes before alerting. Set above a cold start on purpose: the service scales to zero, so seconds-long first requests are normal and alerting under this would page for them."
+  type        = number
+  default     = 5000
+}

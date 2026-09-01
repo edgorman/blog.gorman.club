@@ -255,17 +255,26 @@ func (a *fakeAssistant) Reply(_ context.Context, req repository.AssistantRequest
 	return a.reply(req)
 }
 
-// fakeVerifier is an in-memory repository.TokenVerifier.
+// fakeVerifier is an in-memory repository.TokenVerifier. email and emailVerified describe the
+// address the provider vouches for, for a test reaching a route the assistant allowlist guards
+// through the real middleware; the zero value is an address nobody verified, which no allowlist
+// matches however it is spelled.
 type fakeVerifier struct {
-	uid string
-	err error
+	uid           string
+	email         string
+	emailVerified bool
+	err           error
 }
 
 func (f fakeVerifier) Verify(_ context.Context, _ string) (entity.Caller, error) {
 	if f.err != nil {
 		return entity.Caller{}, f.err
 	}
-	return entity.Caller{UID: f.uid, Email: "user@example.com", Name: "User"}, nil
+	email := f.email
+	if email == "" {
+		email = "user@example.com"
+	}
+	return entity.Caller{UID: f.uid, Email: email, Name: "User", EmailVerified: f.emailVerified}, nil
 }
 
 // newTestService builds a Service over the given fakes, filling in whichever are not needed. The

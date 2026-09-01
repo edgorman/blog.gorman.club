@@ -181,6 +181,53 @@ parse success and failure the same way:
 { "error": "blog not found" }
 ```
 
+## Rate limiting
+
+Every request is metered by a token bucket before it reaches a handler
+(`internal/service/ratelimit.go`). Three budgets apply, outermost first:
+
+| Budget       | Keyed on                    | Allowance                      | Covers                                            |
+| ------------ | --------------------------- | ------------------------------ | ------------------------------------------------- |
+| Per client   | client address              | 60 at once, +1 per second      | every route, signed in or not                     |
+| Per account  | the uid in a verified token | 20 at once, +1 per 3 seconds   | every route behind `requireAuth` - so every write |
+| Assistant    | the uid in a verified token | 5 at once, +1 per 30 seconds   | `POST /blogs/{slug}/chat`                         |
+
+They are layered rather than alternatives, because each answers a question the
+others cannot. Only the address is known before a credential has been checked,
+so it is the only thing that can bound an anonymous flood - including one aimed
+at the token verifier itself, which is not free. Only the account survives a
+caller changing address, so it is the only thing that can bound somebody who
+signed in. And the assistant needs a budget far below either, because a chat
+turn is the one request here that calls a paid model and can hold a connection
+open for two minutes: an allowance that is generous for editing a post is
+ruinous for it.
+
+The client address is the **rightmost** `X-Forwarded-For` entry, not the
+leftmost one usually wanted for logging. Anything to the left of it is whatever
+the client chose to send - Cloud Run appends the address it saw rather than
+replacing the header - so metering the leftmost entry would let a caller dodge
+the limit with a random header per request. Putting a proxy in front of the
+service would shift the real client one entry to the left and collapse everyone
+into one bucket: over-limiting rather than under-limiting, which is the way
+round to get this wrong.
+
+A refused request is a `429` carrying the usual JSON error body and a
+`Retry-After` header. The wait is repeated in the message because a browser
+cannot read a header this API does not expose to it, and the whole of what an
+author needs to know is when to try again.
+
+Buckets live in the memory of one process, so these are per-*instance*
+budgets: a service running on N instances admits N times the numbers above,
+and a caller whose requests land on different instances is metered separately
+on each. That is fine while this deployment runs as a single instance, and it
+is the thing to revisit before scaling out - the counters would have to move to
+a store the instances share (Firestore, Redis), which is contained to
+`rateLimiter` since nothing outside that file knows where a bucket lives.
+Buckets that have refilled to full are dropped as they are passed, a minute at
+a time: a full bucket admits exactly what an unknown key admits, so forgetting
+it changes nothing, and the map stays bounded by active keys rather than by
+every address ever seen.
+
 ## The writing assistant
 
 The `/blogs/{slug}/chat` routes let an author talk to Gemini about a post and

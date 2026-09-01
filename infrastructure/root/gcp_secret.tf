@@ -63,29 +63,3 @@ resource "google_secret_manager_secret_iam_member" "github_actions_cloudflare_ap
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.github_actions.email}"
 }
-
-# The billing account id, so infrastructure/env can create a budget under it without the id being
-# written into a tfvars file in a public repository. Unlike the secrets above it is not supplied by
-# hand at bootstrap: root already holds it, read off the project it imported, so there is nothing
-# for an operator to paste in and nothing to keep in step by hand.
-resource "google_secret_manager_secret" "gcp_billing_account" {
-  project   = var.gcp_provider_project_id
-  secret_id = "gcp_billing_account"
-
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "gcp_billing_account_v1" {
-  secret = google_secret_manager_secret.gcp_billing_account.id
-  # Bare id (e.g. 012345-6789AB-CDEF01), which is the form google_billing_budget takes.
-  secret_data = trimprefix(google_project.root_project.billing_account, "billingAccounts/")
-}
-
-resource "google_secret_manager_secret_iam_member" "github_actions_gcp_billing_account_accessor" {
-  project   = var.gcp_provider_project_id
-  secret_id = google_secret_manager_secret.gcp_billing_account.secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.github_actions.email}"
-}

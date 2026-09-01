@@ -1,7 +1,7 @@
 # Monitoring for the backend: an uptime check against the /health endpoint of the Debug Endpoint
-# Contract, alert policies on that check and on Cloud Run's own request metrics, and an optional
-# budget alert on the project's spend. Shared by both environments, so staging and prod are
-# watched the same way and a policy that turns out to be noisy is discovered in staging first.
+# Contract, and alert policies on that check and on Cloud Run's own request metrics. Shared by
+# both environments, so staging and prod are watched the same way and a policy that turns out to
+# be noisy is discovered in staging first.
 
 resource "google_project_service" "monitoring" {
   project = var.gcp_project_id
@@ -247,67 +247,5 @@ resource "google_monitoring_alert_policy" "backend_latency" {
 
   alert_strategy {
     auto_close = "3600s"
-  }
-}
-
-# The budget's project filter takes a project number, which is not something this configuration is
-# told - only the id is.
-data "google_project" "environment" {
-  project_id = var.gcp_project_id
-}
-
-# Cost, unlike everything above, is not a project-level resource: a budget belongs to the billing
-# account, so creating one needs billing.budgets.create on that account and no project role grants
-# it. That is why this is switched off by default - see the note on budget_amount in variables.tf
-# for the one-time grant that turns it on.
-resource "google_billing_budget" "environment" {
-  # budget_amount is the only switch; that it cannot be set without a billing account to
-  # charge against is enforced where it is declared, so a missing one fails loudly rather than
-  # quietly leaving the budget uncreated.
-  count = var.budget_amount > 0 ? 1 : 0
-
-  billing_account = var.billing_account
-  display_name    = "${var.gcp_project_id} monthly budget"
-
-  budget_filter {
-    projects = ["projects/${data.google_project.environment.number}"]
-  }
-
-  amount {
-    specified_amount {
-      # currency_code is deliberately unset: a budget must be denominated in the billing account's
-      # own currency, so naming one here could only ever disagree with it.
-      units = tostring(var.budget_amount)
-    }
-  }
-
-  # Spend so far, at the points where the news is still useful rather than historical.
-  threshold_rules {
-    threshold_percent = 0.5
-  }
-
-  threshold_rules {
-    threshold_percent = 0.9
-  }
-
-  threshold_rules {
-    threshold_percent = 1.0
-  }
-
-  # And the one rule that can arrive before the money is gone: a forecast of overrunning the month.
-  threshold_rules {
-    threshold_percent = 1.0
-    spend_basis       = "FORECASTED_SPEND"
-  }
-
-  # Sent to the same channels as the alerts above, so cost arrives where availability does. The
-  # billing account's own admins keep receiving it too, which is the default and left alone: they
-  # are the people who can act on a bill, whoever happens to be listed here.
-  dynamic "all_updates_rule" {
-    for_each = length(local.notification_channels) > 0 ? [1] : []
-
-    content {
-      monitoring_notification_channels = local.notification_channels
-    }
   }
 }

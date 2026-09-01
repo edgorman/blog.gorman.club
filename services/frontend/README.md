@@ -11,7 +11,14 @@ markdown, a per-author profile feed, and a markdown editor for publishing.
 - **Post** (`/post/:slug`) — `GET /blogs/{slug}`, rendered from markdown to
   HTML. The slug addresses the post on its own, since slugs are unique across
   every author, so `lib/api.ts`'s `postPath` builds a link from it alone. The
-  author beside it is who wrote the post, and links to their profile.
+  author beside it is who wrote the post, and links to their profile. Beneath it
+  is the comment thread (`components/Comments.tsx`, `GET /blogs/{slug}/comments`):
+  readable by whoever can read the post, signed out included, and writable by
+  anyone signed in. A body is rendered as *text*, not markdown — a post is
+  written by the author whose page it is, a comment by whoever happened to read
+  it, and the safe rendering of a stranger's input is the one with no syntax in
+  it. Delete is offered to a comment's own author and to the post's owner, who
+  moderates their own post; the backend decides either way.
 - **Edit post** (`/post/:slug/edit`) — the same editor over an existing post,
   saving via `PUT /blogs/{slug}`. Only the owner sees the form.
 - **New post** (`/post/new`) — a single-pane markdown editor with a Preview

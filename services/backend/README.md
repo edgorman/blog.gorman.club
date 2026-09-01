@@ -24,7 +24,7 @@ cmd/backend/          Entrypoint: reads config, builds adapters, hands them to t
 internal/
   entity/             Domain types and their rules - no I/O, no HTTP, no persistence tags
   repository/         Interfaces for everything external, plus ErrNotFound
-    firestore/        Firestore implementations of BlogRepository, UserRepository, ChatRepository
+    firestore/        Firestore implementations of the Blog, User, Chat and Comment repositories
     google/           Google Identity Services implementation of TokenVerifier
     gemini/           Gemini Enterprise Agent Platform implementation of Assistant
   service/            HTTP server: routes, middleware, and logic spanning more than one entity
@@ -121,8 +121,9 @@ reached `POST /blogs` without one, since a post by an unnamed author would be
 attributed to nobody. It is empty only for a post written before that rule,
 whose owner still holds no profile.
 
-Every route below except `GET /blogs`, `GET /blogs/{slug}` and
-`GET /users/{username}` requires a Google Sign-In credential — those three run
+Every route below except `GET /blogs`, `GET /blogs/{slug}`,
+`GET /blogs/{slug}/comments` and `GET /users/{username}` requires a Google
+Sign-In credential — those four run
 `optionalAuth` instead of `requireAuth`, so an anonymous request is answered as
 far as public posts allow rather than rejected. A profile has nothing
 caller-specific to hide, so it is readable either way. A signed-in caller sends the ID token Google issued, plus a header
@@ -170,6 +171,9 @@ Adding another provider means extending `authProvider` and the switch in
 | GET    | `/blogs/{slug}/chat` | Fetch the assistant conversation about a post. A post nobody has discussed is an empty conversation, not a `404`. |
 | POST   | `/blogs/{slug}/chat` | Send the assistant a message. Applies whatever it edits to the post and answers with the exchange plus the post as it now stands. |
 | DELETE | `/blogs/{slug}/chat` | Throw the conversation away. The post, edits included, is untouched. |
+| GET    | `/blogs/{slug}/comments` | List the comments on a post, oldest first. No credential required for a public post; a post the caller may not read is the same `404` the post itself gives. |
+| POST   | `/blogs/{slug}/comments` | Comment on a post. `authorId` is always the caller, whatever the body says. |
+| DELETE | `/blogs/{slug}/comments/{id}` | Delete a comment. Its author or the post's owner may; anybody else who can read the post gets a `403`, and an id naming nothing is a `404`. |
 
 ### Response shape
 
@@ -180,6 +184,41 @@ parse success and failure the same way:
 ```json
 { "error": "blog not found" }
 ```
+
+## Comments
+
+The `/blogs/{slug}/comments` routes are the readers' half of a post, and hang
+off it for the same reason the assistant chat does: a comment has no identity
+apart from the post it replies to, and no route could name one that a
+`/blogs/{slug}` route would not have resolved first. They are stored that way
+too — `blogs/{slug}/comments/{id}` — which keeps a thread a single-collection
+query that needs no composite index, and gives a comment an id that means
+nothing outside its post.
+
+- **Who may read one.** Exactly whoever may read the post: `ListComments` goes
+  through the same `requireReadableBlog` every other read does, so a private
+  post's thread is as private as the post, and a caller who cannot see one gets
+  the post's own `404` rather than an empty thread — which would itself admit
+  the post exists.
+- **Who may write one.** Any signed-in caller who may read the post, its author
+  included. Reading a thread never needs a credential; writing to one always
+  does, since a comment is signed by whoever left it, and an anonymous comment
+  would be attributable to nobody. A commenter with no profile is given one, for
+  the same reason publishing gives an author one: they are shown by username.
+- **Who may delete one.** `entity.Comment.CanBeDeletedBy` is the single
+  definition: its author, or the owner of the post it sits under. The second
+  half is what makes this moderation rather than only retraction — an author is
+  answerable for what appears beneath their post. There is deliberately no way
+  to *edit* a comment at all, by anyone, so moderating cannot become putting
+  words in somebody's mouth: a comment is written and removed, never rewritten.
+
+A comment is erased on delete rather than soft-deleted like a post. A post's
+absence would be a hole in the record; a comment being taken down has to
+actually remove what was said.
+
+The frontend renders a comment body as text rather than as markdown, unlike the
+post above it — the safe rendering of a stranger's input is the one with no
+syntax in it.
 
 ## Rate limiting
 

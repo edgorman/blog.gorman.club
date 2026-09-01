@@ -31,6 +31,7 @@ type Service struct {
 	blogs     repository.BlogRepository
 	users     repository.UserRepository
 	chats     repository.ChatRepository
+	comments  repository.CommentRepository
 	verifier  repository.TokenVerifier
 	assistant repository.Assistant
 	// The rate limiters live on the Service rather than being built in Handler(), so a budget is
@@ -46,6 +47,7 @@ func New(
 	blogs repository.BlogRepository,
 	users repository.UserRepository,
 	chats repository.ChatRepository,
+	comments repository.CommentRepository,
 	verifier repository.TokenVerifier,
 	assistant repository.Assistant,
 ) *Service {
@@ -54,6 +56,7 @@ func New(
 		blogs:            blogs,
 		users:            users,
 		chats:            chats,
+		comments:         comments,
 		verifier:         verifier,
 		assistant:        assistant,
 		ipLimiter:        newRateLimiter(requestsPerIP),
@@ -113,6 +116,14 @@ func (s *Service) Handler() http.Handler {
 	// per-account allowance is far too loose to be the only thing standing in front of it.
 	mux.Handle("POST /blogs/{slug}/chat", authed(rateLimited(s.assistantLimiter, callerKey, s.SendChatMessage)))
 	mux.Handle("DELETE /blogs/{slug}/chat", authed(s.DeleteChat))
+	// Comments hang off their post for the same reason the chat above does - a comment has no
+	// identity apart from the post it replies to - but they are the readers' half rather than the
+	// author's, so the rules are the post's own: whoever may read a post may read and write its
+	// comments, and a signed-out reader sees a public thread without being able to add to it.
+	// Deleting one is neither, being the comment's own rule (see entity.Comment.CanBeDeletedBy).
+	mux.Handle("GET /blogs/{slug}/comments", optional(s.ListComments))
+	mux.Handle("POST /blogs/{slug}/comments", authed(s.CreateComment))
+	mux.Handle("DELETE /blogs/{slug}/comments/{id}", authed(s.DeleteComment))
 
 	// The per-IP budget wraps the whole mux, so it applies to the routes that admit anonymous
 	// callers too - the ones with no account to meter - and to a request for a path that does not

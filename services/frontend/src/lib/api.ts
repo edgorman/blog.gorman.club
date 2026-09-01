@@ -89,6 +89,28 @@ export interface ChatRequest {
   content?: string
 }
 
+/**
+ * One reader's comment on a post.
+ *
+ * A comment is never edited, only written and removed, so there is no `updatedAt` and no update
+ * call below - a reply somebody has already read and answered cannot become a different reply.
+ * `authorId` is carried for the same reason a post carries `ownerId`: it is how a client knows
+ * whose comment it is looking at, and so whether to offer a delete button.
+ */
+export interface Comment {
+  /** Assigned by the backend, and meaningful only beneath the post it hangs off. */
+  id: string
+  blogSlug: string
+  authorId: string
+  /**
+   * The commenter's username, resolved server-side - the only handle a client holds for the
+   * profile behind a comment, exactly as `Blog.authorUsername` is for a post.
+   */
+  authorUsername: string
+  body: string
+  createdAt: string
+}
+
 /** Thrown for any non-2xx response, carrying the status so callers can treat 404 as "absent". */
 export class ApiError extends Error {
   status: number
@@ -158,6 +180,11 @@ function blogPath(slug: string): string {
   return `/blogs/${encodeURIComponent(slug)}`
 }
 
+/** The API path for one post's comments. */
+function commentsPath(slug: string): string {
+  return `${blogPath(slug)}/comments`
+}
+
 /** The API path for one post's assistant conversation. */
 function chatPath(slug: string): string {
   return `${blogPath(slug)}/chat`
@@ -185,6 +212,18 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
     putUser: (user: Partial<User>) =>
       request<CurrentUser>(baseUrl, authHeaders, 'PUT', '/users/me', user),
     deleteUser: () => request<void>(baseUrl, authHeaders, 'DELETE', '/users/me'),
+
+    // Comments hang off their post like the chat below, but they are the readers' half of it: the
+    // thread is readable by exactly whoever may read the post - signed out included, for a public
+    // one - while writing to it needs a credential, since a comment is signed by whoever left it.
+    listComments: (slug: string) =>
+      request<Comment[]>(baseUrl, authHeaders, 'GET', commentsPath(slug)),
+    createComment: (slug: string, body: string) =>
+      request<Comment>(baseUrl, authHeaders, 'POST', commentsPath(slug), { body }),
+    // Deleting is allowed for the comment's author and for the post's owner, who moderates their
+    // own post; the backend decides, and answers a 403 for anybody else.
+    deleteComment: (slug: string, id: string) =>
+      request<void>(baseUrl, authHeaders, 'DELETE', `${commentsPath(slug)}/${encodeURIComponent(id)}`),
 
     // The assistant conversation hangs off the post it is about, since that is all a chat is: it
     // has no identity apart from its post. Every one of these requires the caller to own the post

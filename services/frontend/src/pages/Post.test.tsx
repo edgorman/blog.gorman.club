@@ -25,6 +25,9 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
     getUser: vi.fn(),
     putUser: vi.fn(),
     deleteUser: vi.fn(),
+    listComments: vi.fn().mockResolvedValue([]),
+    createComment: vi.fn(),
+    deleteComment: vi.fn(),
     ...overrides,
   } as unknown as Api
 }
@@ -95,5 +98,28 @@ describe('Post', () => {
     })
     expect(await screen.findByText('Hello world')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument()
+  })
+
+  // The thread is the readers' half of the page, and hangs off the post that was just loaded - so
+  // it is fetched by the same slug, for whoever could read the post at all.
+  it('shows the comment thread beneath the post', async () => {
+    const listComments = vi.fn().mockResolvedValue([
+      {
+        id: 'cmt1',
+        blogSlug: 'hello-world',
+        authorId: 'uid-2',
+        authorUsername: 'sly-dancing-monkey',
+        body: 'Nicely put.',
+        createdAt: '2026-08-02T00:00:00Z',
+      },
+    ])
+    renderWithApp(<Post />, {
+      context: { api: fakeApi({ listComments }) },
+      route: '/post/hello-world',
+      path: '/post/:slug',
+    })
+
+    expect(await screen.findByText('Nicely put.')).toBeInTheDocument()
+    expect(listComments).toHaveBeenCalledWith('hello-world')
   })
 })

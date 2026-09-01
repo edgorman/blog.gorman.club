@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
 // Each repository is built with a nil collection, which panics on any Firestore call. Returning a
@@ -64,6 +65,28 @@ func TestRepositoriesRejectInvalidEntitiesBeforeWriting(t *testing.T) {
 		assertValidationError(t, err)
 	})
 
+	// A comment lives beneath its post, so the same rule reaches it: a write naming no post, or one
+	// Firestore could not hold in a document path, has nowhere to go.
+	t.Run("comment with no slug", func(t *testing.T) {
+		_, err := (&CommentRepository{}).Create(ctx, entity.Comment{AuthorID: "reader", Body: "nicely put"})
+		assertValidationError(t, err)
+	})
+
+	t.Run("comment with a malformed slug", func(t *testing.T) {
+		_, err := (&CommentRepository{}).Create(ctx, entity.Comment{BlogSlug: "hello world", AuthorID: "reader", Body: "nicely put"})
+		assertValidationError(t, err)
+	})
+
+	t.Run("comment with no author", func(t *testing.T) {
+		_, err := (&CommentRepository{}).Create(ctx, entity.Comment{BlogSlug: "hello-world", Body: "nicely put"})
+		assertValidationError(t, err)
+	})
+
+	t.Run("comment with no body", func(t *testing.T) {
+		_, err := (&CommentRepository{}).Create(ctx, entity.Comment{BlogSlug: "hello-world", AuthorID: "reader"})
+		assertValidationError(t, err)
+	})
+
 	t.Run("user put", func(t *testing.T) {
 		_, err := (&UserRepository{}).Put(ctx, entity.User{Username: "sly-dancing-monkey"})
 		assertValidationError(t, err)
@@ -94,5 +117,41 @@ func assertValidationError(t *testing.T, err error) {
 	}
 	if invalid.Field == "" {
 		t.Error("ValidationError does not name a field")
+	}
+}
+
+// A comment is addressed by the pair (blogSlug, id), so a read or a delete naming either half
+// badly is a miss rather than a request Firestore is asked to parse - which it would answer by
+// panicking on the path, not by erroring.
+func TestCommentRepositoryRefusesUnaddressableComments(t *testing.T) {
+	ctx := context.Background()
+
+	for _, tt := range []struct{ name, blogSlug, id string }{
+		{"no slug", "", "abc123"},
+		{"malformed slug", "hello world", "abc123"},
+		{"no id", "hello-world", ""},
+		{"malformed id", "hello-world", "abc/123"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := (&CommentRepository{}).Get(ctx, tt.blogSlug, tt.id); !errors.Is(err, repository.ErrNotFound) {
+				t.Errorf("Get = %v, want ErrNotFound", err)
+			}
+			if err := (&CommentRepository{}).Delete(ctx, tt.blogSlug, tt.id); !errors.Is(err, repository.ErrNotFound) {
+				t.Errorf("Delete = %v, want ErrNotFound", err)
+			}
+		})
+	}
+}
+
+// Listing has no id to fall back on, so an unaddressable post is a validation error rather than an
+// empty thread: nothing asked for a thread that could not exist.
+func TestCommentRepositoryRefusesToListAnUnaddressablePost(t *testing.T) {
+	ctx := context.Background()
+
+	for _, slug := range []string{"", "hello world"} {
+		t.Run(slug, func(t *testing.T) {
+			_, err := (&CommentRepository{}).List(ctx, slug)
+			assertValidationError(t, err)
+		})
 	}
 }

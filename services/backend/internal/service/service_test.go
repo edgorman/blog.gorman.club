@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -238,6 +239,66 @@ func (r *fakeChatRepository) Delete(_ context.Context, blogSlug string) error {
 	return nil
 }
 
+// fakeCommentRepository is an in-memory repository.CommentRepository. Like the real one it keeps
+// each thread beneath the post it is on, assigns the id itself rather than taking one from the
+// caller, and hands a thread back oldest first.
+type fakeCommentRepository struct {
+	threads map[string][]entity.Comment
+	// created counts assigned ids, so each comment gets a distinct one as a real write would.
+	created int
+	// createErr fails a write the in-memory state would otherwise allow.
+	createErr error
+}
+
+func newFakeCommentRepository() *fakeCommentRepository {
+	return &fakeCommentRepository{threads: make(map[string][]entity.Comment)}
+}
+
+// seed stores comments as a real write would, in the thread of the post they name.
+func (r *fakeCommentRepository) seed(comments ...entity.Comment) {
+	for _, comment := range comments {
+		r.threads[comment.BlogSlug] = append(r.threads[comment.BlogSlug], comment)
+	}
+}
+
+func (r *fakeCommentRepository) List(_ context.Context, blogSlug string) ([]entity.Comment, error) {
+	return slices.Clone(r.threads[blogSlug]), nil
+}
+
+func (r *fakeCommentRepository) Get(_ context.Context, blogSlug, id string) (entity.Comment, error) {
+	for _, comment := range r.threads[blogSlug] {
+		if comment.ID == id {
+			return comment, nil
+		}
+	}
+	return entity.Comment{}, repository.ErrNotFound
+}
+
+func (r *fakeCommentRepository) Create(_ context.Context, comment entity.Comment) (entity.Comment, error) {
+	if err := comment.Validate(); err != nil {
+		return entity.Comment{}, err
+	}
+	if r.createErr != nil {
+		return entity.Comment{}, r.createErr
+	}
+
+	r.created++
+	// Shaped like the ids Firestore assigns - letters and digits only - since that is what
+	// entity.Comment.SetID admits when one comes back in a URL.
+	comment.ID = fmt.Sprintf("cmt%d", r.created)
+	comment.CreatedAt = time.Now().UTC()
+
+	r.seed(comment)
+	return comment, nil
+}
+
+func (r *fakeCommentRepository) Delete(_ context.Context, blogSlug, id string) error {
+	r.threads[blogSlug] = slices.DeleteFunc(r.threads[blogSlug], func(comment entity.Comment) bool {
+		return comment.ID == id
+	})
+	return nil
+}
+
 // fakeAssistant is an in-memory repository.Assistant. reply stands in for the model, so a test
 // decides what it says and what it edits without a provider anywhere in the picture.
 type fakeAssistant struct {
@@ -281,7 +342,18 @@ func (f fakeVerifier) Verify(_ context.Context, _ string) (entity.Caller, error)
 // assistant allowlist is empty, so a test that does not opt in is testing a deployment where the
 // assistant is off - which is every deployment but the one account it is enabled for.
 func newTestService(blogs repository.BlogRepository, users repository.UserRepository) *Service {
-	return newAssistantService(blogs, users, nil, nil, nil)
+	return newCommentService(blogs, users, nil)
+}
+
+// newCommentService builds a Service over a comment repository, for the routes that have one. The
+// assistant is off here too: commenting is the readers' half of a post and has nothing to do with
+// it.
+func newCommentService(
+	blogs repository.BlogRepository,
+	users repository.UserRepository,
+	comments repository.CommentRepository,
+) *Service {
+	return newFullService(blogs, users, nil, comments, nil, nil)
 }
 
 // newAssistantService builds a Service with the assistant enabled for the named addresses.
@@ -289,6 +361,19 @@ func newAssistantService(
 	blogs repository.BlogRepository,
 	users repository.UserRepository,
 	chats repository.ChatRepository,
+	assistant repository.Assistant,
+	allowed []string,
+) *Service {
+	return newFullService(blogs, users, chats, nil, assistant, allowed)
+}
+
+// newFullService is what the helpers above narrow: it fills in whichever fakes a test did not
+// supply, so each of them names only the repositories its routes actually touch.
+func newFullService(
+	blogs repository.BlogRepository,
+	users repository.UserRepository,
+	chats repository.ChatRepository,
+	comments repository.CommentRepository,
 	assistant repository.Assistant,
 	allowed []string,
 ) *Service {
@@ -301,6 +386,9 @@ func newAssistantService(
 	if chats == nil {
 		chats = newFakeChatRepository()
 	}
+	if comments == nil {
+		comments = newFakeCommentRepository()
+	}
 	if assistant == nil {
 		assistant = &fakeAssistant{}
 	}
@@ -311,7 +399,7 @@ func newAssistantService(
 			Commit:             "abc123",
 			AssistantAllowlist: entity.NewAssistantAllowlist(allowed),
 		},
-		blogs, users, chats, fakeVerifier{uid: "caller"}, assistant,
+		blogs, users, chats, comments, fakeVerifier{uid: "caller"}, assistant,
 	)
 }
 

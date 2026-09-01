@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { Comments } from '../components/Comments'
 import { useApp } from '../context/AppContext'
 import { ApiError, postPath, userPath, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
@@ -118,6 +119,9 @@ export function Post() {
       </header>
       <hr className="hr" />
       <div className="post-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(post.content) }} />
+      {/* The thread is as visible as the post: this only renders for a post the caller could read
+          in the first place, and the backend applies the same rule to the comments themselves. */}
+      <Comments slug={post.slug} ownerId={post.ownerId} />
     </div>
   )
 }

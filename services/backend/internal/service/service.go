@@ -34,6 +34,12 @@ type Service struct {
 	comments  repository.CommentRepository
 	verifier  repository.TokenVerifier
 	assistant repository.Assistant
+	// The rate limiters live on the Service rather than being built in Handler(), so a budget is
+	// spent by the service that served the request rather than by the handler tree - two calls to
+	// Handler() must not hand a caller two budgets. See ratelimit.go for what each one bounds.
+	ipLimiter        *rateLimiter
+	callerLimiter    *rateLimiter
+	assistantLimiter *rateLimiter
 }
 
 func New(
@@ -46,21 +52,28 @@ func New(
 	assistant repository.Assistant,
 ) *Service {
 	return &Service{
-		cfg:       cfg,
-		blogs:     blogs,
-		users:     users,
-		chats:     chats,
-		comments:  comments,
-		verifier:  verifier,
-		assistant: assistant,
+		cfg:              cfg,
+		blogs:            blogs,
+		users:            users,
+		chats:            chats,
+		comments:         comments,
+		verifier:         verifier,
+		assistant:        assistant,
+		ipLimiter:        newRateLimiter(requestsPerIP),
+		callerLimiter:    newRateLimiter(requestsPerCaller),
+		assistantLimiter: newRateLimiter(assistantTurnsPerCaller),
 	}
 }
 
 // Handler returns the fully-wired API, ready to serve.
 func (s *Service) Handler() http.Handler {
-	// Every write requires a verified caller, since it always resolves to a specific owner.
+	// Every write requires a verified caller, since it always resolves to a specific owner. The
+	// per-account budget sits inside the verification rather than in front of it, because the
+	// account it meters is not known until the credential has been checked; an unverified flood is
+	// already bounded by the per-IP budget below, which is what keeps it from reaching the
+	// verifier in the first place.
 	authed := func(h http.HandlerFunc) http.Handler {
-		return requireAuth(s.verifier, h)
+		return requireAuth(s.verifier, rateLimited(s.callerLimiter, callerKey, h))
 	}
 	// GET /blogs, GET /blogs/{slug}, and GET /users/{username} admit anonymous callers. Blog visibility is
 	// enforced downstream: entity.Blog.CanBeReadBy already treats the zero Caller as seeing only
@@ -98,7 +111,10 @@ func (s *Service) Handler() http.Handler {
 	// and no route here could name one that a /blogs/{slug} route would not have resolved first.
 	// Every one of them requires the caller to own the post and to be on the assistant allowlist.
 	mux.Handle("GET /blogs/{slug}/chat", authed(s.GetChat))
-	mux.Handle("POST /blogs/{slug}/chat", authed(s.SendChatMessage))
+	// A chat turn is metered a second time, against a much smaller budget: it is the only request
+	// here that calls a paid model and can hold a connection open for two minutes, so the general
+	// per-account allowance is far too loose to be the only thing standing in front of it.
+	mux.Handle("POST /blogs/{slug}/chat", authed(rateLimited(s.assistantLimiter, callerKey, s.SendChatMessage)))
 	mux.Handle("DELETE /blogs/{slug}/chat", authed(s.DeleteChat))
 	// Comments hang off their post for the same reason the chat above does - a comment has no
 	// identity apart from the post it replies to - but they are the readers' half rather than the
@@ -109,7 +125,15 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("POST /blogs/{slug}/comments", authed(s.CreateComment))
 	mux.Handle("DELETE /blogs/{slug}/comments/{id}", authed(s.DeleteComment))
 
-	// CORS wraps the whole mux rather than individual routes: routes are registered under a
+	// The per-IP budget wraps the whole mux, so it applies to the routes that admit anonymous
+	// callers too - the ones with no account to meter - and to a request for a path that does not
+	// exist, which a per-route wrapper would never see.
+	//
+	// CORS wraps that in turn rather than individual routes: routes are registered under a
 	// specific method, so ServeMux would 405 an OPTIONS preflight before a per-route wrapper ran.
-	return withCORS(s.cfg.AllowedOrigin, mux)
+	// Being outermost also means a preflight is answered without spending a token - a browser
+	// sends one per request it makes, and charging for both would halve every budget here - and
+	// that a 429 still carries the CORS headers, without which the browser would show the frontend
+	// a network error instead of the reason it was refused.
+	return withCORS(s.cfg.AllowedOrigin, rateLimited(s.ipLimiter, clientIP, mux.ServeHTTP))
 }

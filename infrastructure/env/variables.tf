@@ -44,7 +44,7 @@ variable "assistant_location" {
 }
 
 variable "alert_notification_emails" {
-  description = "Addresses the monitoring alerts in monitoring.tf are sent to. Empty leaves the policies in place but silent - they still show in the console, nobody is told. These are recipients rather than an entitlement: an address here is where a message goes, not an account admitted to anything - who may use the assistant is each account's own subscription, held in Firestore rather than configured here (see services/backend/internal/entity/assistant.go)."
+  description = "Addresses the monitoring alerts in monitoring.tf are sent to. Empty leaves the policies in place but silent - they still show in the console, nobody is told. These are recipients rather than an entitlement: an address here is where a message goes, not an account admitted to anything."
   type        = list(string)
   default     = []
 }

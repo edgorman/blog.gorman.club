@@ -232,15 +232,13 @@ lightest thing a reader can say. The rules follow the post, as comments' do: a
 reader who may read a post may see and add reactions to it and to its comments,
 and one who may not gets the post's own `404`.
 
-- **Any emoji, not five.** `entity.ValidEmoji` checks the *shape* of what is
-  sent rather than matching a list, so an emoji that postdates this code works
-  without a deployment. What it refuses is anything that is not a single glyph:
-  a word, a word with an emoji in it, and `👍👎` — two perfectly good emoji
-  that would let a reader invent chips nobody can reproduce and fragment a
-  post's bar into one-off combinations. A second pictograph is admitted only
-  where it really is part of one glyph: after a zero-width joiner
-  (`👨‍👩‍👧‍👦`), as a skin tone (`👍🏽`), or as the other half of a flag
-  (`🇬🇧`). The picker in the frontend is therefore a convenience, not the rule.
+- **A fixed set of five, not any emoji.** `entity.AllowedEmojis` (👍 👎 ❤️ 😄
+  🎉) is the whole of what a reaction may be, and `entity.ValidEmoji` is exact
+  membership in it — not a shape check, so a composed variant of one of the
+  five (a skin tone, say) does not match the plain glyph it modifies. There is
+  no custom-emoji upload and no combining runes of your own. Widening the set
+  is a change to that one array on the backend and the matching array in the
+  frontend's `ReactionBar`, and nothing else.
 - **Addressed, not toggled.** `PUT` puts a reaction there and `DELETE` takes it
   back, both idempotent, so a retried click or a stale page lands where it was
   aiming rather than undoing itself. The client decides which to send from what
@@ -258,9 +256,9 @@ target" is unique by construction — the same argument that keys a post by its
 slug — and two readers reacting at once write different documents and never
 contend. A comment's reactions live beside the post's rather than beneath the
 comment, which is what makes a page one query instead of one per comment.
-`entity.MaxReactionsPerTarget` bounds how many distinct emoji *one reader* may
-put on one thing, so a single enthusiast cannot fill a bar by themselves; how
-many readers may react is unbounded.
+A reader is bounded by `entity.AllowedEmojis` itself rather than by a separate
+limit — once all five are chosen there is nothing left to add, and none may
+repeat. How many readers may react is unbounded.
 
 Deleting a comment deletes its reactions too, so a moderated comment cannot
 survive as a row of numbers. That cleanup is best-effort and logged rather than

@@ -208,9 +208,10 @@ func TestDeleteReaction_LeavesOtherReaders(t *testing.T) {
 	}
 }
 
-// Any emoji works, which is the point: the picker is a convenience, not the rule.
-func TestPutReaction_AcceptsAnyEmoji(t *testing.T) {
-	for _, emoji := range []string{"👍", "🎉", "🫠", "👨‍👩‍👧‍👦", "🇬🇧", "👍🏽", "⭐"} {
+// The five allowed reactions work, and nothing else does - the picker offers exactly these, so
+// this is what a legitimate request looks like end to end.
+func TestPutReaction_AcceptsAnAllowedEmoji(t *testing.T) {
+	for _, emoji := range entity.AllowedEmojis {
 		t.Run(emoji, func(t *testing.T) {
 			f := newReactionFixture(t)
 
@@ -219,11 +220,12 @@ func TestPutReaction_AcceptsAnyEmoji(t *testing.T) {
 	}
 }
 
-func TestPutReaction_RejectsWhatIsNotAnEmoji(t *testing.T) {
+func TestPutReaction_RejectsWhatIsNotAllowed(t *testing.T) {
 	for _, tt := range []struct{ name, emoji string }{
 		{"a word", "nice"},
 		{"an emoji in a sentence", "nice 👍"},
-		{"two emoji", "👍👎"},
+		{"an emoji outside the set", "🎊"},
+		{"a skin-toned variant of an allowed emoji", "👍🏽"},
 		{"empty", ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -240,16 +242,16 @@ func TestPutReaction_RejectsWhatIsNotAnEmoji(t *testing.T) {
 	}
 }
 
-// A reader who has filled their own row is told so rather than served a 500.
-func TestPutReaction_BoundedPerReader(t *testing.T) {
+// A reader who has put all five allowed emoji on one thing has nothing left to add, which the
+// fixed set itself guarantees without a separate bound.
+func TestPutReaction_AllFiveThenNothingElse(t *testing.T) {
 	f := newReactionFixture(t)
-	emojis := []string{"👍", "👎", "😀", "😂", "😍", "🎉", "🔥", "💯", "🚀", "👀", "🙏", "✅", "⭐"}
 
-	for _, emoji := range emojis[:entity.MaxReactionsPerTarget] {
+	for _, emoji := range entity.AllowedEmojis {
 		assertStatus(t, f.react(http.MethodPut, commentReader, "", emoji), http.StatusOK)
 	}
 
-	rec := f.react(http.MethodPut, commentReader, "", emojis[entity.MaxReactionsPerTarget])
+	rec := f.react(http.MethodPut, commentReader, "", "🎊")
 	assertStatus(t, rec, http.StatusBadRequest)
 	decodeAPIError(t, rec)
 }
@@ -272,7 +274,7 @@ func TestGetReactions(t *testing.T) {
 	assertStatus(t, f.react(http.MethodPut, commentReader, "", "👍"), http.StatusOK)
 	assertStatus(t, f.react(http.MethodPut, commentAuthor, "", "👍"), http.StatusOK)
 	assertStatus(t, f.react(http.MethodPut, commentAuthor, "", "🎉"), http.StatusOK)
-	assertStatus(t, f.react(http.MethodPut, commentReader, reactionCommentID, "🔥"), http.StatusOK)
+	assertStatus(t, f.react(http.MethodPut, commentReader, reactionCommentID, "👎"), http.StatusOK)
 
 	// Signed out: a public post's reactions are readable by anyone who may read the post.
 	rec := f.list("")
@@ -289,7 +291,7 @@ func TestGetReactions(t *testing.T) {
 	if body.Post[0].Reacted {
 		t.Error("Reacted = true for a signed-out reader, want false")
 	}
-	if counts := body.Comments[reactionCommentID]; len(counts) != 1 || counts[0].Emoji != "🔥" {
+	if counts := body.Comments[reactionCommentID]; len(counts) != 1 || counts[0].Emoji != "👎" {
 		t.Errorf("comment reactions = %+v, want one 🔥", counts)
 	}
 }
@@ -360,7 +362,7 @@ func TestReactions_OnAPrivatePost(t *testing.T) {
 // A moderated comment does not survive as a row of numbers.
 func TestDeleteComment_TakesItsReactionsWithIt(t *testing.T) {
 	f := newReactionFixture(t)
-	assertStatus(t, f.react(http.MethodPut, commentReader, reactionCommentID, "🔥"), http.StatusOK)
+	assertStatus(t, f.react(http.MethodPut, commentReader, reactionCommentID, "👎"), http.StatusOK)
 	assertStatus(t, f.react(http.MethodPut, commentReader, "", "👍"), http.StatusOK)
 
 	req := httptest.NewRequest(http.MethodDelete, "/blogs/"+commentSlug+"/comments/"+reactionCommentID, nil)
@@ -384,7 +386,7 @@ func TestDeleteComment_TakesItsReactionsWithIt(t *testing.T) {
 // Cleaning up reactions is best-effort: the caller asked for the comment to be gone, and it is.
 func TestDeleteComment_SucceedsWhenReactionCleanupFails(t *testing.T) {
 	f := newReactionFixture(t)
-	assertStatus(t, f.react(http.MethodPut, commentReader, reactionCommentID, "🔥"), http.StatusOK)
+	assertStatus(t, f.react(http.MethodPut, commentReader, reactionCommentID, "👎"), http.StatusOK)
 	f.reactions.deleteTargetErr = errors.New("firestore is down")
 
 	req := httptest.NewRequest(http.MethodDelete, "/blogs/"+commentSlug+"/comments/"+reactionCommentID, nil)

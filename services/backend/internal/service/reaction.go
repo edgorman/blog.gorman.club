@@ -118,7 +118,7 @@ func (s *Service) GetReactions(w http.ResponseWriter, r *http.Request) {
 func (s *Service) reactionTargetFromPath(w http.ResponseWriter, r *http.Request, blog entity.Blog) (entity.ReactionTarget, string, bool) {
 	emoji := r.PathValue("emoji")
 	if !entity.ValidEmoji(emoji) {
-		writeError(w, http.StatusBadRequest, "emoji must be a single emoji")
+		writeError(w, http.StatusBadRequest, "emoji must be one of the allowed reactions")
 		return entity.ReactionTarget{}, "", false
 	}
 
@@ -166,8 +166,8 @@ func (s *Service) PutReaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := s.reactions.Add(r.Context(), target, uidFromContext(r.Context()), emoji); err != nil {
-		// A reader who has already put MaxReactionsPerTarget emoji on one thing is told so rather
-		// than served a 500: it is the only way this write fails on something the caller chose.
+		// entity.Reaction.Add only fails on an emoji outside entity.AllowedEmojis, which
+		// reactionTargetFromPath already refused - this is defense in depth, not a live path.
 		writeValidationError(w, err)
 		return
 	}

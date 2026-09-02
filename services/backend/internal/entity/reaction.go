@@ -6,12 +6,6 @@ import (
 	"time"
 )
 
-// MaxReactionsPerTarget is how many distinct emoji one reader may put on one thing. It exists so a
-// single caller cannot fill a post's reaction bar by themselves: the bar shows every emoji anybody
-// chose, so without a bound per person the widest bar is whatever the most enthusiastic reader
-// felt like. It bounds nothing about how many people may react, which is unlimited.
-const MaxReactionsPerTarget = 12
-
 // ReactionTarget names the thing being reacted to. A reaction is always attached to something
 // under one post - the post itself, or one comment on it - so the post's slug is half of every
 // target, and CommentID is what tells the two apart: empty means the post.
@@ -96,8 +90,8 @@ func (r Reaction) Key() string {
 }
 
 // Validate reports whether the reaction is in a storable state: it names a target that could
-// exist, a reader, and only emoji this service will store, no more than MaxReactionsPerTarget of
-// them and none twice.
+// exist, a reader, and only emoji from AllowedEmojis, none twice. There is no separate bound on
+// how many a reader may hold at once - AllowedEmojis is itself the bound, since none can repeat.
 func (r Reaction) Validate() error {
 	if err := r.Target.Validate(); err != nil {
 		return err
@@ -105,17 +99,11 @@ func (r Reaction) Validate() error {
 	if strings.TrimSpace(r.UID) == "" {
 		return ValidationError{Field: "uid", Message: "is required"}
 	}
-	if len(r.Emojis) > MaxReactionsPerTarget {
-		return ValidationError{
-			Field:   "emojis",
-			Message: lengthMessage(MaxReactionsPerTarget),
-		}
-	}
 
 	seen := make([]string, 0, len(r.Emojis))
 	for _, emoji := range r.Emojis {
 		if !ValidEmoji(emoji) {
-			return ValidationError{Field: "emoji", Message: "must be a single emoji"}
+			return ValidationError{Field: "emoji", Message: "must be one of the allowed reactions"}
 		}
 		if slices.Contains(seen, emoji) {
 			return ValidationError{Field: "emoji", Message: "is already there"}
@@ -131,16 +119,10 @@ func (r Reaction) Validate() error {
 // rather than with a complaint.
 func (r *Reaction) Add(emoji string) (bool, error) {
 	if !ValidEmoji(emoji) {
-		return false, ValidationError{Field: "emoji", Message: "must be a single emoji"}
+		return false, ValidationError{Field: "emoji", Message: "must be one of the allowed reactions"}
 	}
 	if slices.Contains(r.Emojis, emoji) {
 		return false, nil
-	}
-	if len(r.Emojis) >= MaxReactionsPerTarget {
-		return false, ValidationError{
-			Field:   "emojis",
-			Message: lengthMessage(MaxReactionsPerTarget),
-		}
 	}
 
 	r.Emojis = append(r.Emojis, emoji)

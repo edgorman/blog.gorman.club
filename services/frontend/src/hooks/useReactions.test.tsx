@@ -9,7 +9,7 @@ import { useReactions } from './useReactions'
 
 const page: PageReactions = {
   post: [{ emoji: '👍', count: 2, reacted: false }],
-  comments: { cmt1: [{ emoji: '🔥', count: 1, reacted: true }] },
+  comments: { cmt1: [{ emoji: '👎', count: 1, reacted: true }] },
 }
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
@@ -39,7 +39,7 @@ describe('useReactions', () => {
     await waitFor(() => expect(result.current.countsFor()).toHaveLength(1))
     expect(api.getReactions).toHaveBeenCalledTimes(1)
     expect(api.getReactions).toHaveBeenCalledWith('hello-world')
-    expect(result.current.countsFor('cmt1')[0].emoji).toBe('🔥')
+    expect(result.current.countsFor('cmt1')[0].emoji).toBe('👎')
     // A comment nobody has reacted to has no entry, and reads as an empty bar rather than crashing.
     expect(result.current.countsFor('cmt404')).toEqual([])
   })
@@ -65,9 +65,9 @@ describe('useReactions', () => {
     const { result } = renderUseReactions(api)
     await waitFor(() => expect(result.current.countsFor('cmt1')).toHaveLength(1))
 
-    act(() => result.current.toggle('🔥', 'cmt1'))
+    act(() => result.current.toggle('👎', 'cmt1'))
 
-    await waitFor(() => expect(api.removeReaction).toHaveBeenCalledWith('hello-world', '🔥', 'cmt1'))
+    await waitFor(() => expect(api.removeReaction).toHaveBeenCalledWith('hello-world', '👎', 'cmt1'))
     await waitFor(() => expect(result.current.countsFor('cmt1')).toHaveLength(0))
   })
 

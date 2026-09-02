@@ -214,7 +214,7 @@ func TestReactionMappingRoundTrip(t *testing.T) {
 		{
 			Target:    entity.CommentReaction("hello-world", "cmt1"),
 			UID:       "reader",
-			Emojis:    []string{"🔥"},
+			Emojis:    []string{"👎"},
 			UpdatedAt: updated,
 		},
 	} {

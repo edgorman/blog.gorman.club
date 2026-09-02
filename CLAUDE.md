@@ -55,11 +55,10 @@ The allowlist says who may spend, not how much, so volume is bounded separately:
 
 Posts carry comments and reactions, both stored in Firestore beneath the post
 they belong to and both governed by the post's own read rules rather than rules
-of their own. Reactions accept any single emoji rather than a fixed set, which
-is a validation rule about the *shape* of what is sent rather than an allowlist
-to keep updated, and they are addressed (`PUT`/`DELETE`) rather than toggled so
-a retried click is harmless. See `services/backend/README.md` for the ownership
-and moderation rules.
+of their own. Reactions are a fixed set of five emoji (`entity.AllowedEmojis`),
+not custom or combined ones, and they are addressed (`PUT`/`DELETE`) rather
+than toggled so a retried click is harmless. See `services/backend/README.md`
+for the ownership and moderation rules.
 
 ### Resource Naming
 

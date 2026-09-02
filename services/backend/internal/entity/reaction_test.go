@@ -2,40 +2,35 @@ package entity
 
 import (
 	"errors"
-	"strings"
 	"testing"
 )
 
-// The point of the rule is that any emoji works, not a fixed five - so this asserts the shape of
-// what is admitted rather than a list of blessed glyphs, and pins the things that must not be.
+// Reactions are a fixed set of five, not any emoji: ValidEmoji is exact membership in
+// AllowedEmojis, so nothing close to one of them - a composed variant, a lookalike, a bare word -
+// is accepted just because it resembles a member of the set.
 func TestValidEmoji(t *testing.T) {
+	for _, allowed := range AllowedEmojis {
+		t.Run(allowed, func(t *testing.T) {
+			if !ValidEmoji(allowed) {
+				t.Errorf("ValidEmoji(%q) = false, want true - it is in AllowedEmojis", allowed)
+			}
+		})
+	}
+
 	for _, tt := range []struct {
 		name  string
 		emoji string
-		want  bool
 	}{
-		{"a plain pictograph", "👍", true},
-		{"one with a variation selector", "❤️", true},
-		{"one outside the emoji blocks proper", "⭐", true},
-		{"a dingbat", "✅", true},
-		{"a skin tone modifier", "👍🏽", true},
-		{"a joined sequence", "👨‍👩‍👧‍👦", true},
-		{"a flag", "🇬🇧", true},
-		{"something recent enough to postdate this rule", "🫠", true},
-		{"empty", "", false},
-		{"a word", "nice", false},
-		{"a word with an emoji in it", "nice 👍", false},
-		{"a digit", "1", false},
-		{"only a modifier", "‍", false},
-		{"two emoji", "👍👎", false},
-		{"two emoji joined by nothing but a variation selector", "👍️👎", false},
-		{"two flags", "🇬🇧🇺🇸", false},
-		{"a skin tone with nothing to recolour", "🏽", false},
-		{"a run of them", strings.Repeat("👍", MaxEmojiRunes+1), false},
+		{"empty", ""},
+		{"a word", "nice"},
+		{"a word with an emoji in it", "nice 👍"},
+		{"an emoji not in the set", "🎊"},
+		{"a skin-toned variant of an allowed emoji", "👍🏽"},
+		{"two allowed emoji together", "👍👎"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ValidEmoji(tt.emoji); got != tt.want {
-				t.Errorf("ValidEmoji(%q) = %v, want %v", tt.emoji, got, tt.want)
+			if ValidEmoji(tt.emoji) {
+				t.Errorf("ValidEmoji(%q) = true, want false", tt.emoji)
 			}
 		})
 	}
@@ -161,22 +156,21 @@ func TestReaction_AddAndRemove(t *testing.T) {
 	}
 }
 
-// The bound is per reader, so one enthusiast cannot fill the bar by themselves - while any number
-// of readers may still each add their own.
-func TestReaction_AddIsBoundedPerReader(t *testing.T) {
+// A reader is naturally bounded by the size of AllowedEmojis: once every one of the five is
+// chosen, there is nothing left to Add that Validate would accept - no separate limit is needed.
+func TestReaction_AddAllFiveThenNoMore(t *testing.T) {
 	reaction := Reaction{Target: PostReaction("hello-world"), UID: "reader"}
-	emojis := []string{"👍", "👎", "😀", "😂", "😍", "🎉", "🔥", "💯", "🚀", "👀", "🙏", "✅", "⭐"}
 
-	for _, emoji := range emojis[:MaxReactionsPerTarget] {
+	for _, emoji := range AllowedEmojis {
 		if _, err := reaction.Add(emoji); err != nil {
-			t.Fatalf("Add(%q) = %v, want no error below the bound", emoji, err)
+			t.Fatalf("Add(%q) = %v, want no error", emoji, err)
 		}
 	}
-
-	if _, err := reaction.Add(emojis[MaxReactionsPerTarget]); err == nil {
-		t.Error("Add past the bound = nil, want a ValidationError")
+	if len(reaction.Emojis) != len(AllowedEmojis) {
+		t.Errorf("Emojis = %d, want all %d allowed", len(reaction.Emojis), len(AllowedEmojis))
 	}
-	if len(reaction.Emojis) != MaxReactionsPerTarget {
-		t.Errorf("Emojis = %d, want the refused one not to have been added", len(reaction.Emojis))
+
+	if _, err := reaction.Add("🎊"); err == nil {
+		t.Error("Add of an emoji outside the set = nil, want a ValidationError")
 	}
 }

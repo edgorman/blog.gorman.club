@@ -19,12 +19,13 @@ markdown, a per-author profile feed, and a markdown editor for publishing.
   it, and the safe rendering of a stranger's input is the one with no syntax in
   it. Delete is offered to a comment's own author and to the post's owner, who
   moderates their own post; the backend decides either way. Both the post and
-  each comment carry a reaction bar (`components/ReactionBar.tsx`): a row of
-  emoji chips showing how many readers chose each and which ones you are in,
-  with a picker for adding one. The page's reactions - the post's and every
-  comment's - are loaded in one request by `hooks/useReactions.ts`, since the
-  API answers them together. The picker offers two dozen emoji, but the API
-  accepts any single emoji, so widening it is a change to one array.
+  each comment carry a reaction bar (`components/ReactionBar.tsx`): five fixed
+  emoji (👍 👎 ❤️ 😄 🎉), each a chip showing its count and whether you are in
+  it - no picker, no custom emoji, so reacting is one click. The page's
+  reactions - the post's and every comment's - are loaded in one request by
+  `hooks/useReactions.ts`, since the API answers them together. The five are
+  kept in step with the backend's own `entity.AllowedEmojis`; widening the set
+  means changing both.
 - **Edit post** (`/post/:slug/edit`) — the same editor over an existing post,
   saving via `PUT /blogs/{slug}`. Only the owner sees the form.
 - **New post** (`/post/new`) — a single-pane markdown editor with a Preview

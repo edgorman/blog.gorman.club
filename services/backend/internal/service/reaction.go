@@ -165,7 +165,16 @@ func (s *Service) PutReaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.reactions.Add(r.Context(), target, uidFromContext(r.Context()), emoji); err != nil {
+	// The row about to be written is the caller's own: a reaction is keyed by the target and the
+	// reader together, and the reader half comes from the credential rather than from the request,
+	// so there is no other reader's row to reach. What the permission still says is that reacting
+	// takes an account, which requireAuth has already seen to.
+	reaction := entity.Reaction{Target: target, UID: uidFromContext(r.Context())}
+	if !requirePermission(w, r, reaction.Permission(entity.ActionCreate)) {
+		return
+	}
+
+	if _, err := s.reactions.Add(r.Context(), target, reaction.UID, emoji); err != nil {
 		// entity.Reaction.Add only fails on an emoji outside entity.AllowedEmojis, which
 		// reactionTargetFromPath already refused - this is defense in depth, not a live path.
 		writeValidationError(w, err)
@@ -187,7 +196,12 @@ func (s *Service) DeleteReaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.reactions.Remove(r.Context(), target, uidFromContext(r.Context()), emoji); err != nil {
+	reaction := entity.Reaction{Target: target, UID: uidFromContext(r.Context())}
+	if !requirePermission(w, r, reaction.Permission(entity.ActionDelete)) {
+		return
+	}
+
+	if _, err := s.reactions.Remove(r.Context(), target, reaction.UID, emoji); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

@@ -19,10 +19,10 @@ type Config struct {
 	// AllowedOrigin is the frontend origin permitted to call this API from a browser. Empty
 	// disables CORS headers entirely.
 	AllowedOrigin string
-	// AssistantAllowlist decides which profiles may use the AI writing assistant. An empty list
-	// disables it for everybody, which is what a deployment with no model configured looks like
-	// (see cmd/backend).
-	AssistantAllowlist entity.AssistantAllowlist
+	// AssistantEntitlement decides which accounts may use the AI writing assistant. Its zero value
+	// is entitled to nobody, which is what a deployment with no model configured looks like (see
+	// cmd/backend).
+	AssistantEntitlement entity.AssistantEntitlement
 }
 
 // Service owns the API's dependencies and serves its routes.
@@ -123,7 +123,7 @@ func (s *Service) Handler() http.Handler {
 	// identity apart from the post it replies to - but they are the readers' half rather than the
 	// author's, so the rules are the post's own: whoever may read a post may read and write its
 	// comments, and a signed-out reader sees a public thread without being able to add to it.
-	// Deleting one is neither, being the comment's own rule (see entity.Comment.CanBeDeletedBy).
+	// Deleting one is neither, being the comment's own rule (see entity.Comment.Permission).
 	mux.Handle("GET /blogs/{slug}/comments", optional(s.ListComments))
 	mux.Handle("POST /blogs/{slug}/comments", authed(s.CreateComment))
 	mux.Handle("DELETE /blogs/{slug}/comments/{id}", authed(s.DeleteComment))

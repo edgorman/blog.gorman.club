@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestUser_SetBio(t *testing.T) {
@@ -128,5 +129,66 @@ func TestUser_Normalized(t *testing.T) {
 
 	if _, err := (User{ID: "u1", Username: "me"}).Normalized(); err == nil {
 		t.Error("Normalized with a reserved username = nil, want an error")
+	}
+}
+
+// Subscribed is the whole of what "has this account paid" means: never subscribed and lapsed are
+// the same answer, since the only thing anything here asks is whether the account may spend now.
+func TestUser_Subscribed(t *testing.T) {
+	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-time.Second)
+	future := now.Add(time.Second)
+
+	for _, tt := range []struct {
+		name string
+		user User
+		want bool
+	}{
+		{"never subscribed", User{ID: "user-1"}, false},
+		{"subscribed until later", User{ID: "user-1", SubscribedUntil: &future}, true},
+		{"ran out", User{ID: "user-1", SubscribedUntil: &past}, false},
+		// The instant it runs out is not a moment of access: the boundary belongs to the side that
+		// refuses, so a subscription cannot be extended by asking at exactly the wrong microsecond.
+		{"runs out exactly now", User{ID: "user-1", SubscribedUntil: &now}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.user.Subscribed(now); got != tt.want {
+				t.Errorf("Subscribed = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// A profile is public to read and nobody's to write but its own account's.
+func TestUser_Permission(t *testing.T) {
+	user := User{ID: "user-1", Username: "calm-smiling-kestrel"}
+
+	if !user.Permission(ActionRead).Allows("") {
+		t.Error("Permission(read) refused an anonymous caller, want a public profile")
+	}
+	for _, action := range []Action{ActionUpdate, ActionDelete} {
+		if !user.Permission(action).Allows("user-1") {
+			t.Errorf("Permission(%q) refused the account itself", action)
+		}
+		for _, uid := range []string{"another", ""} {
+			if user.Permission(action).Allows(uid) {
+				t.Errorf("Permission(%q).Allows(%q) = true, want only the account itself", action, uid)
+			}
+		}
+	}
+}
+
+// Nothing a client sends can subscribe an account: the profile a request applies to is the stored
+// one, and a subscription rides through untouched by the setters a request goes through.
+func TestUser_NormalizedKeepsTheSubscription(t *testing.T) {
+	until := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	user := User{ID: "user-1", Username: "calm-smiling-kestrel", SubscribedUntil: &until}
+
+	normalized, err := user.Normalized()
+	if err != nil {
+		t.Fatalf("Normalized = %v, want no error", err)
+	}
+	if normalized.SubscribedUntil == nil || !normalized.SubscribedUntil.Equal(until) {
+		t.Errorf("SubscribedUntil = %v, want %v", normalized.SubscribedUntil, until)
 	}
 }

@@ -113,6 +113,20 @@ func (r Reaction) Validate() error {
 	return nil
 }
 
+// Permission is the single definition of who may do what to a reaction: anybody who got as far as
+// the post may read the counts, and a reader writes only their own row.
+//
+// Writing is private to a reader who cannot address anybody else's row in the first place - a
+// reaction is keyed by the target and the reader together (see Key), and the reader half comes from
+// the credential - so the forbidden case is unreachable rather than refused. What the rule still
+// says is that reacting takes an account: a count is one reader counted once, which there is no way
+// to mean anonymously.
+func (r Reaction) Permission(action Action) Permission {
+	permission := PermissionFor(ResourceReaction, action)
+	permission.OwnerID = r.UID
+	return permission
+}
+
 // Add records one more emoji from this reader, and reports whether anything changed. Reacting with
 // an emoji already chosen is not an error: the button that sends it is the same button whatever
 // the stored state, so a second click from a stale page is answered with the state it wanted

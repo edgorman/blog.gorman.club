@@ -113,6 +113,9 @@ type fakeUserRepository struct {
 	// beforePut lets a test fail a write the in-memory state would otherwise allow, which is the
 	// only way to provoke a username collision when the name being written is generated at random.
 	beforePut func(entity.User) error
+	// getErr fails a lookup by id the in-memory state would otherwise answer, for a test asserting
+	// that a handler which needs the caller's own profile does not carry on without it.
+	getErr error
 }
 
 func newFakeUserRepository() *fakeUserRepository {
@@ -130,6 +133,9 @@ func (r *fakeUserRepository) seed(user entity.User) {
 
 func (r *fakeUserRepository) Get(_ context.Context, id string) (entity.User, error) {
 	r.gets++
+	if r.getErr != nil {
+		return entity.User{}, r.getErr
+	}
 	user, ok := r.users[id]
 	if !ok {
 		return entity.User{}, repository.ErrNotFound
@@ -419,8 +425,8 @@ func (a *fakeAssistant) Reply(_ context.Context, req repository.AssistantRequest
 }
 
 // fakeVerifier is an in-memory repository.TokenVerifier. email and emailVerified describe the
-// address the provider vouches for, for a test reaching a route the assistant allowlist guards
-// through the real middleware; the zero value is an address nobody verified, which no allowlist
+// address the provider vouches for, for a test reaching a route the assistant entitlement guards
+// through the real middleware; the zero value is an address nobody verified, which no grant
 // matches however it is spelled.
 type fakeVerifier struct {
 	uid           string
@@ -441,7 +447,7 @@ func (f fakeVerifier) Verify(_ context.Context, _ string) (entity.Caller, error)
 }
 
 // newTestService builds a Service over the given fakes, filling in whichever are not needed. The
-// assistant allowlist is empty, so a test that does not opt in is testing a deployment where the
+// assistant grants nobody, so a test that does not opt in is testing a deployment where the
 // assistant is off - which is every deployment but the one account it is enabled for.
 func newTestService(blogs repository.BlogRepository, users repository.UserRepository) *Service {
 	return newCommentService(blogs, users, nil)
@@ -469,15 +475,15 @@ func newReactionService(
 	return newFullService(blogs, users, nil, comments, reactions, nil, nil)
 }
 
-// newAssistantService builds a Service with the assistant enabled for the named addresses.
+// newAssistantService builds a Service with the assistant granted to the named addresses.
 func newAssistantService(
 	blogs repository.BlogRepository,
 	users repository.UserRepository,
 	chats repository.ChatRepository,
 	assistant repository.Assistant,
-	allowed []string,
+	granted []string,
 ) *Service {
-	return newFullService(blogs, users, chats, nil, nil, assistant, allowed)
+	return newFullService(blogs, users, chats, nil, nil, assistant, granted)
 }
 
 // newFullService is what the helpers above narrow: it fills in whichever fakes a test did not
@@ -489,7 +495,7 @@ func newFullService(
 	comments repository.CommentRepository,
 	reactions repository.ReactionRepository,
 	assistant repository.Assistant,
-	allowed []string,
+	granted []string,
 ) *Service {
 	if blogs == nil {
 		blogs = newFakeBlogRepository()
@@ -512,9 +518,9 @@ func newFullService(
 
 	return New(
 		Config{
-			Environment:        "test",
-			Commit:             "abc123",
-			AssistantAllowlist: entity.NewAssistantAllowlist(allowed),
+			Environment:          "test",
+			Commit:               "abc123",
+			AssistantEntitlement: entity.NewAssistantEntitlement(granted),
 		},
 		blogs, users, chats, comments, reactions, fakeVerifier{uid: "caller"}, assistant,
 	)
@@ -524,9 +530,9 @@ func withUID(req *http.Request, uid string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), callerContextKey, entity.Caller{UID: uid}))
 }
 
-// withVerifiedCaller carries an address the provider vouched for, which is what the assistant
-// allowlist is keyed on. withUID's caller deliberately has none: most routes do not care, and the
-// ones that do must not be satisfied by an address nobody verified.
+// withVerifiedCaller carries an address the provider vouched for, which is what an assistant grant
+// is keyed on. withUID's caller deliberately has none: most routes do not care, and the ones that
+// do must not be satisfied by an address nobody verified.
 func withVerifiedCaller(req *http.Request, uid, email string) *http.Request {
 	caller := entity.Caller{UID: uid, Email: email, EmailVerified: true}
 	return req.WithContext(context.WithValue(req.Context(), callerContextKey, caller))

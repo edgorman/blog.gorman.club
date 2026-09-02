@@ -12,7 +12,7 @@ import (
 //
 // There is no Update, for the same reason entity.Comment has no setter a client can reach: a
 // comment is written and removed, never rewritten. Reads are unfiltered - callers decide access
-// through the post, via entity.Blog.CanBeReadBy, and deletion through entity.Comment.CanBeDeletedBy.
+// through the post, via entity.Blog.CanBeReadBy, and deletion through entity.Comment.Permission.
 type CommentRepository interface {
 	// List returns the comments on blogSlug, oldest first, so a client renders them in the order
 	// they were written. It answers an empty slice for a post nobody has commented on rather than

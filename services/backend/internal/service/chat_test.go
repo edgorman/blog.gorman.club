@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
@@ -21,6 +22,7 @@ import (
 type chatFixture struct {
 	service   *Service
 	blogs     *fakeBlogRepository
+	users     *fakeUserRepository
 	chats     *fakeChatRepository
 	assistant *fakeAssistant
 }
@@ -31,12 +33,12 @@ const (
 	chatEmail = "ejgorman@gmail.com"
 )
 
-// newChatFixture enables the assistant for the caller unless allowed says otherwise.
-func newChatFixture(t *testing.T, allowed ...string) *chatFixture {
+// newChatFixture grants the assistant to the caller's address unless granted says otherwise.
+func newChatFixture(t *testing.T, granted ...string) *chatFixture {
 	t.Helper()
 
-	if allowed == nil {
-		allowed = []string{chatEmail}
+	if granted == nil {
+		granted = []string{chatEmail}
 	}
 
 	blogs := newFakeBlogRepository()
@@ -55,15 +57,16 @@ func newChatFixture(t *testing.T, allowed ...string) *chatFixture {
 	assistant := &fakeAssistant{}
 
 	return &chatFixture{
-		service:   newAssistantService(blogs, users, chats, assistant, allowed),
+		service:   newAssistantService(blogs, users, chats, assistant, granted),
 		blogs:     blogs,
+		users:     users,
 		chats:     chats,
 		assistant: assistant,
 	}
 }
 
 // chatRequestFor addresses the chat the way its route does: by the slug of the post it is about,
-// carrying the verified address the allowlist is keyed on.
+// carrying the verified address a grant is keyed on.
 func chatRequestFor(method string, body io.Reader) *http.Request {
 	req := httptest.NewRequest(method, "/blogs/"+url.PathEscape(chatSlug)+"/chat", body)
 	req.SetPathValue("slug", chatSlug)
@@ -307,7 +310,8 @@ func TestSendChatMessage_RejectsEmptyMessage(t *testing.T) {
 	}
 }
 
-// Access is decided from the verified credential, and checked before anything is spent on the model.
+// Entitlement is decided from the verified credential and the caller's own profile, and checked
+// before anything is spent on the model.
 func TestSendChatMessage_NotAllowed(t *testing.T) {
 	f := newChatFixture(t, "somebody-else@example.com")
 
@@ -322,8 +326,8 @@ func TestSendChatMessage_NotAllowed(t *testing.T) {
 	}
 }
 
-// A caller who does not own the post is answered exactly as requireOwnedBlog answers them, before
-// the allowlist is consulted at all - a stranger must not learn who has the assistant.
+// A caller who cannot write the post is answered on that alone, before the entitlement is
+// consulted at all - a stranger must not learn who has the assistant.
 func TestSendChatMessage_NotOwner(t *testing.T) {
 	f := newChatFixture(t)
 
@@ -407,5 +411,78 @@ func TestDeleteChat(t *testing.T) {
 	}
 	if _, ok := f.blogs.stored(chatSlug); !ok {
 		t.Error("the post was deleted along with the conversation")
+	}
+}
+
+// subscribe gives the caller's profile paid access running out in an hour, which is what a
+// checkout will write when there is one.
+func (f *chatFixture) subscribe(t *testing.T) {
+	t.Helper()
+
+	until := time.Now().UTC().Add(time.Hour)
+	f.users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel", SubscribedUntil: &until})
+}
+
+// An account that paid may use the assistant on a deployment that grants nobody anything, which is
+// the point of the subscription: access stops being something only a redeploy can hand out.
+func TestSendChatMessage_Subscriber(t *testing.T) {
+	f := newChatFixture(t, "somebody-else@example.com")
+	f.subscribe(t)
+
+	rec := f.send(t, map[string]string{"message": "tighten it"})
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	if len(f.assistant.requests) != 1 {
+		t.Errorf("model calls = %d, want 1 for a subscriber", len(f.assistant.requests))
+	}
+}
+
+// A subscription that has run out is no subscription at all, and the account is refused exactly as
+// one that never had one.
+func TestSendChatMessage_ExpiredSubscription(t *testing.T) {
+	f := newChatFixture(t, "somebody-else@example.com")
+
+	expired := time.Now().UTC().Add(-time.Minute)
+	f.users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel", SubscribedUntil: &expired})
+
+	rec := f.send(t, map[string]string{"message": "tighten it"})
+
+	if rec.Result().StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+	}
+	if len(f.assistant.requests) != 0 {
+		t.Error("the model was called for a subscription that had run out")
+	}
+}
+
+// Reading a conversation back costs the same entitlement as having it, so a subscription reaches
+// every chat route rather than only the one that spends on the model.
+func TestGetChat_Subscriber(t *testing.T) {
+	f := newChatFixture(t, "somebody-else@example.com")
+	f.subscribe(t)
+
+	rec := httptest.NewRecorder()
+	f.service.GetChat(rec, chatRequestFor(http.MethodGet, nil))
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+}
+
+// A profile that cannot be read is not an entitled caller: the subscription is a stored fact, so a
+// datastore that will not answer has to fail the request rather than be read as "not subscribed".
+func TestSendChatMessage_ProfileLookupFails(t *testing.T) {
+	f := newChatFixture(t)
+	f.users.getErr = errors.New("firestore is down")
+
+	rec := f.send(t, map[string]string{"message": "tighten it"})
+
+	if rec.Result().StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusInternalServerError)
+	}
+	if len(f.assistant.requests) != 0 {
+		t.Error("the model was called although the caller's entitlement was never established")
 	}
 }

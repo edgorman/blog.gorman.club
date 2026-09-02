@@ -633,6 +633,78 @@ func TestGetCurrentUser_ReportsAssistantAccess(t *testing.T) {
 	}
 }
 
+// An account that paid has the assistant on a deployment that grants nobody anything, so a client
+// is told exactly what the chat routes would enforce rather than only what was configured.
+func TestGetCurrentUser_ReportsASubscription(t *testing.T) {
+	until := time.Now().UTC().Add(time.Hour)
+	users := newFakeUserRepository()
+	users.seed(entity.User{ID: "caller", Username: "calm-smiling-kestrel", SubscribedUntil: &until})
+	s := newAssistantService(nil, users, nil, nil, []string{"somebody-else@example.com"})
+
+	req := withVerifiedCaller(
+		httptest.NewRequest(http.MethodGet, "/users/me", nil), "caller", "ejgorman@gmail.com")
+	rec := httptest.NewRecorder()
+	s.GetCurrentUser(rec, req)
+
+	var got currentUserResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !got.AssistantEnabled {
+		t.Error("assistantEnabled = false, want true for an account that has subscribed")
+	}
+	// An account may see when its own paid access runs out; nobody else's lookup carries it.
+	if got.SubscribedUntil == nil || !got.SubscribedUntil.Equal(until) {
+		t.Errorf("subscribedUntil = %v, want %v", got.SubscribedUntil, until)
+	}
+}
+
+// A client editing its bio must not clear its paid access: the request is applied to the stored
+// profile, and a subscription is not a field a request can carry at all.
+func TestPutUser_KeepsTheSubscription(t *testing.T) {
+	until := time.Now().UTC().Add(time.Hour)
+	users := newFakeUserRepository()
+	users.seed(entity.User{ID: "caller", Username: "calm-smiling-kestrel", SubscribedUntil: &until})
+	s := newTestService(nil, users)
+
+	body := userRequestBody(t, userRequest{Bio: "hello"})
+	rec := httptest.NewRecorder()
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	stored := users.users["caller"]
+	if stored.SubscribedUntil == nil || !stored.SubscribedUntil.Equal(until) {
+		t.Errorf("stored subscribedUntil = %v, want %v", stored.SubscribedUntil, until)
+	}
+}
+
+// Who is paying is nobody else's business: a profile looked up by name carries no subscription at
+// all, however the account it names pays. entity.User holds no json tag for the field, so this is
+// checked on the bytes rather than on a struct that could not represent it.
+func TestGetUser_HidesTheSubscription(t *testing.T) {
+	until := time.Now().UTC().Add(time.Hour)
+	users := newFakeUserRepository()
+	users.seed(entity.User{ID: "caller", Username: "calm-smiling-kestrel", SubscribedUntil: &until})
+	s := newTestService(nil, users)
+
+	req := httptest.NewRequest(http.MethodGet, "/users/calm-smiling-kestrel", nil)
+	req.SetPathValue("username", "calm-smiling-kestrel")
+	rec := httptest.NewRecorder()
+	s.GetUser(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	if strings.Contains(rec.Body.String(), "subscribedUntil") {
+		t.Errorf("body = %s, want a public profile to disclose no subscription", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "assistantEnabled") {
+		t.Errorf("body = %s, want a public profile to disclose no capability either", rec.Body.String())
+	}
+}
+
 // A client that has just created its profile learns what it may do without a second request. The
 // capability follows the credential, not the name the profile happens to hold.
 func TestPutUser_ReportsAssistantAccess(t *testing.T) {

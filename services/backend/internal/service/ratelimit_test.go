@@ -333,7 +333,7 @@ func TestHandler_LimitsAssistantTurnsPerCaller(t *testing.T) {
 	users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel"})
 
 	s := New(
-		Config{AssistantAllowlist: entity.NewAssistantAllowlist([]string{chatEmail})},
+		Config{AssistantEntitlement: entity.NewAssistantEntitlement([]string{chatEmail})},
 		blogs, users, newFakeChatRepository(), newFakeCommentRepository(), newFakeReactionRepository(),
 		fakeVerifier{uid: chatOwner, email: chatEmail, emailVerified: true},
 		&fakeAssistant{},

@@ -62,23 +62,25 @@ func run() error {
 		Location:  envOr("ASSISTANT_LOCATION", "global"),
 	})
 
-	// A deployment with no model has nobody on the allowlist, whatever the allowlist says: the
-	// capability /users/me reports is then accurate, and a client never offers an assistant that
-	// could only answer 503.
-	allowlist := entity.NewAssistantAllowlist(splitList(os.Getenv("ASSISTANT_ALLOWED_EMAILS")))
+	// A deployment with no model entitles nobody, whatever it was configured to grant and whatever
+	// an account has paid for: the capability /users/me reports is then accurate, and a client
+	// never offers an assistant that could only answer 503. That is the zero entitlement, which is
+	// why it is written as one rather than as an empty grant list - an empty list still entitles a
+	// subscriber.
+	entitlement := entity.NewAssistantEntitlement(splitList(os.Getenv("ASSISTANT_ALLOWED_EMAILS")))
 	if !assistant.Configured() {
 		log.Print("warning: ASSISTANT_MODEL or GCP_PROJECT_ID is unset, so the writing assistant is disabled")
-		allowlist = entity.NewAssistantAllowlist(nil)
-	} else if allowlist.Empty() {
-		log.Print("warning: ASSISTANT_ALLOWED_EMAILS is unset, so the writing assistant is enabled for nobody")
+		entitlement = entity.AssistantEntitlement{}
+	} else if entitlement.GrantsNobody() {
+		log.Print("warning: ASSISTANT_ALLOWED_EMAILS is unset, so the writing assistant is enabled only for accounts that have subscribed")
 	}
 
 	api := service.New(
 		service.Config{
-			Environment:        environment,
-			Commit:             commit,
-			AllowedOrigin:      os.Getenv("CORS_ALLOWED_ORIGIN"),
-			AssistantAllowlist: allowlist,
+			Environment:          environment,
+			Commit:               commit,
+			AllowedOrigin:        os.Getenv("CORS_ALLOWED_ORIGIN"),
+			AssistantEntitlement: entitlement,
 		},
 		firestore.NewBlogRepository(client),
 		firestore.NewUserRepository(client),

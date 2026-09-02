@@ -46,31 +46,55 @@ type chatReplyResponse struct {
 	Updated  bool                 `json:"updated"`
 }
 
-// requireAssistantAccess checks the caller may use the assistant at all, writing the error
-// response and returning false otherwise.
+// requireAssistantAccess checks the caller's account is entitled to the assistant, writing the
+// error response and returning false otherwise.
 //
-// Access is decided from the verified credential alone, so there is nothing to read and nothing a
-// request can assert about itself: the address the allowlist matches came out of a signed token
-// (see entity.AssistantAllowlist). A caller who is signed in and owns the post but is not on the
-// list gets a 403 saying so plainly - the feature's existence is not a secret, and there is
-// nothing to hide by pretending the route is not there.
-func (s *Service) requireAssistantAccess(w http.ResponseWriter, r *http.Request) bool {
-	if !s.cfg.AssistantAllowlist.Allows(callerFromContext(r.Context())) {
+// Nothing the request asserts about itself is consulted: the address a grant matches came out of a
+// signed token, and the subscription comes from the caller's own stored profile, looked up by the
+// uid in that token (see entity.AssistantEntitlement). A caller with no profile has no
+// subscription either, and the zero profile answers that without a branch of its own - which is
+// also why a missing one is not an error here.
+//
+// A caller who is signed in and owns the post but is not entitled gets a 403 saying so plainly:
+// the feature's existence is not a secret, and there is nothing to hide by pretending the route is
+// not there.
+func (s *Service) requireAssistantAccess(w http.ResponseWriter, r *http.Request, action entity.Action) bool {
+	caller := callerFromContext(r.Context())
+
+	// A caller with no uid is entitled to nothing whatever their profile said, so the lookup is
+	// skipped rather than made with an id no document could be at. requireAuth has already
+	// refused them; this only keeps the refusal from costing a datastore read.
+	var user entity.User
+	if caller.UID != "" {
+		stored, err := s.users.Get(r.Context(), caller.UID)
+		if err != nil && !errors.Is(err, repository.ErrNotFound) {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return false
+		}
+		user = stored
+	}
+
+	if !s.cfg.AssistantEntitlement.Permission(action, caller, user).Allows(caller.UID) {
 		writeError(w, http.StatusForbidden, "the writing assistant is not enabled for your account")
 		return false
 	}
 	return true
 }
 
-// assistantBlog resolves the post a chat route addresses and checks the caller both owns it and
-// may use the assistant. Ownership is checked first so a caller who cannot see a post learns
-// nothing about it from a route they are not entitled to use either.
-func (s *Service) assistantBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
-	blog, ok := s.requireOwnedBlog(w, r)
+// assistantBlog resolves the post a chat route addresses and checks the caller both may write it
+// and is entitled to the assistant. The post is checked first so a caller who cannot see one
+// learns nothing about it from a route they are not entitled to use either.
+//
+// The post's own permission is ActionUpdate for all three routes, whatever the route does to the
+// conversation: a chat is an author's working notes on a post, so being allowed to hold one is
+// being allowed to change what it is about. action is what the conversation is being asked of,
+// which is the assistant's entitlement to check rather than the post's.
+func (s *Service) assistantBlog(w http.ResponseWriter, r *http.Request, action entity.Action) (entity.Blog, bool) {
+	blog, ok := s.requireBlogPermission(w, r, entity.ActionUpdate)
 	if !ok {
 		return entity.Blog{}, false
 	}
-	if !s.requireAssistantAccess(w, r) {
+	if !s.requireAssistantAccess(w, r, action) {
 		return entity.Blog{}, false
 	}
 	return blog, true
@@ -80,7 +104,7 @@ func (s *Service) assistantBlog(w http.ResponseWriter, r *http.Request) (entity.
 // conversation rather than a 404: there is nothing missing, it simply has not been started, and a
 // client opening the panel would only have to translate the 404 back into the same empty list.
 func (s *Service) GetChat(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.assistantBlog(w, r)
+	blog, ok := s.assistantBlog(w, r, entity.ActionRead)
 	if !ok {
 		return
 	}
@@ -101,7 +125,7 @@ func (s *Service) GetChat(w http.ResponseWriter, r *http.Request) {
 // DeleteChat throws the conversation away, so the author can start the assistant over without
 // starting the post over. The post itself is untouched, including any edit the assistant made.
 func (s *Service) DeleteChat(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.assistantBlog(w, r)
+	blog, ok := s.assistantBlog(w, r, entity.ActionDelete)
 	if !ok {
 		return
 	}
@@ -139,7 +163,7 @@ func draftFromRequest(blog entity.Blog, body chatRequest) (entity.Draft, error) 
 // Nothing is stored for a turn that failed, so a request the model never answered leaves the post
 // as it was and the author's message still in the box to send again.
 func (s *Service) SendChatMessage(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.assistantBlog(w, r)
+	blog, ok := s.assistantBlog(w, r, entity.ActionUpdate)
 	if !ok {
 		return
 	}

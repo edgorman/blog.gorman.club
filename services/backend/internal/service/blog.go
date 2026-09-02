@@ -206,39 +206,37 @@ func (s *Service) blogFromPath(w http.ResponseWriter, r *http.Request) (entity.B
 	return blog, true
 }
 
-// requireReadableBlog loads the post the request addresses and checks the caller may read it,
-// writing a 404 and returning false otherwise. A caller who cannot read a post is shown the same
-// "not found" a missing one gets, rather than a 403 that would out its existence - which is
-// exactly what a URL built from the post's own title lets a stranger probe for.
-func (s *Service) requireReadableBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
+// requireBlogPermission loads the post the request addresses and checks the caller holds the named
+// permission on it (see entity.Blog.Permission), writing the error response and returning false
+// otherwise.
+//
+// Readability is checked first whatever the action, and a caller who fails it is shown the same
+// "not found" a missing post gets rather than the 403 they were really refused with: a URL built
+// from the post's own title is exactly what a stranger can guess, and a 403 would confirm the
+// guess. Only once a post is visible to the caller does a failed check become a 403, which reveals
+// nothing they did not already know. Asking for ActionRead therefore checks the same thing twice
+// and answers 404 either way, which is what makes requireReadableBlog below only a name for it.
+func (s *Service) requireBlogPermission(w http.ResponseWriter, r *http.Request, action entity.Action) (entity.Blog, bool) {
 	blog, ok := s.blogFromPath(w, r)
 	if !ok {
 		return entity.Blog{}, false
 	}
 
-	if !blog.CanBeReadBy(uidFromContext(r.Context())) {
+	uid := uidFromContext(r.Context())
+	if !blog.Permission(entity.ActionRead).Allows(uid) {
 		writeError(w, http.StatusNotFound, "blog not found")
+		return entity.Blog{}, false
+	}
+	if !blog.Permission(action).Allows(uid) {
+		writeError(w, http.StatusForbidden, "forbidden")
 		return entity.Blog{}, false
 	}
 	return blog, true
 }
 
-// requireOwnedBlog loads the post the request addresses and checks the caller owns it, writing the
-// error response and returning false otherwise. Readability is checked first and masked as the
-// same 404 requireReadableBlog gives, since a non-owner attempting to edit or delete a post they
-// cannot even read must not learn it exists either; only once a post is visible to the caller does
-// a failed ownership check become a 403, which reveals nothing the caller did not already know.
-func (s *Service) requireOwnedBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
-	blog, ok := s.requireReadableBlog(w, r)
-	if !ok {
-		return entity.Blog{}, false
-	}
-
-	if !blog.IsOwnedBy(uidFromContext(r.Context())) {
-		writeError(w, http.StatusForbidden, "forbidden")
-		return entity.Blog{}, false
-	}
-	return blog, true
+// requireReadableBlog loads the post the request addresses and checks the caller may read it.
+func (s *Service) requireReadableBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
+	return s.requireBlogPermission(w, r, entity.ActionRead)
 }
 
 // ListBlogs returns every blog the caller is allowed to read, newest first.
@@ -279,6 +277,14 @@ func (s *Service) GetBlog(w http.ResponseWriter, r *http.Request) {
 // saveBlog).
 func (s *Service) CreateBlog(w http.ResponseWriter, r *http.Request) {
 	blog := entity.Blog{OwnerID: uidFromContext(r.Context())}
+	// A post is created owned by whoever asked, so the permission is asked of a post that already
+	// names them: what it excludes is a caller with no uid, which requireAuth has already refused.
+	// Asking anyway is what keeps creating a post in the same table as every other action rather
+	// than being the one rule nothing writes down.
+	if !requirePermission(w, r, blog.Permission(entity.ActionCreate)) {
+		return
+	}
+
 	if !decodeBlogRequest(w, r, &blog) {
 		return
 	}
@@ -307,7 +313,7 @@ func (s *Service) CreateBlog(w http.ResponseWriter, r *http.Request) {
 // the request is applied to the stored blog, the slug, ownerId, and createdAt carry over untouched
 // - so retitling a post changes what readers see without moving the URL it lives at.
 func (s *Service) UpdateBlog(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireOwnedBlog(w, r)
+	blog, ok := s.requireBlogPermission(w, r, entity.ActionUpdate)
 	if !ok {
 		return
 	}
@@ -332,7 +338,7 @@ func (s *Service) UpdateBlog(w http.ResponseWriter, r *http.Request) {
 
 // DeleteBlog removes a blog. Only the owner may delete it.
 func (s *Service) DeleteBlog(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireOwnedBlog(w, r)
+	blog, ok := s.requireBlogPermission(w, r, entity.ActionDelete)
 	if !ok {
 		return
 	}

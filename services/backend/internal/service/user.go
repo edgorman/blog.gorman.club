@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
@@ -51,17 +52,29 @@ func (u userRequest) applyTo(user *entity.User) error {
 // must not disclose who has the assistant, so it cannot go on entity.User itself. A client uses it
 // to decide whether to offer the assistant at all - the routes enforce it either way, this only
 // keeps a button off the screen for somebody who would be told no.
+//
+// SubscribedUntil is here for the same reason and travels the same way: an account may see when
+// its own paid access runs out, and nobody else's lookup ever carries it (entity.User keeps no
+// json tag for it at all). It is null for an account that has never subscribed - which is every
+// account until a checkout writes one.
 type currentUserResponse struct {
 	entity.User
-	AssistantEnabled bool `json:"assistantEnabled"`
+	AssistantEnabled bool       `json:"assistantEnabled"`
+	SubscribedUntil  *time.Time `json:"subscribedUntil,omitempty"`
 }
 
-// currentUser pairs a profile with what the credential behind it may do. The capability comes from
-// the caller rather than from the profile, since that is what the allowlist is keyed on.
+// currentUser pairs a profile with what the credential behind it may do. The capability is asked
+// of the entitlement rather than computed here, so a client is told exactly what the chat routes
+// would enforce (see entity.AssistantEntitlement): the caller supplies the granted address, the
+// profile supplies the subscription.
 func (s *Service) currentUser(ctx context.Context, user entity.User) currentUserResponse {
+	caller := callerFromContext(ctx)
+	permission := s.cfg.AssistantEntitlement.Permission(entity.ActionUpdate, caller, user)
+
 	return currentUserResponse{
 		User:             user,
-		AssistantEnabled: s.cfg.AssistantAllowlist.Allows(callerFromContext(ctx)),
+		AssistantEnabled: permission.Allows(caller.UID),
+		SubscribedUntil:  user.SubscribedUntil,
 	}
 }
 

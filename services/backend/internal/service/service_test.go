@@ -51,15 +51,35 @@ func (r *fakeBlogRepository) Get(_ context.Context, slug string) (entity.Blog, e
 	return blog, nil
 }
 
-func (r *fakeBlogRepository) List(_ context.Context, uid string) ([]entity.Blog, error) {
+// List mirrors the Firestore repository's contract - filter, sort newest first, cut at the
+// StartAfter cursor, cap at Limit, report whether anything was cut - over the in-memory map rather
+// than a real cursor-walked query, since the two are observably the same from a caller's side.
+func (r *fakeBlogRepository) List(_ context.Context, uid string, params repository.ListParams) ([]entity.Blog, bool, error) {
+	limit := params.Limit
+	if limit <= 0 {
+		limit = len(r.blogs) + 1
+	}
+
 	visible := make([]entity.Blog, 0, len(r.blogs))
 	for _, blog := range r.blogs {
-		if !blog.IsDeleted() && blog.CanBeReadBy(uid) {
-			visible = append(visible, blog)
+		if blog.IsDeleted() || !blog.CanBeReadBy(uid) {
+			continue
 		}
+		if params.OwnerUID != "" && blog.OwnerID != params.OwnerUID {
+			continue
+		}
+		if !params.StartAfter.IsZero() && !blog.CreatedAt.Before(params.StartAfter) {
+			continue
+		}
+		visible = append(visible, blog)
 	}
 	slices.SortFunc(visible, func(a, b entity.Blog) int { return b.CreatedAt.Compare(a.CreatedAt) })
-	return visible, nil
+
+	hasMore := len(visible) > limit
+	if hasMore {
+		visible = visible[:limit]
+	}
+	return visible, hasMore, nil
 }
 
 func (r *fakeBlogRepository) Create(_ context.Context, blog entity.Blog) (entity.Blog, error) {

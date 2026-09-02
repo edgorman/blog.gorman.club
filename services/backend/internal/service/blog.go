@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
@@ -239,22 +241,70 @@ func (s *Service) requireReadableBlog(w http.ResponseWriter, r *http.Request) (e
 	return s.requireBlogPermission(w, r, entity.ActionRead)
 }
 
-// ListBlogs returns every blog the caller is allowed to read, newest first.
+// listBlogsDefaultLimit is the page size ListBlogs applies when a caller sends no `limit`, keeping
+// even a bare `GET /blogs` bounded rather than defaulting to the unbounded read pagination exists
+// to avoid.
+const listBlogsDefaultLimit = 20
+
+// blogListResponse is one page of ListBlogs: the posts themselves, plus whether a further page
+// follows. There is no separate cursor field, because the createdAt on the last post here already
+// is one - a caller continues by sending it back as `startAfter`.
+type blogListResponse struct {
+	Posts   []blogResponse `json:"posts"`
+	HasMore bool           `json:"hasMore"`
+}
+
+// parseBlogListParams reads ListBlogs' paging and scope out of the query string: `limit` bounds
+// the page, `startAfter` (an RFC3339 timestamp) continues one, and `ownerId` narrows to a single
+// author's posts for a profile feed. Each is optional, and a malformed one is reported as a 400
+// rather than silently ignored - a client sending garbage here is the one case among List's
+// callers where that garbage should not be read as "no preference".
+func parseBlogListParams(r *http.Request) (repository.ListParams, error) {
+	query := r.URL.Query()
+	params := repository.ListParams{Limit: listBlogsDefaultLimit, OwnerUID: query.Get("ownerId")}
+
+	if raw := query.Get("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit <= 0 {
+			return repository.ListParams{}, errors.New("limit must be a positive integer")
+		}
+		params.Limit = limit
+	}
+
+	if raw := query.Get("startAfter"); raw != "" {
+		startAfter, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			return repository.ListParams{}, errors.New("startAfter must be an RFC3339 timestamp")
+		}
+		params.StartAfter = startAfter
+	}
+
+	return params, nil
+}
+
+// ListBlogs returns one page of the blogs the caller is allowed to read, newest first - the whole
+// collection for the general feed, or (with `ownerId` set) one author's posts for a profile feed.
 func (s *Service) ListBlogs(w http.ResponseWriter, r *http.Request) {
-	blogs, err := s.blogs.List(r.Context(), uidFromContext(r.Context()))
+	params, err := parseBlogListParams(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	blogs, hasMore, err := s.blogs.List(r.Context(), uidFromContext(r.Context()), params)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	// withAuthors always builds its slice, so an empty collection stays an empty JSON array rather
-	// than becoming null - which is what the nil check that used to sit here was for.
+	// withAuthors always builds its slice, so an empty page stays an empty JSON array rather than
+	// becoming null - which is what the nil check that used to sit here was for.
 	responses, err := s.withAuthors(r.Context(), blogs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, responses)
+	writeJSON(w, http.StatusOK, blogListResponse{Posts: responses, HasMore: hasMore})
 }
 
 // GetBlog returns a single blog, provided the caller is allowed to read it.

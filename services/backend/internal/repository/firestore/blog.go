@@ -3,7 +3,6 @@ package firestore
 
 import (
 	"context"
-	"slices"
 	"time"
 
 	fs "cloud.google.com/go/firestore"
@@ -111,35 +110,89 @@ func (r *BlogRepository) Get(ctx context.Context, slug string) (entity.Blog, err
 	return blog, nil
 }
 
-// List runs CanBeReadBy's predicate as a Firestore OR query, so a caller never fetches a private
-// post they aren't on. Sorting happens here because ordering a disjunction by createdAt would need
-// a composite index for each of its branches.
-func (r *BlogRepository) List(ctx context.Context, uid string) ([]entity.Blog, error) {
-	docs, err := r.blogs.WhereEntity(fs.OrFilter{
+// maxBlogListPageSize is the largest page List ever returns, whatever a caller asks for - so a
+// param nobody validated cannot turn a page into the very full-collection read pagination exists
+// to avoid.
+const maxBlogListPageSize = 50
+
+// listQuery is the unfiltered-by-page half of List: which documents are candidates at all.
+//
+// A profile feed (params.OwnerUID set) narrows to one author's documents with a plain equality
+// filter; whether the caller may actually read each one is left to the CanBeReadBy check List
+// applies to every document either query yields, rather than folded in here as a second Firestore
+// filter. That keeps this to the one composite index (ownerId, createdAt) List's other branch
+// already needs, at the cost of walking past a private post of that author's before reaching the
+// next visible one - a cost bounded by that one author's post count, not the whole collection.
+//
+// The general feed (params.OwnerUID empty) runs CanBeReadBy's predicate as a Firestore OR query,
+// so a caller never fetches a private post they aren't on in the first place. Both branches still
+// recheck CanBeReadBy in List: that is what keeps this filter and entity.Blog.CanBeReadBy from
+// drifting apart unnoticed, since a mismatch here would just cost an extra document read rather
+// than leak one.
+func (r *BlogRepository) listQuery(uid string, ownerUID string) fs.Query {
+	if ownerUID != "" {
+		return r.blogs.Where("ownerId", "==", ownerUID)
+	}
+	return r.blogs.WhereEntity(fs.OrFilter{
 		Filters: []fs.EntityFilter{
 			fs.PropertyFilter{Path: "visibility", Operator: "==", Value: string(entity.VisibilityPublic)},
 			fs.PropertyFilter{Path: "ownerId", Operator: "==", Value: uid},
 			fs.PropertyFilter{Path: "allowedUserIds", Operator: "array-contains", Value: uid},
 		},
-	}).Documents(ctx).GetAll()
-	if err != nil {
-		return nil, err
+	})
+}
+
+// List walks listQuery's candidates in createdAt order, one Firestore page at a time, discarding
+// whatever the caller may not read and whatever is soft-deleted as it goes - until it has
+// params.Limit+1 live, readable posts or the candidates run out. The +1 is never returned; its
+// presence is what hasMore reports, so a caller learns whether to offer a further page without
+// this answering more than it was asked for. Ordering is a plain OrderBy here, unlike the old
+// unpaginated List's in-memory sort, because a cursor has to be a position the query itself
+// understands.
+func (r *BlogRepository) List(ctx context.Context, uid string, params repository.ListParams) ([]entity.Blog, bool, error) {
+	limit := params.Limit
+	if limit <= 0 || limit > maxBlogListPageSize {
+		limit = maxBlogListPageSize
 	}
 
-	blogs := make([]entity.Blog, 0, len(docs))
-	for _, doc := range docs {
-		blog, err := documentToBlog(doc)
+	query := r.listQuery(uid, params.OwnerUID).OrderBy("createdAt", fs.Desc)
+	cursor := params.StartAfter
+
+	blogs := make([]entity.Blog, 0, limit)
+	for len(blogs) <= limit {
+		page := query.Limit(limit + 1 - len(blogs))
+		if !cursor.IsZero() {
+			page = page.StartAfter(cursor)
+		}
+
+		docs, err := page.Documents(ctx).GetAll()
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		if blog.IsDeleted() {
-			continue
+		if len(docs) == 0 {
+			break
 		}
-		blogs = append(blogs, blog)
-	}
-	slices.SortFunc(blogs, func(a, b entity.Blog) int { return b.CreatedAt.Compare(a.CreatedAt) })
 
-	return blogs, nil
+		for _, doc := range docs {
+			blog, err := documentToBlog(doc)
+			if err != nil {
+				return nil, false, err
+			}
+			// Advanced whether or not the post is kept, so the next round of this loop - or the next
+			// caller's page - continues from the last candidate actually seen, not the last one kept.
+			cursor = blog.CreatedAt
+			if blog.IsDeleted() || !blog.CanBeReadBy(uid) {
+				continue
+			}
+			blogs = append(blogs, blog)
+		}
+	}
+
+	hasMore := len(blogs) > limit
+	if hasMore {
+		blogs = blogs[:limit]
+	}
+	return blogs, hasMore, nil
 }
 
 // Create writes the post at the key its slug names, rather than at one Firestore picks.

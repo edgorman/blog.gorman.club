@@ -168,7 +168,7 @@ func (r *CommentRepository) Create(ctx context.Context, comment entity.Comment) 
 
 // Delete erases the comment. Firestore deletes are idempotent, so removing one that is already
 // gone succeeds - the service reads it first anyway, since who may delete it is a property of the
-// comment (see entity.Comment.CanBeDeletedBy).
+// comment (see entity.Comment.Permission).
 func (r *CommentRepository) Delete(ctx context.Context, blogSlug, id string) error {
 	var candidate entity.Comment
 	if err := candidate.SetID(id); err != nil {

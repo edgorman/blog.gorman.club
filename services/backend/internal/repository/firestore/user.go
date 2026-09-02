@@ -15,10 +15,14 @@ import (
 
 // userDocument is the stored shape of a profile; see blogDocument for why it is separate.
 type userDocument struct {
-	Username  string    `firestore:"username"`
-	Bio       string    `firestore:"bio"`
-	CreatedAt time.Time `firestore:"createdAt"`
-	UpdatedAt time.Time `firestore:"updatedAt"`
+	Username string `firestore:"username"`
+	Bio      string `firestore:"bio"`
+	// SubscribedUntil is omitted rather than stored as the zero time for an account that never
+	// subscribed, so "has never paid" is an absent field rather than a date in 1 AD - which a
+	// query for live subscriptions would otherwise have to know to exclude.
+	SubscribedUntil *time.Time `firestore:"subscribedUntil,omitempty"`
+	CreatedAt       time.Time  `firestore:"createdAt"`
+	UpdatedAt       time.Time  `firestore:"updatedAt"`
 }
 
 // usernameDocument is a claim on one username, keyed by entity.User.UsernameKey. Uniqueness is a
@@ -30,21 +34,23 @@ type usernameDocument struct {
 
 func userToDocument(user entity.User) userDocument {
 	return userDocument{
-		Username:  user.Username,
-		Bio:       user.Bio,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
+		Username:        user.Username,
+		Bio:             user.Bio,
+		SubscribedUntil: user.SubscribedUntil,
+		CreatedAt:       user.CreatedAt,
+		UpdatedAt:       user.UpdatedAt,
 	}
 }
 
 // toEntity rebuilds a profile from its stored fields; id is the document key.
 func (d userDocument) toEntity(id string) entity.User {
 	return entity.User{
-		ID:        id,
-		Username:  d.Username,
-		Bio:       d.Bio,
-		CreatedAt: d.CreatedAt,
-		UpdatedAt: d.UpdatedAt,
+		ID:              id,
+		Username:        d.Username,
+		Bio:             d.Bio,
+		SubscribedUntil: d.SubscribedUntil,
+		CreatedAt:       d.CreatedAt,
+		UpdatedAt:       d.UpdatedAt,
 	}
 }
 

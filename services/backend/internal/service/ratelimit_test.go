@@ -329,13 +329,16 @@ func TestHandler_LimitsAssistantTurnsPerCaller(t *testing.T) {
 		Content:    "the cat sat",
 		Visibility: entity.VisibilityPublic,
 	})
+	// The subscription is what entitles the account to reach the assistant at all, so the budget
+	// under test is the one that stops a caller who is allowed to spend.
+	until := time.Now().UTC().Add(time.Hour)
 	users := newFakeUserRepository()
-	users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel"})
+	users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel", SubscribedUntil: &until})
 
 	s := New(
-		Config{AssistantAllowlist: entity.NewAssistantAllowlist([]string{chatEmail})},
+		Config{AssistantEntitlement: entity.NewAssistantEntitlement(true)},
 		blogs, users, newFakeChatRepository(), newFakeCommentRepository(), newFakeReactionRepository(),
-		fakeVerifier{uid: chatOwner, email: chatEmail, emailVerified: true},
+		fakeVerifier{uid: chatOwner},
 		&fakeAssistant{},
 	)
 	freezeLimiters(s)

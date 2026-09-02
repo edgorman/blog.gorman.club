@@ -153,6 +153,52 @@ func TestBlog_CanBeReadBy(t *testing.T) {
 	}
 }
 
+// A post's visibility is the one place a resource decides its own read audience, so it has to say
+// the same thing in the vocabulary of the access model: public is everybody, private is the owner,
+// and naming readers is what widens private into a whitelist.
+func TestBlog_PermissionToRead(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		blog Blog
+		want Access
+	}{
+		{"public", Blog{OwnerID: "owner", Visibility: VisibilityPublic}, AccessPublic},
+		{"private", Blog{OwnerID: "owner", Visibility: VisibilityPrivate}, AccessPrivate},
+		{
+			"private naming readers",
+			Blog{OwnerID: "owner", Visibility: VisibilityPrivate, AllowedUserIDs: []string{"friend"}},
+			AccessWhitelist,
+		},
+		// A stored post carrying a visibility this build does not know reads as closed rather than
+		// open, which is the way round to get an unrecognised value wrong.
+		{"an unrecognised visibility", Blog{OwnerID: "owner", Visibility: Visibility("everyone")}, AccessPrivate},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.blog.Permission(ActionRead).Access; got != tt.want {
+				t.Errorf("Permission(read).Access = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// Writing a post is the owner's alone whatever its visibility - a public post is not a post
+// strangers may edit - and creating one takes an account, which is what the private mode on a post
+// that already names its author amounts to.
+func TestBlog_PermissionToWrite(t *testing.T) {
+	post := Blog{OwnerID: "owner", Visibility: VisibilityPublic, AllowedUserIDs: []string{"friend"}}
+
+	for _, action := range []Action{ActionCreate, ActionUpdate, ActionDelete} {
+		if !post.Permission(action).Allows("owner") {
+			t.Errorf("Permission(%q) refused the owner", action)
+		}
+		for _, uid := range []string{"friend", "stranger", ""} {
+			if post.Permission(action).Allows(uid) {
+				t.Errorf("Permission(%q).Allows(%q) = true, want only the owner", action, uid)
+			}
+		}
+	}
+}
+
 // An unowned blog must not be claimed by a caller whose uid is also empty.
 func TestBlog_IsOwnedBy_EmptyUIDNeverMatches(t *testing.T) {
 	if (Blog{}).IsOwnedBy("") {

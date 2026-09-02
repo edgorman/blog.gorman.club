@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
@@ -21,6 +22,7 @@ import (
 type chatFixture struct {
 	service   *Service
 	blogs     *fakeBlogRepository
+	users     *fakeUserRepository
 	chats     *fakeChatRepository
 	assistant *fakeAssistant
 }
@@ -28,16 +30,14 @@ type chatFixture struct {
 const (
 	chatSlug  = "hello-world"
 	chatOwner = "caller"
-	chatEmail = "ejgorman@gmail.com"
 )
 
-// newChatFixture enables the assistant for the caller unless allowed says otherwise.
-func newChatFixture(t *testing.T, allowed ...string) *chatFixture {
+// newChatFixture entitles the caller by giving their profile a live subscription, which is the
+// only thing that entitles anybody. Pass false for an account that has not paid.
+func newChatFixture(t *testing.T, subscribed ...bool) *chatFixture {
 	t.Helper()
 
-	if allowed == nil {
-		allowed = []string{chatEmail}
-	}
+	entitled := len(subscribed) == 0 || subscribed[0]
 
 	blogs := newFakeBlogRepository()
 	blogs.seed(entity.Blog{
@@ -49,25 +49,31 @@ func newChatFixture(t *testing.T, allowed ...string) *chatFixture {
 	})
 
 	users := newFakeUserRepository()
-	users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel"})
+	owner := entity.User{ID: chatOwner, Username: "calm-smiling-kestrel"}
+	if entitled {
+		until := time.Now().UTC().Add(time.Hour)
+		owner.SubscribedUntil = &until
+	}
+	users.seed(owner)
 
 	chats := newFakeChatRepository()
 	assistant := &fakeAssistant{}
 
 	return &chatFixture{
-		service:   newAssistantService(blogs, users, chats, assistant, allowed),
+		service:   newAssistantService(blogs, users, chats, assistant),
 		blogs:     blogs,
+		users:     users,
 		chats:     chats,
 		assistant: assistant,
 	}
 }
 
 // chatRequestFor addresses the chat the way its route does: by the slug of the post it is about,
-// carrying the verified address the allowlist is keyed on.
+// as the caller who owns it.
 func chatRequestFor(method string, body io.Reader) *http.Request {
 	req := httptest.NewRequest(method, "/blogs/"+url.PathEscape(chatSlug)+"/chat", body)
 	req.SetPathValue("slug", chatSlug)
-	return withVerifiedCaller(req, chatOwner, chatEmail)
+	return withUID(req, chatOwner)
 }
 
 func chatBody(t *testing.T, body any) io.Reader {
@@ -307,9 +313,10 @@ func TestSendChatMessage_RejectsEmptyMessage(t *testing.T) {
 	}
 }
 
-// Access is decided from the verified credential, and checked before anything is spent on the model.
-func TestSendChatMessage_NotAllowed(t *testing.T) {
-	f := newChatFixture(t, "somebody-else@example.com")
+// Entitlement is decided from the caller's own stored profile, and checked before anything is
+// spent on the model.
+func TestSendChatMessage_NotSubscribed(t *testing.T) {
+	f := newChatFixture(t, false)
 
 	rec := f.send(t, map[string]string{"message": "rewrite it"})
 
@@ -322,15 +329,15 @@ func TestSendChatMessage_NotAllowed(t *testing.T) {
 	}
 }
 
-// A caller who does not own the post is answered exactly as requireOwnedBlog answers them, before
-// the allowlist is consulted at all - a stranger must not learn who has the assistant.
+// A caller who cannot write the post is answered on that alone, before the entitlement is
+// consulted at all - a stranger must not learn who has the assistant.
 func TestSendChatMessage_NotOwner(t *testing.T) {
 	f := newChatFixture(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/blogs/"+chatSlug+"/chat", chatBody(t, map[string]string{"message": "hi"}))
 	req.SetPathValue("slug", chatSlug)
 	rec := httptest.NewRecorder()
-	f.service.SendChatMessage(rec, withVerifiedCaller(req, "stranger", chatEmail))
+	f.service.SendChatMessage(rec, withUID(req, "stranger"))
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
@@ -376,17 +383,6 @@ func TestGetChat_ReturnsConversation(t *testing.T) {
 	}
 }
 
-func TestGetChat_NotAllowed(t *testing.T) {
-	f := newChatFixture(t, "somebody-else@example.com")
-
-	rec := httptest.NewRecorder()
-	f.service.GetChat(rec, chatRequestFor(http.MethodGet, nil))
-
-	if rec.Result().StatusCode != http.StatusForbidden {
-		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
-	}
-}
-
 // Starting the assistant over must not start the post over, edits included.
 func TestDeleteChat(t *testing.T) {
 	f := newChatFixture(t)
@@ -407,5 +403,52 @@ func TestDeleteChat(t *testing.T) {
 	}
 	if _, ok := f.blogs.stored(chatSlug); !ok {
 		t.Error("the post was deleted along with the conversation")
+	}
+}
+
+// A subscription that has run out is no subscription at all, and the account is refused exactly as
+// one that never had one.
+func TestSendChatMessage_ExpiredSubscription(t *testing.T) {
+	f := newChatFixture(t, false)
+
+	expired := time.Now().UTC().Add(-time.Minute)
+	f.users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel", SubscribedUntil: &expired})
+
+	rec := f.send(t, map[string]string{"message": "tighten it"})
+
+	if rec.Result().StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+	}
+	if len(f.assistant.requests) != 0 {
+		t.Error("the model was called for a subscription that had run out")
+	}
+}
+
+// Reading a conversation back costs the same entitlement as having it, so an account that has not
+// paid is refused on every chat route rather than only the one that spends on the model.
+func TestGetChat_NotSubscribed(t *testing.T) {
+	f := newChatFixture(t, false)
+
+	rec := httptest.NewRecorder()
+	f.service.GetChat(rec, chatRequestFor(http.MethodGet, nil))
+
+	if rec.Result().StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
+	}
+}
+
+// A profile that cannot be read is not an entitled caller: the subscription is a stored fact, so a
+// datastore that will not answer has to fail the request rather than be read as "not subscribed".
+func TestSendChatMessage_ProfileLookupFails(t *testing.T) {
+	f := newChatFixture(t)
+	f.users.getErr = errors.New("firestore is down")
+
+	rec := f.send(t, map[string]string{"message": "tighten it"})
+
+	if rec.Result().StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusInternalServerError)
+	}
+	if len(f.assistant.requests) != 0 {
+		t.Error("the model was called although the caller's entitlement was never established")
 	}
 }

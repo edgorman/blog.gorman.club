@@ -117,15 +117,24 @@ func (c Comment) Validate() error {
 	return candidate.SetBody(c.Body)
 }
 
-// CanBeDeletedBy is the single definition of who may remove a comment: whoever wrote it, and the
-// owner of the post it sits under. The second half is what makes this moderation rather than only
-// retraction - an author is answerable for what appears beneath their post, so they can take a
-// comment down without being able to write one in somebody else's name or edit what was said.
+// Permission is the single definition of who may do what to a comment, and it needs the post
+// because one of the rules is about the post: deleting a comment is a whitelist of exactly one
+// name beside its author, the owner of the post it sits under. That second name is what makes
+// deletion moderation rather than only retraction - an author is answerable for what appears
+// beneath their post, so they can take a comment down without being able to write one in somebody
+// else's name or edit what was said.
 //
-// The zero uid is nobody: an anonymous reader deletes nothing, whatever the comment holds.
-func (c Comment) CanBeDeletedBy(uid string, post Blog) bool {
-	if uid == "" {
-		return false
+// The zero uid is nobody under either mode: an anonymous reader deletes nothing, whatever the
+// comment holds.
+//
+// Reading is public here, and stays a smaller claim than it sounds: whether the thread is reachable
+// at all is the post's own read permission, asked first (see the service's comment routes). Being
+// public means a comment holds nothing further back from a reader who got that far.
+func (c Comment) Permission(action Action, post Blog) Permission {
+	permission := PermissionFor(ResourceComment, action)
+	permission.OwnerID = c.AuthorID
+	if action == ActionDelete && post.OwnerID != "" {
+		permission.AllowedUserIDs = []string{post.OwnerID}
 	}
-	return c.AuthorID == uid || post.IsOwnedBy(uid)
+	return permission
 }

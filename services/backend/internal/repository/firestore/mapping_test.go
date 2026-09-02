@@ -100,18 +100,35 @@ func TestChatMappingRoundTrip_NoMessages(t *testing.T) {
 }
 
 func TestUserMappingRoundTrip(t *testing.T) {
+	subscribed := updated.AddDate(0, 1, 0)
 	user := entity.User{
-		ID:        "user-1",
-		Username:  "sly-dancing-monkey",
-		Bio:       "hello",
-		CreatedAt: created,
-		UpdatedAt: updated,
+		ID:              "user-1",
+		Username:        "sly-dancing-monkey",
+		Bio:             "hello",
+		SubscribedUntil: &subscribed,
+		CreatedAt:       created,
+		UpdatedAt:       updated,
 	}
 
 	got := userToDocument(user).toEntity(user.ID)
 
 	if !reflect.DeepEqual(got, user) {
 		t.Errorf("round trip = %+v, want %+v", got, user)
+	}
+}
+
+// An account that never subscribed stores no date at all rather than the zero time, and reads back
+// as one that never subscribed rather than as one whose access ran out in 1 AD.
+func TestUserMappingWithoutASubscription(t *testing.T) {
+	user := entity.User{ID: "user-1", Username: "sly-dancing-monkey", CreatedAt: created, UpdatedAt: updated}
+
+	document := userToDocument(user)
+
+	if document.SubscribedUntil != nil {
+		t.Errorf("SubscribedUntil = %v, want nothing stored", document.SubscribedUntil)
+	}
+	if got := document.toEntity(user.ID); got.Subscribed(created) {
+		t.Error("Subscribed = true for a profile that never subscribed, want false")
 	}
 }
 

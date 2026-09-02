@@ -42,6 +42,32 @@ type User struct {
 	Bio       string    `json:"bio,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	// SubscribedUntil is when this account's paid access runs out, and is nil for an account that
+	// has never subscribed. It is the seam the payment provider writes to: nothing in this service
+	// sets it yet, and everything that asks whether an account has paid asks it (see Subscribed and
+	// AssistantEntitlement), so wiring a checkout up means writing this field and nothing else.
+	//
+	// It carries no json tag because a profile is public and who is paying is nobody else's
+	// business: it is reported only to the account itself, by the service's /users/me response,
+	// and never by a lookup of somebody else's name.
+	SubscribedUntil *time.Time `json:"-"`
+}
+
+// Subscribed reports whether the account's paid access is live at now. An account that never
+// subscribed and one whose subscription has run out are the same answer, deliberately: the only
+// thing anything here needs to know is whether it may spend, and "lapsed" is a billing question
+// rather than an access one.
+func (u User) Subscribed(now time.Time) bool {
+	return u.SubscribedUntil != nil && now.Before(*u.SubscribedUntil)
+}
+
+// Permission is the single definition of who may do what to a profile: anybody may read one, since
+// a username is the whole of a public identity and a post is shown by its author's name; only the
+// account itself may write or delete it, which the /users/me address makes structural.
+func (u User) Permission(action Action) Permission {
+	permission := PermissionFor(ResourceUser, action)
+	permission.OwnerID = u.ID
+	return permission
 }
 
 // SetUsername trims and validates a new username before applying it.

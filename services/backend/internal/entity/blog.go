@@ -34,7 +34,7 @@ func (v Visibility) Valid() bool {
 }
 
 // Blog is a post. This service holds the only credentials for the collection, so read and write
-// access is decided here (CanBeReadBy, IsOwnedBy) and nowhere else.
+// access is decided here (Permission, and CanBeReadBy over it) and nowhere else.
 //
 // A post has no identifier of its own beyond its slug: the slug alone addresses it (as
 // /blogs/{slug}) and is what the repository keys it by, so an opaque id would be a second name for
@@ -177,16 +177,51 @@ func (b Blog) IsDeleted() bool {
 	return b.DeletedAt != nil
 }
 
-// IsOwnedBy reports whether uid may write this blog.
+// IsOwnedBy reports whether uid wrote this blog. It is a fact about the post rather than a
+// permission - what owning one entitles you to is Permission's answer, and this is what that
+// answer is largely made of.
 func (b Blog) IsOwnedBy(uid string) bool {
 	return b.OwnerID != "" && b.OwnerID == uid
 }
 
-// CanBeReadBy is the single definition of read access: public posts are readable by any signed-in
-// caller, private ones only by their owner or a whitelisted uid.
-func (b Blog) CanBeReadBy(uid string) bool {
-	if b.Visibility == VisibilityPublic || b.IsOwnedBy(uid) {
-		return true
+// readAccess is a post's visibility said in the vocabulary of the access model: a public post's
+// audience is everybody, and a private one's is its owner - widened to a whitelist exactly when
+// the post names readers.
+//
+// This is the one place a resource decides its own audience rather than taking the fixed one the
+// policy table declares, and it is what visibility has always meant: a post is the only thing here
+// whose author chooses who may see it. Anything the setters would refuse reads as private, so a
+// document holding a visibility this build does not know is closed rather than open.
+func (b Blog) readAccess() (Access, []string) {
+	switch {
+	case b.Visibility == VisibilityPublic:
+		return AccessPublic, nil
+	case len(b.AllowedUserIDs) == 0:
+		return AccessPrivate, nil
+	default:
+		return AccessWhitelist, b.AllowedUserIDs
 	}
-	return slices.Contains(b.AllowedUserIDs, uid)
+}
+
+// Permission is the single definition of who may do what to a post: reading follows the post's own
+// visibility, and writing it - creating, updating, deleting - is the owner's alone.
+//
+// Creating is answered here too, against a post that does not exist yet: one is created owned by
+// whoever asked, so the permission it is checked against is the same private one an update gets,
+// on a Blog whose OwnerID is already the caller. What that actually excludes is the caller with no
+// uid at all.
+func (b Blog) Permission(action Action) Permission {
+	permission := PermissionFor(ResourceBlog, action)
+	permission.OwnerID = b.OwnerID
+	if action == ActionRead {
+		permission.Access, permission.AllowedUserIDs = b.readAccess()
+	}
+	return permission
+}
+
+// CanBeReadBy reports whether uid may see this post, which is Permission(ActionRead) asked by its
+// most common name. Repositories use it to filter what they hand back, so it stays a method on the
+// post rather than something every caller assembles.
+func (b Blog) CanBeReadBy(uid string) bool {
+	return b.Permission(ActionRead).Allows(uid)
 }

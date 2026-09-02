@@ -113,6 +113,9 @@ type fakeUserRepository struct {
 	// beforePut lets a test fail a write the in-memory state would otherwise allow, which is the
 	// only way to provoke a username collision when the name being written is generated at random.
 	beforePut func(entity.User) error
+	// getErr fails a lookup by id the in-memory state would otherwise answer, for a test asserting
+	// that a handler which needs the caller's own profile does not carry on without it.
+	getErr error
 }
 
 func newFakeUserRepository() *fakeUserRepository {
@@ -130,6 +133,9 @@ func (r *fakeUserRepository) seed(user entity.User) {
 
 func (r *fakeUserRepository) Get(_ context.Context, id string) (entity.User, error) {
 	r.gets++
+	if r.getErr != nil {
+		return entity.User{}, r.getErr
+	}
 	user, ok := r.users[id]
 	if !ok {
 		return entity.User{}, repository.ErrNotFound
@@ -418,31 +424,25 @@ func (a *fakeAssistant) Reply(_ context.Context, req repository.AssistantRequest
 	return a.reply(req)
 }
 
-// fakeVerifier is an in-memory repository.TokenVerifier. email and emailVerified describe the
-// address the provider vouches for, for a test reaching a route the assistant allowlist guards
-// through the real middleware; the zero value is an address nobody verified, which no allowlist
-// matches however it is spelled.
+// fakeVerifier is an in-memory repository.TokenVerifier, standing in for the signed identity a
+// provider would return. Only the uid is configurable, since that is the whole of what anything
+// downstream decides with: the assistant is entitled by the account's own subscription rather
+// than by anything the token says about an address.
 type fakeVerifier struct {
-	uid           string
-	email         string
-	emailVerified bool
-	err           error
+	uid string
+	err error
 }
 
 func (f fakeVerifier) Verify(_ context.Context, _ string) (entity.Caller, error) {
 	if f.err != nil {
 		return entity.Caller{}, f.err
 	}
-	email := f.email
-	if email == "" {
-		email = "user@example.com"
-	}
-	return entity.Caller{UID: f.uid, Email: email, Name: "User", EmailVerified: f.emailVerified}, nil
+	return entity.Caller{UID: f.uid, Email: "user@example.com", Name: "User", EmailVerified: true}, nil
 }
 
 // newTestService builds a Service over the given fakes, filling in whichever are not needed. The
-// assistant allowlist is empty, so a test that does not opt in is testing a deployment where the
-// assistant is off - which is every deployment but the one account it is enabled for.
+// assistant is available, so what decides it is whether the profile a test seeds has subscribed -
+// which none of them has unless it says so.
 func newTestService(blogs repository.BlogRepository, users repository.UserRepository) *Service {
 	return newCommentService(blogs, users, nil)
 }
@@ -466,18 +466,19 @@ func newReactionService(
 	comments repository.CommentRepository,
 	reactions repository.ReactionRepository,
 ) *Service {
-	return newFullService(blogs, users, nil, comments, reactions, nil, nil)
+	return newFullService(blogs, users, nil, comments, reactions, nil)
 }
 
-// newAssistantService builds a Service with the assistant enabled for the named addresses.
+// newAssistantService builds a Service over the repositories the chat routes touch. Who may use
+// the assistant is decided by the profiles in users, not here: an account is entitled while its
+// subscription is live.
 func newAssistantService(
 	blogs repository.BlogRepository,
 	users repository.UserRepository,
 	chats repository.ChatRepository,
 	assistant repository.Assistant,
-	allowed []string,
 ) *Service {
-	return newFullService(blogs, users, chats, nil, nil, assistant, allowed)
+	return newFullService(blogs, users, chats, nil, nil, assistant)
 }
 
 // newFullService is what the helpers above narrow: it fills in whichever fakes a test did not
@@ -489,7 +490,6 @@ func newFullService(
 	comments repository.CommentRepository,
 	reactions repository.ReactionRepository,
 	assistant repository.Assistant,
-	allowed []string,
 ) *Service {
 	if blogs == nil {
 		blogs = newFakeBlogRepository()
@@ -512,9 +512,9 @@ func newFullService(
 
 	return New(
 		Config{
-			Environment:        "test",
-			Commit:             "abc123",
-			AssistantAllowlist: entity.NewAssistantAllowlist(allowed),
+			Environment:          "test",
+			Commit:               "abc123",
+			AssistantEntitlement: entity.NewAssistantEntitlement(true),
 		},
 		blogs, users, chats, comments, reactions, fakeVerifier{uid: "caller"}, assistant,
 	)
@@ -522,14 +522,6 @@ func newFullService(
 
 func withUID(req *http.Request, uid string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), callerContextKey, entity.Caller{UID: uid}))
-}
-
-// withVerifiedCaller carries an address the provider vouched for, which is what the assistant
-// allowlist is keyed on. withUID's caller deliberately has none: most routes do not care, and the
-// ones that do must not be satisfied by an address nobody verified.
-func withVerifiedCaller(req *http.Request, uid, email string) *http.Request {
-	caller := entity.Caller{UID: uid, Email: email, EmailVerified: true}
-	return req.WithContext(context.WithValue(req.Context(), callerContextKey, caller))
 }
 
 // decodeAPIError asserts the response carries a JSON error body rather than plain text.

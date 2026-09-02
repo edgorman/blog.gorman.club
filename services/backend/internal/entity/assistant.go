@@ -1,55 +1,48 @@
 package entity
 
-import "strings"
+import "time"
 
-// AssistantAllowlist decides which accounts may use the AI writing assistant. It is a static list
-// of email addresses today because that is all the product needs: one account is enabled,
-// everybody else gets the same "not enabled for your account" answer.
+// AssistantEntitlement decides which accounts may use the AI writing assistant.
 //
-// It is deliberately a type of its own rather than a bare []string comparison inside a handler,
-// because it is the seam the real thing replaces. When access becomes something bought rather than
-// something configured, an entitlement - a uid, a tier, and the date the payment it was granted
-// for runs out - takes this type's place, and Allows becomes a lookup that can also answer
-// "expired". Every caller already asks the question in exactly those terms, so nothing above this
-// line has to change when it does.
+// It is a whitelist like any other in the access model (see access.go), with one difference worth
+// stating plainly: the list is not a field on a document, it is worked out per request from what
+// the account has. An account is entitled while its subscription has not run out
+// (User.SubscribedUntil) and no other way - there is no configured list of addresses to be on,
+// so granting access is writing that field and revoking it is clearing it, neither of which
+// needs a deployment.
 //
-// Matching is on the address the identity provider verified rather than on the username the
-// profile holds. A username is the profile's public identity, but it is also freely chosen,
-// released when a profile is deleted, and then claimable by anybody - so a list naming one would
-// hand the assistant to whoever held that name at the time, not to the person it was written for.
-// A verified address names an account, which is what an allowlist is actually about.
-type AssistantAllowlist struct {
-	emails map[string]bool
+// The zero value is a deployment with no assistant at all, entitled to nobody however anyone paid:
+// there is nothing for an entitlement to buy when no model is configured.
+type AssistantEntitlement struct {
+	available bool
 }
 
-// NewAssistantAllowlist builds the list, folding case and ignoring blanks so a trailing separator
-// in a comma-separated environment variable does not enable an empty address.
-func NewAssistantAllowlist(emails []string) AssistantAllowlist {
-	allowed := make(map[string]bool, len(emails))
-	for _, email := range emails {
-		if key := strings.ToLower(strings.TrimSpace(email)); key != "" {
-			allowed[key] = true
-		}
+// NewAssistantEntitlement builds the entitlement for a deployment whose assistant is configured or
+// not (see repository.Assistant.Configured).
+func NewAssistantEntitlement(available bool) AssistantEntitlement {
+	return AssistantEntitlement{available: available}
+}
+
+// Permission answers who may take an action on the assistant, as a whitelist holding exactly one
+// name - the account's own, when it is entitled, and nobody at all when it is not.
+//
+// Answering in the same shape as every other permission is the point: "may I use the assistant" is
+// then the same kind of question as "may I read this post", and the routes ask it the same way.
+// Where a post carries its readers on the document, this list is computed from what the account
+// has paid for.
+//
+// user is the caller's own profile, looked up by the uid in their verified token, so the name this
+// admits is the one that asked. A caller with no profile is the zero User, which is simply not
+// subscribed.
+func (e AssistantEntitlement) Permission(action Action, user User) Permission {
+	permission := PermissionFor(ResourceAssistant, action)
+	if e.entitles(user, time.Now().UTC()) {
+		permission.AllowedUserIDs = []string{user.ID}
 	}
-	return AssistantAllowlist{emails: allowed}
+	return permission
 }
 
-// Allows reports whether a caller may use the assistant.
-//
-// An address the provider did not verify never matches, however exactly it is spelled. That check
-// is the whole reason this is safe to key on an address at all: without it, a provider that let an
-// account claim an unverified address would let it claim this one.
-func (a AssistantAllowlist) Allows(caller Caller) bool {
-	if !caller.EmailVerified {
-		return false
-	}
-
-	key := strings.ToLower(strings.TrimSpace(caller.Email))
-	return key != "" && a.emails[key]
-}
-
-// Empty reports whether the assistant is enabled for nobody at all, which is what an unconfigured
-// deployment looks like.
-func (a AssistantAllowlist) Empty() bool {
-	return len(a.emails) == 0
+// entitles reports whether the account may spend on the assistant at now.
+func (e AssistantEntitlement) entitles(user User, now time.Time) bool {
+	return e.available && user.ID != "" && user.Subscribed(now)
 }

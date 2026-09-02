@@ -597,26 +597,29 @@ func TestPutUser_OmittedUsernameKeepsTheStoredName(t *testing.T) {
 }
 
 // The capability rides on /users/me rather than on a route of its own: a client uses it to decide
-// whether to offer the assistant at all, and a public profile must not disclose who has it.
+// whether to offer the assistant at all, and a public profile must not disclose who has it. It is
+// the account's own subscription that decides it, so a client is told exactly what the chat routes
+// would enforce.
 func TestGetCurrentUser_ReportsAssistantAccess(t *testing.T) {
+	live := time.Now().UTC().Add(time.Hour)
+	expired := time.Now().UTC().Add(-time.Minute)
+
 	for _, tt := range []struct {
-		name    string
-		allowed []string
-		want    bool
+		name  string
+		until *time.Time
+		want  bool
 	}{
-		{"on the list", []string{"ejgorman@gmail.com"}, true},
-		{"not on the list", []string{"somebody-else@example.com"}, false},
-		{"nobody is", nil, false},
+		{"a live subscription", &live, true},
+		{"a subscription that ran out", &expired, false},
+		{"never subscribed", nil, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			users := newFakeUserRepository()
-			users.seed(entity.User{ID: "caller", Username: "calm-smiling-kestrel"})
-			s := newAssistantService(nil, users, nil, nil, tt.allowed)
+			users.seed(entity.User{ID: "caller", Username: "calm-smiling-kestrel", SubscribedUntil: tt.until})
+			s := newAssistantService(nil, users, nil, nil)
 
-			req := withVerifiedCaller(
-				httptest.NewRequest(http.MethodGet, "/users/me", nil), "caller", "ejgorman@gmail.com")
 			rec := httptest.NewRecorder()
-			s.GetCurrentUser(rec, req)
+			s.GetCurrentUser(rec, selfHTTPRequest(http.MethodGet, "caller", nil))
 
 			var got currentUserResponse
 			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
@@ -624,6 +627,11 @@ func TestGetCurrentUser_ReportsAssistantAccess(t *testing.T) {
 			}
 			if got.AssistantEnabled != tt.want {
 				t.Errorf("assistantEnabled = %v, want %v", got.AssistantEnabled, tt.want)
+			}
+			// An account may see when its own paid access runs out, expired or not; nobody else's
+			// lookup carries it at all.
+			if (got.SubscribedUntil != nil) != (tt.until != nil) {
+				t.Errorf("subscribedUntil = %v, want %v", got.SubscribedUntil, tt.until)
 			}
 			// The profile itself still comes back whole, so a client needs one request, not two.
 			if got.Username != "calm-smiling-kestrel" {
@@ -633,25 +641,84 @@ func TestGetCurrentUser_ReportsAssistantAccess(t *testing.T) {
 	}
 }
 
-// A client that has just created its profile learns what it may do without a second request. The
-// capability follows the credential, not the name the profile happens to hold.
-func TestPutUser_ReportsAssistantAccess(t *testing.T) {
-	s := newAssistantService(nil, nil, nil, nil, []string{"ejgorman@gmail.com"})
+// A client editing its bio must not clear its paid access: the request is applied to the stored
+// profile, and a subscription is not a field a request can carry at all.
+func TestPutUser_KeepsTheSubscription(t *testing.T) {
+	until := time.Now().UTC().Add(time.Hour)
+	users := newFakeUserRepository()
+	users.seed(entity.User{ID: "caller", Username: "calm-smiling-kestrel", SubscribedUntil: &until})
+	s := newTestService(nil, users)
 
 	body := userRequestBody(t, userRequest{Bio: "hello"})
-	req := withVerifiedCaller(
-		httptest.NewRequest(http.MethodPut, "/users/me", bytes.NewReader(body)), "caller", "ejgorman@gmail.com")
 	rec := httptest.NewRecorder()
-	s.PutUser(rec, req)
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
 
-	if rec.Result().StatusCode != http.StatusCreated {
-		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	var got currentUserResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
+	stored := users.users["caller"]
+	if stored.SubscribedUntil == nil || !stored.SubscribedUntil.Equal(until) {
+		t.Errorf("stored subscribedUntil = %v, want %v", stored.SubscribedUntil, until)
 	}
-	if !got.AssistantEnabled {
-		t.Error("assistantEnabled = false, want true for a caller on the list")
+}
+
+// Who is paying is nobody else's business: a profile looked up by name carries no subscription at
+// all, however the account it names pays. entity.User holds no json tag for the field, so this is
+// checked on the bytes rather than on a struct that could not represent it.
+func TestGetUser_HidesTheSubscription(t *testing.T) {
+	until := time.Now().UTC().Add(time.Hour)
+	users := newFakeUserRepository()
+	users.seed(entity.User{ID: "caller", Username: "calm-smiling-kestrel", SubscribedUntil: &until})
+	s := newTestService(nil, users)
+
+	req := httptest.NewRequest(http.MethodGet, "/users/calm-smiling-kestrel", nil)
+	req.SetPathValue("username", "calm-smiling-kestrel")
+	rec := httptest.NewRecorder()
+	s.GetUser(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	if strings.Contains(rec.Body.String(), "subscribedUntil") {
+		t.Errorf("body = %s, want a public profile to disclose no subscription", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "assistantEnabled") {
+		t.Errorf("body = %s, want a public profile to disclose no capability either", rec.Body.String())
+	}
+}
+
+// A client that has just written its profile learns what it may do without a second request, so
+// PUT answers in the same shape GET does. A brand new profile has not subscribed, which is what
+// makes the two cases worth asserting together.
+func TestPutUser_ReportsAssistantAccess(t *testing.T) {
+	until := time.Now().UTC().Add(time.Hour)
+	users := newFakeUserRepository()
+	users.seed(entity.User{ID: "subscriber", Username: "calm-smiling-kestrel", SubscribedUntil: &until})
+	s := newAssistantService(nil, users, nil, nil)
+
+	for _, tt := range []struct {
+		uid    string
+		status int
+		want   bool
+	}{
+		{"subscriber", http.StatusOK, true},
+		{"newcomer", http.StatusCreated, false},
+	} {
+		t.Run(tt.uid, func(t *testing.T) {
+			body := userRequestBody(t, userRequest{Bio: "hello"})
+			rec := httptest.NewRecorder()
+			s.PutUser(rec, selfHTTPRequest(http.MethodPut, tt.uid, body))
+
+			if rec.Result().StatusCode != tt.status {
+				t.Fatalf("status = %d, want %d", rec.Result().StatusCode, tt.status)
+			}
+			var got currentUserResponse
+			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got.AssistantEnabled != tt.want {
+				t.Errorf("assistantEnabled = %v, want %v", got.AssistantEnabled, tt.want)
+			}
+		})
 	}
 }

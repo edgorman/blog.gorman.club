@@ -43,14 +43,8 @@ variable "assistant_location" {
   default     = "global"
 }
 
-variable "assistant_allowed_emails" {
-  description = "Verified Google account addresses permitted to use the AI writing assistant. Everybody else is refused by the backend, whatever they own. Empty disables the feature for everyone. This is the placeholder for real entitlements: when access becomes something bought rather than configured, it is replaced by a per-user record carrying a tier and an expiry (see internal/entity/assistant.go)."
-  type        = list(string)
-  default     = []
-}
-
 variable "alert_notification_emails" {
-  description = "Addresses the monitoring alerts in monitoring.tf are sent to. Empty leaves the policies in place but silent - they still show in the console, nobody is told. These are recipients rather than an entitlement, so unlike assistant_allowed_emails there is nothing to verify: an address here is simply where a message goes."
+  description = "Addresses the monitoring alerts in monitoring.tf are sent to. Empty leaves the policies in place but silent - they still show in the console, nobody is told. These are recipients rather than an entitlement: an address here is where a message goes, not an account admitted to anything."
   type        = list(string)
   default     = []
 }

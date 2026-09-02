@@ -85,14 +85,6 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "ASSISTANT_LOCATION"
         value = var.assistant_location
       }
-
-      # Who may use the assistant. It is plain configuration rather than a secret - it names
-      # accounts, not credentials - so it lives in this environment's tfvars alongside everything
-      # else that differs between staging and prod.
-      env {
-        name  = "ASSISTANT_ALLOWED_EMAILS"
-        value = join(",", var.assistant_allowed_emails)
-      }
     }
   }
 

@@ -123,6 +123,12 @@ func (s *Service) CreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A comment is written signed by whoever asked, so - like creating a post - the permission is
+	// asked of a comment that already names them, and what it excludes is the caller with no uid.
+	if !requirePermission(w, r, comment.Permission(entity.ActionCreate, blog)) {
+		return
+	}
+
 	// A commenter is shown by username exactly as an author is, so one is assigned here for the
 	// same reason publishing assigns one: a comment by a caller with no profile would be
 	// attributed to nobody.
@@ -146,7 +152,7 @@ func (s *Service) CreateComment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, responses[0])
 }
 
-// DeleteComment removes a comment. Who may is decided by entity.Comment.CanBeDeletedBy: its
+// DeleteComment removes a comment. Who may is decided by the comment's own delete permission: its
 // author, or the owner of the post it sits under - the second being what lets an author moderate
 // their own post without being able to put words in anybody's mouth, since there is no way to edit
 // a comment at all.
@@ -165,8 +171,7 @@ func (s *Service) DeleteComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !comment.CanBeDeletedBy(uidFromContext(r.Context()), blog) {
-		writeError(w, http.StatusForbidden, "forbidden")
+	if !requirePermission(w, r, comment.Permission(entity.ActionDelete, blog)) {
 		return
 	}
 

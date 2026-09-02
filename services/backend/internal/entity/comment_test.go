@@ -110,7 +110,7 @@ func TestComment_SetID(t *testing.T) {
 // Deleting a comment is the one thing two different people may do, so this is the whole of the
 // moderation rule: the commenter can retract what they said, the author can take it off their
 // post, and nobody else - including a reader of the post - can touch it.
-func TestComment_CanBeDeletedBy(t *testing.T) {
+func TestComment_PermissionToDelete(t *testing.T) {
 	post := Blog{Slug: "hello-world", OwnerID: "author", Visibility: VisibilityPublic}
 	comment := Comment{ID: "c1", BlogSlug: "hello-world", AuthorID: "reader", Body: "nicely put"}
 
@@ -125,8 +125,8 @@ func TestComment_CanBeDeletedBy(t *testing.T) {
 		{"nobody", "", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := comment.CanBeDeletedBy(tt.uid, post); got != tt.want {
-				t.Errorf("CanBeDeletedBy(%q) = %v, want %v", tt.uid, got, tt.want)
+			if got := comment.Permission(ActionDelete, post).Allows(tt.uid); got != tt.want {
+				t.Errorf("Permission(delete).Allows(%q) = %v, want %v", tt.uid, got, tt.want)
 			}
 		})
 	}
@@ -134,8 +134,8 @@ func TestComment_CanBeDeletedBy(t *testing.T) {
 	// An unowned post cannot hand its moderation rights to the zero uid, and a comment with no
 	// author cannot be deleted by one either - both would otherwise match on "" == "".
 	t.Run("an anonymous caller against an ownerless post", func(t *testing.T) {
-		if (Comment{}).CanBeDeletedBy("", Blog{}) {
-			t.Error("CanBeDeletedBy = true, want the zero uid to match nothing")
+		if (Comment{}).Permission(ActionDelete, Blog{}).Allows("") {
+			t.Error("Permission(delete).Allows(\"\") = true, want the zero uid to match nothing")
 		}
 	})
 }

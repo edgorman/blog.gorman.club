@@ -48,6 +48,61 @@ Entities carry `json` tags only. Firestore's field names live on separate docume
 `repository/firestore`, which also keeps the document body free of the ID that Firestore already
 stores as the document key.
 
+## Access control
+
+Every gate in this service is one question asked of one model
+(`internal/entity/access.go`), rather than a rule invented where it happened to
+be needed - which is what the assistant's email check used to be, bolted onto
+the config beside a post's own visibility rules.
+
+The model has three parts and no more:
+
+- A **resource** is a kind of thing the service holds (`user`, `blog`,
+  `comment`, `reaction`) or a feature it gates (`assistant`).
+- An **action** is one thing that can be done to it: `read`, `create`,
+  `update`, `delete` - the same four verbs the routes are registered under.
+- An **access** mode is how wide the audience for that pair is. There are three:
+  **public** (everybody, signed in or not), **private** (the owner alone), and
+  **whitelist** (the owner plus whoever was named beside them).
+
+The `policy` table declares a mode for every (resource, action) pair that
+exists, and is the one place to read to know what this service allows. A pair it
+does not name carries no mode at all and is refused, so a feature added without
+a line in the table is closed rather than open.
+
+Asking is two steps and always the same two. An entity turns the declared mode
+into a `Permission` narrowed to one particular thing - who owns it, who was
+named on it - and `Permission.Allows(uid)` answers. The zero uid is the
+anonymous caller and holds nothing but public access however the rest of the
+permission is filled in: an ownerless thing must never make a signed-out request
+its owner, which is the one way this could have failed open.
+
+There are deliberately **no roles**. A role would be a name for a set of
+permissions, and every permission here is decided by who owns the thing or who
+was named on it - which a role sits between rather than answers. The one gate
+that is not about ownership, the assistant, is a whitelist whose membership is
+bought (below), and that is a lookup rather than a role too.
+
+Several actions are declared private for a caller who could only ever be acting
+on their own: a profile is addressed as `/users/me`, a reaction is keyed by the
+reader who left it, and a post is created owned by whoever asked. Those are
+enforced by the address rather than by a check - the forbidden case is
+unreachable, not refused - and they are declared anyway, because a table that
+only listed the checks that happen would not say what the rules are.
+
+A post is the one resource whose read audience is not fixed by the table: it is
+whatever the post itself says. `Blog.Permission(ActionRead)` reads a post's
+`visibility` and `allowedUserIds` back as a mode - public is everybody, private
+is the owner, and naming readers is what widens private into a whitelist - so
+the three modes an author can choose between are exactly the three the model
+has. A stored post carrying a visibility this build does not recognise reads as
+private, which is the way round to get an unknown value wrong.
+
+Permissions compose by being asked in order rather than by growing a fourth
+mode. A comment's thread is readable by whoever may read the post above it: the
+post's read permission is asked first and a caller who fails it gets the post's
+own `404`, then the comment's own permission decides the rest.
+
 ## Users and blogs
 
 Data lives in Firestore (`infrastructure/env/firestore.tf`). This service is
@@ -55,14 +110,15 @@ the only client of that database: it authenticates with the Admin SDK, no
 Firestore security rules are deployed, and the browser never talks to
 Firestore directly. Access rules therefore live in Go and nowhere else:
 
-- **Reads** — `Blog.CanBeReadBy` is the single definition of who may see a post
-  (public posts for anyone, signed in or not; private ones for the owner or a
-  uid in `allowedUserIds`). `GET /blogs` applies it as a Firestore query so
-  private posts are never fetched; `GET /blogs/{slug}` applies it to
-  the loaded document. Both routes run `optionalAuth`: a signed-in caller's own private
+- **Reads** — `Blog.CanBeReadBy` - the post's own read permission, asked by its
+  most common name - is the single definition of who may see a post (public
+  posts for anyone, signed in or not; private ones for the owner or a uid in
+  `allowedUserIds`). `GET /blogs` applies it as a Firestore query so private
+  posts are never fetched; `GET /blogs/{slug}` applies it to the loaded
+  document. Both routes run `optionalAuth`: a signed-in caller's own private
   and whitelisted posts are included, but no credential is required.
-- **Writes** — `requireOwnedBlog` restricts updates and deletes to the post's
-  owner, and `createdAt`/`updatedAt` come from the server rather than a
+- **Writes** — `requireBlogPermission` restricts updates and deletes to the
+  post's owner, and `createdAt`/`updatedAt` come from the server rather than a
   spoofable client clock.
 
 A post's address is a slug taken from its own title - so unlike the random key a
@@ -71,10 +127,12 @@ Firestore-assigned id would have been, it is guessable. `blogFromPath` and
 malformed slug, a slug nothing holds, and a post the caller is not allowed to read -
 with the same `404`. A `403` would tell a prober a private post exists at a path it
 merely guessed right; folding that case into "not found" is what keeps the guess from
-confirming anything. `requireOwnedBlog` layers ownership on
-top of readability: a caller who cannot read a post gets the masking `404` before
-ownership is even considered, and only a post they can see yields a `403` for not
-owning it - which discloses nothing they could not already see.
+confirming anything. `requireBlogPermission` layers the action's own permission
+on top of readability: a caller who cannot read a post gets the masking `404`
+before ownership is even considered, and only a post they can see yields a `403`
+for not owning it - which discloses nothing they could not already see. Asking
+it for `read` therefore checks the same thing twice and answers `404` either
+way, which is all `requireReadableBlog` is.
 
 A post has no id of its own. It is addressed by a **slug** taken from its title
 (`Hello, world!` → `/blogs/hello-world`), and keyed in Firestore by that slug
@@ -210,9 +268,10 @@ nothing outside its post.
   does, since a comment is signed by whoever left it, and an anonymous comment
   would be attributable to nobody. A commenter with no profile is given one, for
   the same reason publishing gives an author one: they are shown by username.
-- **Who may delete one.** `entity.Comment.CanBeDeletedBy` is the single
-  definition: its author, or the owner of the post it sits under. The second
-  half is what makes this moderation rather than only retraction — an author is
+- **Who may delete one.** `entity.Comment.Permission(ActionDelete, post)` is the
+  single definition, and it is a whitelist of exactly one name beside the
+  comment's author: the owner of the post it sits under. That second name is
+  what makes this moderation rather than only retraction — an author is
   answerable for what appears beneath their post. There is deliberately no way
   to *edit* a comment at all, by anyone, so moderating cannot become putting
   words in somebody's mouth: a comment is written and removed, never rewritten.
@@ -325,21 +384,39 @@ things are worth knowing about how it is bounded:
   private one, reassign it, or touch a post other than the one being discussed.
   Nothing behind `repository.Assistant` writes at all - the adapter edits a copy
   and hands it back, and `service` decides whether to persist it.
-- **Who may use it.** `entity.AssistantAllowlist` is a static list of email
-  addresses, configured per environment (`ASSISTANT_ALLOWED_EMAILS`) and matched
-  against the caller's verified credential - never against anything the request
-  asserts about itself, and never against an address the provider did not mark
-  `email_verified`. It is keyed on the address rather than on the profile's
-  username because a username is freely chosen and, once released, claimable by
-  anybody: a list naming one would follow the name rather than the account. It
-  is a type of its own rather than a comparison in a handler because it is the
-  seam the real thing replaces: when access becomes something bought, an
-  entitlement carrying a tier and an expiry takes its place and `Allows` becomes
-  a lookup that can also answer "expired". Every caller already asks the
-  question in those terms. `GET /users/me` reports the answer as
-  `assistantEnabled`, so a client can keep the panel off the screen for an
-  account that would be refused; the routes enforce it either way, and a public
-  profile never discloses it.
+- **Who may use it.** `entity.AssistantEntitlement` is the whitelist the access
+  model gates it with, and the one whitelist here whose membership is not a
+  field on a document: it is worked out per request from what the account has.
+  An account is entitled while its subscription has not run out
+  (`User.SubscribedUntil`) and no other way. There is no configured list of
+  addresses to be on, so granting access is writing that field and revoking it
+  is clearing it - neither needs a deploy, which is exactly what an allowlist in
+  the environment could not offer.
+
+  The subscription is keyed on the account rather than on anything the caller
+  says about itself: the profile is loaded by the uid in the verified token, so
+  nothing a request asserts is consulted. That is also why nothing here has to
+  care whether an address was verified - an earlier version of this list named
+  email addresses and had to, since an address an account merely claimed would
+  otherwise have matched one.
+
+  The entitlement answers in the same shape as every other permission - a
+  whitelist holding exactly one name, the account's own, when it is entitled
+  and nobody at all when it is not - so "may I use the assistant" is the same
+  kind of question as "may I read this post", asked the same way. All three chat
+  routes cost it: a transcript is as much a paid artifact as the turn that
+  produced it. `GET /users/me` reports the answer as `assistantEnabled` (and the
+  account's own `subscribedUntil` beside it), so a client can keep the panel off
+  the screen for an account that would be refused; the routes enforce it either
+  way, and a public profile never discloses either field.
+
+  A deployment with no model configured is the zero entitlement: nobody is
+  entitled, whatever anyone paid, because there is nothing for an entitlement to
+  buy. Note that `SubscribedUntil` lives on the profile, so deleting a profile
+  drops the subscription with it - which is fine while the field is set by hand,
+  and is the first thing to settle when a checkout writes it (either by refusing
+  to delete a profile with live paid access, or by storing the subscription
+  beside the profile rather than in it).
 - **What the draft is.** A chat request carries the title and body the author
   has on screen, unsaved changes included - asking to tighten a paragraph has to
   mean the paragraph they can see, not the one last written to Firestore. The
@@ -414,7 +491,6 @@ make build     # builds bin/backend
 | `GCP_PROJECT_ID`       | Project the model is called through and billed to. Unset disables the writing assistant. |
 | `ASSISTANT_MODEL`      | Model id, e.g. `gemini-3.7-flash`. It has to be one the platform serves in `ASSISTANT_LOCATION`. Unset disables the writing assistant. |
 | `ASSISTANT_LOCATION`   | Location the model is called in: a region such as `europe-west1`, or `global` for the multi-region endpoint. Defaults to `global`. |
-| `ASSISTANT_ALLOWED_EMAILS` | Comma-separated verified account addresses permitted to use the writing assistant. Unset enables it for nobody. |
 
 `commit` is not an env var — it's baked into the binary at build time via
 `-ldflags "-X main.commit=..."` (see `Dockerfile`), since the same image is

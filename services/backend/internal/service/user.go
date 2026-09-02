@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
@@ -51,17 +52,26 @@ func (u userRequest) applyTo(user *entity.User) error {
 // must not disclose who has the assistant, so it cannot go on entity.User itself. A client uses it
 // to decide whether to offer the assistant at all - the routes enforce it either way, this only
 // keeps a button off the screen for somebody who would be told no.
+//
+// SubscribedUntil is here for the same reason and travels the same way: an account may see when
+// its own paid access runs out, and nobody else's lookup ever carries it (entity.User keeps no
+// json tag for it at all). It is null for an account that has never subscribed - which is every
+// account until a checkout writes one.
 type currentUserResponse struct {
 	entity.User
-	AssistantEnabled bool `json:"assistantEnabled"`
+	AssistantEnabled bool       `json:"assistantEnabled"`
+	SubscribedUntil  *time.Time `json:"subscribedUntil,omitempty"`
 }
 
-// currentUser pairs a profile with what the credential behind it may do. The capability comes from
-// the caller rather than from the profile, since that is what the allowlist is keyed on.
-func (s *Service) currentUser(ctx context.Context, user entity.User) currentUserResponse {
+// currentUser pairs a profile with what the account behind it may do. The capability is asked of
+// the entitlement rather than computed here, so a client is told exactly what the chat routes
+// would enforce (see entity.AssistantEntitlement). It needs nothing but the profile: the
+// subscription is on it, and the account it belongs to is its own id.
+func (s *Service) currentUser(user entity.User) currentUserResponse {
 	return currentUserResponse{
 		User:             user,
-		AssistantEnabled: s.cfg.AssistantAllowlist.Allows(callerFromContext(ctx)),
+		AssistantEnabled: s.cfg.AssistantEntitlement.Permission(entity.ActionUpdate, user).Allows(user.ID),
+		SubscribedUntil:  user.SubscribedUntil,
 	}
 }
 
@@ -79,7 +89,7 @@ func (s *Service) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, s.currentUser(r.Context(), user))
+	writeJSON(w, http.StatusOK, s.currentUser(user))
 }
 
 // GetUser returns the profile holding a username. Any caller, signed in or not, may read any
@@ -176,7 +186,7 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 	}
 	// The same shape GetCurrentUser answers with, so a client that has just created its profile
 	// learns what it may do without a second request.
-	writeJSON(w, status, s.currentUser(r.Context(), saved))
+	writeJSON(w, status, s.currentUser(saved))
 }
 
 // DeleteUser removes the caller's own profile, addressed as /users/me for the same reason PutUser

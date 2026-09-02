@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Comments } from '../components/Comments'
+import { ReactionBar } from '../components/ReactionBar'
 import { useApp } from '../context/AppContext'
+import { useReactions } from '../hooks/useReactions'
 import { ApiError, postPath, userPath, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
 import { renderMarkdown } from '../lib/markdown'
@@ -20,6 +22,9 @@ export function Post() {
   const { slug } = useParams<{ slug: string }>()
   const { api, user } = useApp()
   const [state, setState] = useState<State>(api ? { phase: 'loading' } : { phase: 'unconfigured' })
+  // Loaded for the whole page at once - the post's reactions and every comment's come back
+  // together - so this lives here rather than inside the two components that draw them.
+  const reactions = useReactions(slug ?? '')
 
   useEffect(() => {
     if (!api || !slug) return
@@ -119,9 +124,20 @@ export function Post() {
       </header>
       <hr className="hr" />
       <div className="post-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(post.content) }} />
+      <ReactionBar
+        counts={reactions.countsFor()}
+        onToggle={(emoji) => reactions.toggle(emoji)}
+        canReact={!!user}
+        label="post"
+      />
+      {reactions.error && (
+        <p role="alert" className="reactions-error">
+          {reactions.error}
+        </p>
+      )}
       {/* The thread is as visible as the post: this only renders for a post the caller could read
           in the first place, and the backend applies the same rule to the comments themselves. */}
-      <Comments slug={post.slug} ownerId={post.ownerId} />
+      <Comments slug={post.slug} ownerId={post.ownerId} reactions={reactions} />
     </div>
   )
 }

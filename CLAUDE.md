@@ -51,6 +51,15 @@ Access is an allowlist of verified Google account addresses (`assistant_allowed_
 
 The allowlist says who may spend, not how much, so volume is bounded separately: assistant turns are rate limited per account by the backend, on a much tighter budget than any other route, because a turn is the only request that calls a paid model. The buckets are held in the serving process, which makes them per-instance budgets and is the one thing to revisit if the service ever scales past a single instance (see `services/backend/README.md`).
 
+### Reader Engagement
+
+Posts carry comments and reactions, both stored in Firestore beneath the post
+they belong to and both governed by the post's own read rules rather than rules
+of their own. Reactions are a fixed set of five emoji (`entity.AllowedEmojis`),
+not custom or combined ones, and they are addressed (`PUT`/`DELETE`) rather
+than toggled so a retried click is harmless. See `services/backend/README.md`
+for the ownership and moderation rules.
+
 ### Resource Naming
 
 Strict environment suffixes (`backend-stag`, `backend-prod`) and scoped secrets (`stag-db-pass` vs `prod-db-pass`) ensure services in staging cannot accidentally reach production resources.

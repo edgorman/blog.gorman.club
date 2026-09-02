@@ -87,6 +87,38 @@ func TestRepositoriesRejectInvalidEntitiesBeforeWriting(t *testing.T) {
 		assertValidationError(t, err)
 	})
 
+	// A reaction names a post and a reader, and is stored beneath that post, so the same rule
+	// reaches it through both halves of what addresses it.
+	t.Run("reaction on no post", func(t *testing.T) {
+		_, err := (&ReactionRepository{}).Add(ctx, entity.PostReaction(""), "reader", "👍")
+		assertValidationError(t, err)
+	})
+
+	t.Run("reaction on a malformed slug", func(t *testing.T) {
+		_, err := (&ReactionRepository{}).Add(ctx, entity.PostReaction("hello world"), "reader", "👍")
+		assertValidationError(t, err)
+	})
+
+	t.Run("reaction on a malformed comment id", func(t *testing.T) {
+		_, err := (&ReactionRepository{}).Add(ctx, entity.CommentReaction("hello-world", "cmt/1"), "reader", "👍")
+		assertValidationError(t, err)
+	})
+
+	t.Run("reaction from no reader", func(t *testing.T) {
+		_, err := (&ReactionRepository{}).Add(ctx, entity.PostReaction("hello-world"), "", "👍")
+		assertValidationError(t, err)
+	})
+
+	t.Run("listing reactions on a malformed slug", func(t *testing.T) {
+		_, err := (&ReactionRepository{}).List(ctx, "hello world")
+		assertValidationError(t, err)
+	})
+
+	t.Run("deleting the reactions on a malformed target", func(t *testing.T) {
+		err := (&ReactionRepository{}).DeleteTarget(ctx, entity.CommentReaction("hello-world", "cmt/1"))
+		assertValidationError(t, err)
+	})
+
 	t.Run("user put", func(t *testing.T) {
 		_, err := (&UserRepository{}).Put(ctx, entity.User{Username: "sly-dancing-monkey"})
 		assertValidationError(t, err)

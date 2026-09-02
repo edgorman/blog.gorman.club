@@ -198,3 +198,47 @@ func TestCommentIDIsUsableAsADocumentKey(t *testing.T) {
 		}
 	}
 }
+
+// A reaction stores what its key already says - the post, the comment, and the reader - unlike
+// every other document here, which leaves the key out of the body. That is deliberate and worth
+// pinning: DeleteTarget removes a comment's reactions by querying for them, and Firestore filters
+// on fields rather than on the shape of a key.
+func TestReactionMappingRoundTrip(t *testing.T) {
+	for _, reaction := range []entity.Reaction{
+		{
+			Target:    entity.PostReaction("hello-world"),
+			UID:       "reader",
+			Emojis:    []string{"👍", "🎉"},
+			UpdatedAt: updated,
+		},
+		{
+			Target:    entity.CommentReaction("hello-world", "cmt1"),
+			UID:       "reader",
+			Emojis:    []string{"👎"},
+			UpdatedAt: updated,
+		},
+	} {
+		t.Run(reaction.Key(), func(t *testing.T) {
+			got := reactionToDocument(reaction).toEntity()
+
+			if !reflect.DeepEqual(got, reaction) {
+				t.Errorf("round trip = %+v, want %+v", got, reaction)
+			}
+		})
+	}
+}
+
+// The key is what makes "this reader, this target" unique, so it has to be usable as a document
+// key on its own - a comment id is letters and digits (see entity.Comment.SetID), which is what
+// keeps the hyphens in it unambiguous.
+func TestReactionKeyIsUsableAsADocumentKey(t *testing.T) {
+	for _, reaction := range []entity.Reaction{
+		{Target: entity.PostReaction("hello-world"), UID: "104729"},
+		{Target: entity.CommentReaction("hello-world", "aBc123"), UID: "104729"},
+	} {
+		key := reaction.Key()
+		if key == "" || key == "." || key == ".." || strings.Contains(key, "/") {
+			t.Errorf("Key() = %q, which Firestore refuses as a document key", key)
+		}
+	}
+}

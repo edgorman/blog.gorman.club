@@ -84,6 +84,7 @@ func run() error {
 		firestore.NewUserRepository(client),
 		firestore.NewChatRepository(client),
 		firestore.NewCommentRepository(client),
+		firestore.NewReactionRepository(client),
 		google.NewTokenVerifier(googleClientID),
 		assistant,
 	)

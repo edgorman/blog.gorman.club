@@ -32,6 +32,7 @@ type Service struct {
 	users     repository.UserRepository
 	chats     repository.ChatRepository
 	comments  repository.CommentRepository
+	reactions repository.ReactionRepository
 	verifier  repository.TokenVerifier
 	assistant repository.Assistant
 	// The rate limiters live on the Service rather than being built in Handler(), so a budget is
@@ -48,6 +49,7 @@ func New(
 	users repository.UserRepository,
 	chats repository.ChatRepository,
 	comments repository.CommentRepository,
+	reactions repository.ReactionRepository,
 	verifier repository.TokenVerifier,
 	assistant repository.Assistant,
 ) *Service {
@@ -57,6 +59,7 @@ func New(
 		users:            users,
 		chats:            chats,
 		comments:         comments,
+		reactions:        reactions,
 		verifier:         verifier,
 		assistant:        assistant,
 		ipLimiter:        newRateLimiter(requestsPerIP),
@@ -124,6 +127,19 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("GET /blogs/{slug}/comments", optional(s.ListComments))
 	mux.Handle("POST /blogs/{slug}/comments", authed(s.CreateComment))
 	mux.Handle("DELETE /blogs/{slug}/comments/{id}", authed(s.DeleteComment))
+	// Reactions to a post and to its comments are read together, because they are stored together
+	// and a reader opening a post wants the whole page's worth: one route answers what would
+	// otherwise be a field on the post plus a field on every comment.
+	//
+	// Writing one is addressed rather than toggled - PUT puts it there, DELETE takes it back - so
+	// a retried click or a stale page lands where it was aiming instead of undoing itself. The
+	// emoji is the last segment of the address because it is what identifies the reaction, in the
+	// same way the comment id identifies a comment.
+	mux.Handle("GET /blogs/{slug}/reactions", optional(s.GetReactions))
+	mux.Handle("PUT /blogs/{slug}/reactions/{emoji}", authed(s.PutReaction))
+	mux.Handle("DELETE /blogs/{slug}/reactions/{emoji}", authed(s.DeleteReaction))
+	mux.Handle("PUT /blogs/{slug}/comments/{id}/reactions/{emoji}", authed(s.PutReaction))
+	mux.Handle("DELETE /blogs/{slug}/comments/{id}/reactions/{emoji}", authed(s.DeleteReaction))
 
 	// The per-IP budget wraps the whole mux, so it applies to the routes that admit anonymous
 	// callers too - the ones with no account to meter - and to a request for a path that does not

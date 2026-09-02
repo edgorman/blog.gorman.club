@@ -71,6 +71,12 @@ func TestHandler_WriteRoutesRequireAuth(t *testing.T) {
 		// whoever wrote it, and deleting one is decided against that signature.
 		{http.MethodPost, "/blogs/hello-world/comments"},
 		{http.MethodDelete, "/blogs/hello-world/comments/c1"},
+		// Reading a bar is anonymous (below); being counted in one is not, since a reaction is one
+		// reader counted once and there is no way to mean that without knowing who they are.
+		{http.MethodPut, "/blogs/hello-world/reactions/%F0%9F%91%8D"},
+		{http.MethodDelete, "/blogs/hello-world/reactions/%F0%9F%91%8D"},
+		{http.MethodPut, "/blogs/hello-world/comments/c1/reactions/%F0%9F%91%8D"},
+		{http.MethodDelete, "/blogs/hello-world/comments/c1/reactions/%F0%9F%91%8D"},
 		{http.MethodGet, "/users/me"},
 		{http.MethodPut, "/users/me"},
 		{http.MethodDelete, "/users/me"},
@@ -86,7 +92,7 @@ func TestHandler_WriteRoutesRequireAuth(t *testing.T) {
 	}
 }
 
-// GET /blogs, GET /blogs/{slug} and a public post's comments admit anonymous callers - they 401
+// GET /blogs, GET /blogs/{slug} and a public post's comments and reactions admit anonymous callers - they 401
 // only for a credential that is present but invalid, never merely absent.
 func TestHandler_BlogReadRoutesAdmitAnonymousCallers(t *testing.T) {
 	repo := newFakeBlogRepository()
@@ -97,6 +103,7 @@ func TestHandler_BlogReadRoutesAdmitAnonymousCallers(t *testing.T) {
 		{http.MethodGet, "/blogs"},
 		{http.MethodGet, "/blogs/public"},
 		{http.MethodGet, "/blogs/public/comments"},
+		{http.MethodGet, "/blogs/public/reactions"},
 	} {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
 			rec := httptest.NewRecorder()

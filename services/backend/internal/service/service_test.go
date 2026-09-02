@@ -299,6 +299,108 @@ func (r *fakeCommentRepository) Delete(_ context.Context, blogSlug, id string) e
 	return nil
 }
 
+// fakeReactionRepository is an in-memory repository.ReactionRepository. Like the real one it keys
+// a reader's reactions by the target and the reader together, keeps the post's and its comments'
+// in one place, and erases a reader who has nothing left rather than storing an empty row.
+type fakeReactionRepository struct {
+	reactions map[string]entity.Reaction
+	// listErr fails a read the in-memory state would otherwise answer, and deleteTargetErr the
+	// cleanup a deleted comment triggers.
+	listErr         error
+	deleteTargetErr error
+	// deletedTargets records what DeleteTarget was asked to remove, for a test asserting a deleted
+	// comment took its reactions with it.
+	deletedTargets []entity.ReactionTarget
+}
+
+func newFakeReactionRepository() *fakeReactionRepository {
+	return &fakeReactionRepository{reactions: make(map[string]entity.Reaction)}
+}
+
+func (r *fakeReactionRepository) seed(reactions ...entity.Reaction) {
+	for _, reaction := range reactions {
+		r.reactions[reaction.Key()] = reaction
+	}
+}
+
+func (r *fakeReactionRepository) List(_ context.Context, blogSlug string) ([]entity.Reaction, error) {
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
+
+	listed := make([]entity.Reaction, 0, len(r.reactions))
+	for _, reaction := range r.reactions {
+		if reaction.Target.BlogSlug == blogSlug {
+			listed = append(listed, reaction)
+		}
+	}
+	// Ordered so a test reads the same thing twice; the real repository's order is Firestore's,
+	// which nothing downstream depends on since the service folds them into counts.
+	slices.SortFunc(listed, func(a, b entity.Reaction) int { return strings.Compare(a.Key(), b.Key()) })
+	return listed, nil
+}
+
+func (r *fakeReactionRepository) Add(_ context.Context, target entity.ReactionTarget, uid, emoji string) (entity.Reaction, error) {
+	return r.apply(target, uid, func(reaction *entity.Reaction) (bool, error) {
+		return reaction.Add(emoji)
+	})
+}
+
+func (r *fakeReactionRepository) Remove(_ context.Context, target entity.ReactionTarget, uid, emoji string) (entity.Reaction, error) {
+	return r.apply(target, uid, func(reaction *entity.Reaction) (bool, error) {
+		return reaction.Remove(emoji), nil
+	})
+}
+
+func (r *fakeReactionRepository) apply(
+	target entity.ReactionTarget,
+	uid string,
+	change func(*entity.Reaction) (bool, error),
+) (entity.Reaction, error) {
+	if err := (entity.Reaction{Target: target, UID: uid}).Validate(); err != nil {
+		return entity.Reaction{}, err
+	}
+
+	key := entity.Reaction{Target: target, UID: uid}.Key()
+	reaction, stored := r.reactions[key]
+	if !stored {
+		reaction = entity.Reaction{Target: target, UID: uid}
+	}
+
+	changed, err := change(&reaction)
+	if err != nil {
+		return entity.Reaction{}, err
+	}
+	if !changed {
+		return reaction, nil
+	}
+	reaction.UpdatedAt = time.Now().UTC()
+
+	if reaction.IsEmpty() {
+		delete(r.reactions, key)
+		return reaction, nil
+	}
+	r.seed(reaction)
+	return reaction, nil
+}
+
+func (r *fakeReactionRepository) DeleteTarget(_ context.Context, target entity.ReactionTarget) error {
+	if err := target.Validate(); err != nil {
+		return err
+	}
+	if r.deleteTargetErr != nil {
+		return r.deleteTargetErr
+	}
+
+	r.deletedTargets = append(r.deletedTargets, target)
+	for key, reaction := range r.reactions {
+		if reaction.Target == target {
+			delete(r.reactions, key)
+		}
+	}
+	return nil
+}
+
 // fakeAssistant is an in-memory repository.Assistant. reply stands in for the model, so a test
 // decides what it says and what it edits without a provider anywhere in the picture.
 type fakeAssistant struct {
@@ -353,7 +455,18 @@ func newCommentService(
 	users repository.UserRepository,
 	comments repository.CommentRepository,
 ) *Service {
-	return newFullService(blogs, users, nil, comments, nil, nil)
+	return newReactionService(blogs, users, comments, nil)
+}
+
+// newReactionService builds a Service over the repositories the post-page routes touch: a thread
+// and the reactions on it.
+func newReactionService(
+	blogs repository.BlogRepository,
+	users repository.UserRepository,
+	comments repository.CommentRepository,
+	reactions repository.ReactionRepository,
+) *Service {
+	return newFullService(blogs, users, nil, comments, reactions, nil, nil)
 }
 
 // newAssistantService builds a Service with the assistant enabled for the named addresses.
@@ -364,7 +477,7 @@ func newAssistantService(
 	assistant repository.Assistant,
 	allowed []string,
 ) *Service {
-	return newFullService(blogs, users, chats, nil, assistant, allowed)
+	return newFullService(blogs, users, chats, nil, nil, assistant, allowed)
 }
 
 // newFullService is what the helpers above narrow: it fills in whichever fakes a test did not
@@ -374,6 +487,7 @@ func newFullService(
 	users repository.UserRepository,
 	chats repository.ChatRepository,
 	comments repository.CommentRepository,
+	reactions repository.ReactionRepository,
 	assistant repository.Assistant,
 	allowed []string,
 ) *Service {
@@ -389,6 +503,9 @@ func newFullService(
 	if comments == nil {
 		comments = newFakeCommentRepository()
 	}
+	if reactions == nil {
+		reactions = newFakeReactionRepository()
+	}
 	if assistant == nil {
 		assistant = &fakeAssistant{}
 	}
@@ -399,7 +516,7 @@ func newFullService(
 			Commit:             "abc123",
 			AssistantAllowlist: entity.NewAssistantAllowlist(allowed),
 		},
-		blogs, users, chats, comments, fakeVerifier{uid: "caller"}, assistant,
+		blogs, users, chats, comments, reactions, fakeVerifier{uid: "caller"}, assistant,
 	)
 }
 

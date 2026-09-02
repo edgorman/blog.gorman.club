@@ -95,6 +95,26 @@ describe('createApi', () => {
     expect(calls[2][1].method).toBe('DELETE')
   })
 
+  // A reaction is addressed by what it is on and the emoji itself, and the emoji is escaped like
+  // any other path segment - unlike a slug, it is not URL-safe by construction.
+  it('addresses a reaction by its target and its emoji', async () => {
+    const fetchMock = mockFetch({ json: () => Promise.resolve([]) })
+    const api = createApi('https://api.example.com', authHeaders)
+
+    await api.getReactions('hello-world')
+    await api.addReaction('hello-world', '👍')
+    await api.removeReaction('hello-world', '👍', 'cmt1')
+
+    const calls = fetchMock.mock.calls as [string, RequestInit][]
+    expect(calls[0][0]).toBe('https://api.example.com/blogs/hello-world/reactions')
+    expect(calls[1][0]).toBe('https://api.example.com/blogs/hello-world/reactions/%F0%9F%91%8D')
+    expect(calls[1][1].method).toBe('PUT')
+    expect(calls[2][0]).toBe(
+      'https://api.example.com/blogs/hello-world/comments/cmt1/reactions/%F0%9F%91%8D',
+    )
+    expect(calls[2][1].method).toBe('DELETE')
+  })
+
   it('falls back to the status when the error body is not JSON', async () => {
     mockFetch({ ok: false, status: 502, json: () => Promise.reject(new Error('not json')) })
 

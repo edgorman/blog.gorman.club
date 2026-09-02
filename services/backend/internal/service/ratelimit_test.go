@@ -274,7 +274,8 @@ func TestHandler_LimitsAnonymousRequestsPerIP(t *testing.T) {
 // request it precedes.
 func TestHandler_PreflightIsNotRateLimited(t *testing.T) {
 	s := New(Config{AllowedOrigin: testOrigin}, newFakeBlogRepository(), newFakeUserRepository(),
-		newFakeChatRepository(), newFakeCommentRepository(), fakeVerifier{uid: "caller"}, &fakeAssistant{})
+		newFakeChatRepository(), newFakeCommentRepository(), newFakeReactionRepository(),
+		fakeVerifier{uid: "caller"}, &fakeAssistant{})
 	freezeLimiters(s)
 	handler := s.Handler()
 
@@ -333,7 +334,7 @@ func TestHandler_LimitsAssistantTurnsPerCaller(t *testing.T) {
 
 	s := New(
 		Config{AssistantAllowlist: entity.NewAssistantAllowlist([]string{chatEmail})},
-		blogs, users, newFakeChatRepository(), newFakeCommentRepository(),
+		blogs, users, newFakeChatRepository(), newFakeCommentRepository(), newFakeReactionRepository(),
 		fakeVerifier{uid: chatOwner, email: chatEmail, emailVerified: true},
 		&fakeAssistant{},
 	)

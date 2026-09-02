@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import type { Reactions } from '../hooks/useReactions'
 import { ApiError, type Api, type Comment } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { Comments } from './Comments'
@@ -29,9 +30,14 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
   } as unknown as Api
 }
 
+/** The page's reactions, which the post above normally owns; these tests are about the thread. */
+function noReactions(overrides: Partial<Reactions> = {}): Reactions {
+  return { countsFor: () => [], toggle: vi.fn(), error: null, ...overrides }
+}
+
 /** Renders the thread as the given signed-in reader, or signed out when uid is omitted. */
-function renderComments(api: Api, uid?: string) {
-  return renderWithApp(<Comments slug="hello-world" ownerId={OWNER} />, {
+function renderComments(api: Api, uid?: string, reactions: Reactions = noReactions()) {
+  return renderWithApp(<Comments slug="hello-world" ownerId={OWNER} reactions={reactions} />, {
     context: { api, user: uid ? { id: uid, email: 'reader@example.com', name: 'Reader' } : null },
   })
 }

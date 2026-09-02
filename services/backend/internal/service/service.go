@@ -112,7 +112,7 @@ func (s *Service) Handler() http.Handler {
 	// The assistant conversation hangs off the post it is about rather than living at a collection
 	// of its own, because that is exactly what it is: a chat has no identity apart from its post,
 	// and no route here could name one that a /blogs/{slug} route would not have resolved first.
-	// Every one of them requires the caller to own the post and to be on the assistant allowlist.
+	// Every one of them requires the caller to own the post and to hold the assistant entitlement.
 	mux.Handle("GET /blogs/{slug}/chat", authed(s.GetChat))
 	// A chat turn is metered a second time, against a much smaller budget: it is the only request
 	// here that calls a paid model and can hold a connection open for two minutes, so the general

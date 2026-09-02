@@ -63,17 +63,14 @@ type currentUserResponse struct {
 	SubscribedUntil  *time.Time `json:"subscribedUntil,omitempty"`
 }
 
-// currentUser pairs a profile with what the credential behind it may do. The capability is asked
-// of the entitlement rather than computed here, so a client is told exactly what the chat routes
-// would enforce (see entity.AssistantEntitlement): the caller supplies the granted address, the
-// profile supplies the subscription.
-func (s *Service) currentUser(ctx context.Context, user entity.User) currentUserResponse {
-	caller := callerFromContext(ctx)
-	permission := s.cfg.AssistantEntitlement.Permission(entity.ActionUpdate, caller, user)
-
+// currentUser pairs a profile with what the account behind it may do. The capability is asked of
+// the entitlement rather than computed here, so a client is told exactly what the chat routes
+// would enforce (see entity.AssistantEntitlement). It needs nothing but the profile: the
+// subscription is on it, and the account it belongs to is its own id.
+func (s *Service) currentUser(user entity.User) currentUserResponse {
 	return currentUserResponse{
 		User:             user,
-		AssistantEnabled: permission.Allows(caller.UID),
+		AssistantEnabled: s.cfg.AssistantEntitlement.Permission(entity.ActionUpdate, user).Allows(user.ID),
 		SubscribedUntil:  user.SubscribedUntil,
 	}
 }
@@ -92,7 +89,7 @@ func (s *Service) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, s.currentUser(r.Context(), user))
+	writeJSON(w, http.StatusOK, s.currentUser(user))
 }
 
 // GetUser returns the profile holding a username. Any caller, signed in or not, may read any
@@ -189,7 +186,7 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 	}
 	// The same shape GetCurrentUser answers with, so a client that has just created its profile
 	// learns what it may do without a second request.
-	writeJSON(w, status, s.currentUser(r.Context(), saved))
+	writeJSON(w, status, s.currentUser(saved))
 }
 
 // DeleteUser removes the caller's own profile, addressed as /users/me for the same reason PutUser

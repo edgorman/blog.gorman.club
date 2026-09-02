@@ -11,7 +11,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	fs "cloud.google.com/go/firestore"
@@ -62,18 +61,14 @@ func run() error {
 		Location:  envOr("ASSISTANT_LOCATION", "global"),
 	})
 
-	// A deployment with no model entitles nobody, whatever it was configured to grant and whatever
-	// an account has paid for: the capability /users/me reports is then accurate, and a client
-	// never offers an assistant that could only answer 503. That is the zero entitlement, which is
-	// why it is written as one rather than as an empty grant list - an empty list still entitles a
-	// subscriber.
-	entitlement := entity.NewAssistantEntitlement(splitList(os.Getenv("ASSISTANT_ALLOWED_EMAILS")))
+	// A deployment with no model entitles nobody, whatever an account has paid for: the capability
+	// /users/me reports is then accurate, and a client never offers an assistant that could only
+	// answer 503. Whether a model is configured is the whole of what this passes in - who is
+	// entitled is each account's own subscription, which lives in Firestore rather than here.
 	if !assistant.Configured() {
 		log.Print("warning: ASSISTANT_MODEL or GCP_PROJECT_ID is unset, so the writing assistant is disabled")
-		entitlement = entity.AssistantEntitlement{}
-	} else if entitlement.GrantsNobody() {
-		log.Print("warning: ASSISTANT_ALLOWED_EMAILS is unset, so the writing assistant is enabled only for accounts that have subscribed")
 	}
+	entitlement := entity.NewAssistantEntitlement(assistant.Configured())
 
 	api := service.New(
 		service.Config{
@@ -113,15 +108,6 @@ func run() error {
 
 	log.Printf("backend listening on :%s (environment=%s, commit=%s)", port, environment, commit)
 	return server.ListenAndServe()
-}
-
-// splitList reads a comma-separated environment variable. Blanks are left in for the consumer to
-// drop, since what counts as an empty entry is the consumer's rule rather than this function's.
-func splitList(value string) []string {
-	if value == "" {
-		return nil
-	}
-	return strings.Split(value, ",")
 }
 
 func envOr(key, fallback string) string {

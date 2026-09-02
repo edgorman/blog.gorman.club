@@ -17,10 +17,12 @@ import "slices"
 // is closed rather than open.
 //
 // Two things are deliberately *not* here. There are no roles: a role would be a name for a set of
-// permissions, and every permission below is decided by who owns the thing or who was named on it,
-// which a role sits between rather than answers. And a permission is asked about one thing only -
-// a comment's thread is readable by whoever may read the post above it, and that is two questions
-// asked in order (see the service's comment routes), not a mode of its own.
+// permissions, and every permission below is decided by who owns the thing or who was named on it -
+// which a role sits between rather than answers - or, for the assistant, by what the account has
+// paid for, which is a lookup rather than a role too (see AssistantEntitlement). And a permission
+// is asked about one thing only: a comment's thread is readable by whoever may read the post above
+// it, and that is two questions asked in order (see the service's comment routes), not a mode of
+// its own.
 
 // Resource is a kind of thing this service holds. It names what a permission is about, and is what
 // makes the policy table below readable as a list of everything that can be reached.
@@ -33,7 +35,7 @@ const (
 	ResourceReaction Resource = "reaction"
 	// ResourceAssistant is the AI writing assistant. It is a feature rather than something stored,
 	// which is exactly why it is in the same table as the rest: a gated feature that is not a
-	// resource is how the assistant ended up with a bespoke allowlist bolted onto the config.
+	// resource is how the assistant ended up with a bespoke email allowlist bolted onto the config.
 	ResourceAssistant Resource = "assistant"
 )
 
@@ -114,10 +116,11 @@ var policy = map[Resource]map[Action]Access{
 		ActionCreate: AccessPrivate,
 		ActionDelete: AccessPrivate,
 	},
-	// The assistant is a whitelist whose membership is bought rather than stored on a document:
-	// an account is on it while its subscription has not run out (see AssistantEntitlement). Read,
-	// update, and delete are the three things done to a conversation, and all three cost the same
-	// entitlement - a transcript is as much a paid artifact as the turn that produced it.
+	// The assistant is a whitelist whose membership is bought rather than stored on a document: an
+	// account is on it while its subscription has not run out, and there is no configured list to
+	// be on instead (see AssistantEntitlement). Read, update, and delete are the three things done
+	// to a conversation, and all three cost the same entitlement - a transcript is as much a paid
+	// artifact as the turn that produced it.
 	ResourceAssistant: {
 		ActionRead:   AccessWhitelist,
 		ActionUpdate: AccessWhitelist,

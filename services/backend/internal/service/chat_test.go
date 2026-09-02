@@ -30,16 +30,14 @@ type chatFixture struct {
 const (
 	chatSlug  = "hello-world"
 	chatOwner = "caller"
-	chatEmail = "ejgorman@gmail.com"
 )
 
-// newChatFixture grants the assistant to the caller's address unless granted says otherwise.
-func newChatFixture(t *testing.T, granted ...string) *chatFixture {
+// newChatFixture entitles the caller by giving their profile a live subscription, which is the
+// only thing that entitles anybody. Pass false for an account that has not paid.
+func newChatFixture(t *testing.T, subscribed ...bool) *chatFixture {
 	t.Helper()
 
-	if granted == nil {
-		granted = []string{chatEmail}
-	}
+	entitled := len(subscribed) == 0 || subscribed[0]
 
 	blogs := newFakeBlogRepository()
 	blogs.seed(entity.Blog{
@@ -51,13 +49,18 @@ func newChatFixture(t *testing.T, granted ...string) *chatFixture {
 	})
 
 	users := newFakeUserRepository()
-	users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel"})
+	owner := entity.User{ID: chatOwner, Username: "calm-smiling-kestrel"}
+	if entitled {
+		until := time.Now().UTC().Add(time.Hour)
+		owner.SubscribedUntil = &until
+	}
+	users.seed(owner)
 
 	chats := newFakeChatRepository()
 	assistant := &fakeAssistant{}
 
 	return &chatFixture{
-		service:   newAssistantService(blogs, users, chats, assistant, granted),
+		service:   newAssistantService(blogs, users, chats, assistant),
 		blogs:     blogs,
 		users:     users,
 		chats:     chats,
@@ -66,11 +69,11 @@ func newChatFixture(t *testing.T, granted ...string) *chatFixture {
 }
 
 // chatRequestFor addresses the chat the way its route does: by the slug of the post it is about,
-// carrying the verified address a grant is keyed on.
+// as the caller who owns it.
 func chatRequestFor(method string, body io.Reader) *http.Request {
 	req := httptest.NewRequest(method, "/blogs/"+url.PathEscape(chatSlug)+"/chat", body)
 	req.SetPathValue("slug", chatSlug)
-	return withVerifiedCaller(req, chatOwner, chatEmail)
+	return withUID(req, chatOwner)
 }
 
 func chatBody(t *testing.T, body any) io.Reader {
@@ -310,10 +313,10 @@ func TestSendChatMessage_RejectsEmptyMessage(t *testing.T) {
 	}
 }
 
-// Entitlement is decided from the verified credential and the caller's own profile, and checked
-// before anything is spent on the model.
-func TestSendChatMessage_NotAllowed(t *testing.T) {
-	f := newChatFixture(t, "somebody-else@example.com")
+// Entitlement is decided from the caller's own stored profile, and checked before anything is
+// spent on the model.
+func TestSendChatMessage_NotSubscribed(t *testing.T) {
+	f := newChatFixture(t, false)
 
 	rec := f.send(t, map[string]string{"message": "rewrite it"})
 
@@ -334,7 +337,7 @@ func TestSendChatMessage_NotOwner(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/blogs/"+chatSlug+"/chat", chatBody(t, map[string]string{"message": "hi"}))
 	req.SetPathValue("slug", chatSlug)
 	rec := httptest.NewRecorder()
-	f.service.SendChatMessage(rec, withVerifiedCaller(req, "stranger", chatEmail))
+	f.service.SendChatMessage(rec, withUID(req, "stranger"))
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
@@ -380,17 +383,6 @@ func TestGetChat_ReturnsConversation(t *testing.T) {
 	}
 }
 
-func TestGetChat_NotAllowed(t *testing.T) {
-	f := newChatFixture(t, "somebody-else@example.com")
-
-	rec := httptest.NewRecorder()
-	f.service.GetChat(rec, chatRequestFor(http.MethodGet, nil))
-
-	if rec.Result().StatusCode != http.StatusForbidden {
-		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
-	}
-}
-
 // Starting the assistant over must not start the post over, edits included.
 func TestDeleteChat(t *testing.T) {
 	f := newChatFixture(t)
@@ -414,35 +406,10 @@ func TestDeleteChat(t *testing.T) {
 	}
 }
 
-// subscribe gives the caller's profile paid access running out in an hour, which is what a
-// checkout will write when there is one.
-func (f *chatFixture) subscribe(t *testing.T) {
-	t.Helper()
-
-	until := time.Now().UTC().Add(time.Hour)
-	f.users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel", SubscribedUntil: &until})
-}
-
-// An account that paid may use the assistant on a deployment that grants nobody anything, which is
-// the point of the subscription: access stops being something only a redeploy can hand out.
-func TestSendChatMessage_Subscriber(t *testing.T) {
-	f := newChatFixture(t, "somebody-else@example.com")
-	f.subscribe(t)
-
-	rec := f.send(t, map[string]string{"message": "tighten it"})
-
-	if rec.Result().StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
-	}
-	if len(f.assistant.requests) != 1 {
-		t.Errorf("model calls = %d, want 1 for a subscriber", len(f.assistant.requests))
-	}
-}
-
 // A subscription that has run out is no subscription at all, and the account is refused exactly as
 // one that never had one.
 func TestSendChatMessage_ExpiredSubscription(t *testing.T) {
-	f := newChatFixture(t, "somebody-else@example.com")
+	f := newChatFixture(t, false)
 
 	expired := time.Now().UTC().Add(-time.Minute)
 	f.users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel", SubscribedUntil: &expired})
@@ -457,17 +424,16 @@ func TestSendChatMessage_ExpiredSubscription(t *testing.T) {
 	}
 }
 
-// Reading a conversation back costs the same entitlement as having it, so a subscription reaches
-// every chat route rather than only the one that spends on the model.
-func TestGetChat_Subscriber(t *testing.T) {
-	f := newChatFixture(t, "somebody-else@example.com")
-	f.subscribe(t)
+// Reading a conversation back costs the same entitlement as having it, so an account that has not
+// paid is refused on every chat route rather than only the one that spends on the model.
+func TestGetChat_NotSubscribed(t *testing.T) {
+	f := newChatFixture(t, false)
 
 	rec := httptest.NewRecorder()
 	f.service.GetChat(rec, chatRequestFor(http.MethodGet, nil))
 
-	if rec.Result().StatusCode != http.StatusOK {
-		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	if rec.Result().StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
 	}
 }
 

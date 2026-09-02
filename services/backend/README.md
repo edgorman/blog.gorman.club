@@ -388,23 +388,21 @@ things are worth knowing about how it is bounded:
   model gates it with, and the one whitelist here whose membership is not a
   field on a document: it is worked out per request from what the account has.
   An account is entitled while its subscription has not run out
-  (`User.SubscribedUntil`), or unconditionally when the deployment granted its
-  verified address (`ASSISTANT_ALLOWED_EMAILS`, configured per environment) -
-  which is how every entitled account gets there today, since nothing sells a
-  subscription yet. The two are the same answer to the routes; only the reason
-  differs.
+  (`User.SubscribedUntil`) and no other way. There is no configured list of
+  addresses to be on, so granting access is writing that field and revoking it
+  is clearing it - neither needs a deploy, which is exactly what an allowlist in
+  the environment could not offer.
 
-  A grant is matched against the caller's verified credential - never against
-  anything the request asserts about itself, and never against an address the
-  provider did not mark `email_verified`. It is keyed on the address rather than
-  on the profile's username because a username is freely chosen and, once
-  released, claimable by anybody: a list naming one would follow the name rather
-  than the account. A subscription needs no such care, being keyed on the
-  account already.
+  The subscription is keyed on the account rather than on anything the caller
+  says about itself: the profile is loaded by the uid in the verified token, so
+  nothing a request asserts is consulted. That is also why nothing here has to
+  care whether an address was verified - an earlier version of this list named
+  email addresses and had to, since an address an account merely claimed would
+  otherwise have matched one.
 
   The entitlement answers in the same shape as every other permission - a
-  whitelist holding exactly one name, the caller's own, when they are entitled
-  and nobody at all when they are not - so "may I use the assistant" is the same
+  whitelist holding exactly one name, the account's own, when it is entitled
+  and nobody at all when it is not - so "may I use the assistant" is the same
   kind of question as "may I read this post", asked the same way. All three chat
   routes cost it: a transcript is as much a paid artifact as the turn that
   produced it. `GET /users/me` reports the answer as `assistantEnabled` (and the
@@ -415,10 +413,10 @@ things are worth knowing about how it is bounded:
   A deployment with no model configured is the zero entitlement: nobody is
   entitled, whatever anyone paid, because there is nothing for an entitlement to
   buy. Note that `SubscribedUntil` lives on the profile, so deleting a profile
-  drops the subscription with it - which is fine while nothing sells one, and is
-  the first thing to settle when a checkout does (either by refusing to delete a
-  profile with live paid access, or by storing the subscription beside the
-  profile rather than in it).
+  drops the subscription with it - which is fine while the field is set by hand,
+  and is the first thing to settle when a checkout writes it (either by refusing
+  to delete a profile with live paid access, or by storing the subscription
+  beside the profile rather than in it).
 - **What the draft is.** A chat request carries the title and body the author
   has on screen, unsaved changes included - asking to tighten a paragraph has to
   mean the paragraph they can see, not the one last written to Firestore. The
@@ -493,7 +491,6 @@ make build     # builds bin/backend
 | `GCP_PROJECT_ID`       | Project the model is called through and billed to. Unset disables the writing assistant. |
 | `ASSISTANT_MODEL`      | Model id, e.g. `gemini-3.7-flash`. It has to be one the platform serves in `ASSISTANT_LOCATION`. Unset disables the writing assistant. |
 | `ASSISTANT_LOCATION`   | Location the model is called in: a region such as `europe-west1`, or `global` for the multi-region endpoint. Defaults to `global`. |
-| `ASSISTANT_ALLOWED_EMAILS` | Comma-separated verified account addresses permitted to use the writing assistant. Unset enables it for nobody. |
 
 `commit` is not an env var — it's baked into the binary at build time via
 `-ldflags "-X main.commit=..."` (see `Dockerfile`), since the same image is

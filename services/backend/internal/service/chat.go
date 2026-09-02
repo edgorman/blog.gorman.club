@@ -49,24 +49,24 @@ type chatReplyResponse struct {
 // requireAssistantAccess checks the caller's account is entitled to the assistant, writing the
 // error response and returning false otherwise.
 //
-// Nothing the request asserts about itself is consulted: the address a grant matches came out of a
-// signed token, and the subscription comes from the caller's own stored profile, looked up by the
-// uid in that token (see entity.AssistantEntitlement). A caller with no profile has no
-// subscription either, and the zero profile answers that without a branch of its own - which is
-// also why a missing one is not an error here.
+// Nothing the request asserts about itself is consulted: the subscription comes from the caller's
+// own stored profile, looked up by the uid in their verified token (see
+// entity.AssistantEntitlement). A caller with no profile has no subscription either, and the zero
+// profile answers that without a branch of its own - which is also why a missing one is not an
+// error here.
 //
 // A caller who is signed in and owns the post but is not entitled gets a 403 saying so plainly:
 // the feature's existence is not a secret, and there is nothing to hide by pretending the route is
 // not there.
 func (s *Service) requireAssistantAccess(w http.ResponseWriter, r *http.Request, action entity.Action) bool {
-	caller := callerFromContext(r.Context())
+	uid := uidFromContext(r.Context())
 
-	// A caller with no uid is entitled to nothing whatever their profile said, so the lookup is
+	// A caller with no uid is entitled to nothing whatever a profile said, so the lookup is
 	// skipped rather than made with an id no document could be at. requireAuth has already
 	// refused them; this only keeps the refusal from costing a datastore read.
 	var user entity.User
-	if caller.UID != "" {
-		stored, err := s.users.Get(r.Context(), caller.UID)
+	if uid != "" {
+		stored, err := s.users.Get(r.Context(), uid)
 		if err != nil && !errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return false
@@ -74,7 +74,7 @@ func (s *Service) requireAssistantAccess(w http.ResponseWriter, r *http.Request,
 		user = stored
 	}
 
-	if !s.cfg.AssistantEntitlement.Permission(action, caller, user).Allows(caller.UID) {
+	if !s.cfg.AssistantEntitlement.Permission(action, user).Allows(uid) {
 		writeError(w, http.StatusForbidden, "the writing assistant is not enabled for your account")
 		return false
 	}

@@ -27,6 +27,26 @@ export interface Blog {
   updatedAt: string
 }
 
+/**
+ * One page of `listBlogs`: the posts themselves, newest first, plus whether a further page
+ * follows. There is no separate cursor - the `createdAt` on the last post here already is one,
+ * fed back as `ListBlogsParams.startAfter` to continue.
+ */
+export interface BlogPage {
+  posts: Blog[]
+  hasMore: boolean
+}
+
+/** What `listBlogs` pages and scopes by - all optional, so the bare call still means "the feed". */
+export interface ListBlogsParams {
+  /** How many posts a page holds. The backend applies its own default and cap when omitted. */
+  limit?: number
+  /** Continues a previous page: the `createdAt` of the last post it held. */
+  startAfter?: string
+  /** Narrows to one author's posts - a profile feed's `User.id`, not their username. */
+  ownerId?: string
+}
+
 export interface User {
   id: string
   /** The whole of a profile's public identity: both its address and the name readers see. */
@@ -197,6 +217,17 @@ async function request<T>(
   return response.json() as Promise<T>
 }
 
+/** The API path for a page of `GET /blogs`, carrying only the params a caller actually set. */
+function blogsListPath(params: ListBlogsParams = {}): string {
+  const query = new URLSearchParams()
+  if (params.limit !== undefined) query.set('limit', String(params.limit))
+  if (params.startAfter) query.set('startAfter', params.startAfter)
+  if (params.ownerId) query.set('ownerId', params.ownerId)
+
+  const search = query.toString()
+  return search ? `/blogs?${search}` : '/blogs'
+}
+
 /** The API path for one post, as `postPath` is its route in the console. */
 function blogPath(slug: string): string {
   return `/blogs/${encodeURIComponent(slug)}`
@@ -223,7 +254,8 @@ function chatPath(slug: string): string {
 
 export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
   return {
-    listBlogs: () => request<Blog[]>(baseUrl, authHeaders, 'GET', '/blogs'),
+    listBlogs: (params?: ListBlogsParams) =>
+      request<BlogPage>(baseUrl, authHeaders, 'GET', blogsListPath(params)),
     // A post is addressed by its slug alone, since slugs are unique across every author:
     // "hello-world" names at most one post anywhere, and the second post under that title is
     // suffixed instead. The uid a post records its owner by is never a URL, exactly as for a

@@ -6,6 +6,8 @@ import { errorMessage, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
 
 interface ProfileInfo {
+  /** What posts are fetched by - `listBlogs`' `ownerId` takes a uid, never a username. */
+  id: string
   /** Taken from the fetched profile rather than the URL, so it carries the casing as stored. */
   username: string
   bio: string
@@ -16,7 +18,7 @@ type PostsState =
   | { phase: 'unconfigured' }
   | { phase: 'loading' }
   | { phase: 'error'; message: string }
-  | { phase: 'ready'; posts: Blog[] }
+  | { phase: 'ready'; posts: Blog[]; hasMore: boolean; loadingMore: boolean; loadMoreError?: string }
 
 const FEED_SIZE = 10
 
@@ -24,10 +26,6 @@ const FEED_SIZE = 10
 export function UserProfile() {
   const { username } = useParams<{ username: string }>()
   const { api } = useApp()
-  // Lookups fold case server-side, so a link may differ in case from the stored name. Posts are
-  // matched against the folded name too, or /user/ed-gorman would show Ed-Gorman's header with
-  // none of their posts.
-  const key = username?.toLowerCase()
   const [profile, setProfile] = useState<ProfileInfo | null>(null)
   const [missing, setMissing] = useState(false)
   const [postsState, setPostsState] = useState<PostsState>(
@@ -37,16 +35,17 @@ export function UserProfile() {
   useEffect(() => {
     if (!api || !username) return
     // Cleared per username: the router reuses this component between profiles, so without it a
-    // second profile would render the first one's header, or its "No such user."
+    // second profile would render the first one's header, or its posts, while the new one loads.
     setProfile(null)
     setMissing(false)
+    setPostsState({ phase: 'loading' })
 
     let cancelled = false
     // An author who never set up a profile has no username, so nothing can address this page for
     // them - a lookup that misses means the name really is unclaimed.
     api.getUser(username).then(
       (u) => {
-        if (!cancelled) setProfile({ username: u.username, bio: u.bio ?? '', memberSince: u.createdAt })
+        if (!cancelled) setProfile({ id: u.id, username: u.username, bio: u.bio ?? '', memberSince: u.createdAt })
       },
       () => {
         if (!cancelled) setMissing(true)
@@ -58,20 +57,18 @@ export function UserProfile() {
   }, [api, username])
 
   useEffect(() => {
-    if (!api || !key) return
+    // Posts are fetched by the profile's uid, once it resolves, rather than filtered client-side
+    // out of the whole feed - the point of scoping `listBlogs` by `ownerId` in the first place.
+    if (!api || !profile) return
     setPostsState({ phase: 'loading' })
 
     let cancelled = false
     api
-      .listBlogs()
-      .then((posts) => {
-        // Matching on the author a post carries, rather than on the uid behind it, keeps this
-        // independent of the profile lookup above - both run against the username at once.
-        const byOwner = posts
-          .filter((p) => p.authorUsername.toLowerCase() === key)
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-          .slice(0, FEED_SIZE)
-        if (!cancelled) setPostsState({ phase: 'ready', posts: byOwner })
+      .listBlogs({ ownerId: profile.id, limit: FEED_SIZE })
+      .then((page) => {
+        if (!cancelled) {
+          setPostsState({ phase: 'ready', posts: page.posts, hasMore: page.hasMore, loadingMore: false })
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) setPostsState({ phase: 'error', message: errorMessage(e, 'Failed to load posts') })
@@ -79,7 +76,30 @@ export function UserProfile() {
     return () => {
       cancelled = true
     }
-  }, [api, key])
+  }, [api, profile])
+
+  const loadMore = () => {
+    if (!api || !profile || postsState.phase !== 'ready' || postsState.loadingMore) return
+    const cursor = postsState.posts.at(-1)?.createdAt
+    setPostsState({ ...postsState, loadingMore: true, loadMoreError: undefined })
+
+    api
+      .listBlogs({ ownerId: profile.id, limit: FEED_SIZE, startAfter: cursor })
+      .then((page) => {
+        setPostsState((prev) =>
+          prev.phase === 'ready'
+            ? { phase: 'ready', posts: [...prev.posts, ...page.posts], hasMore: page.hasMore, loadingMore: false }
+            : prev,
+        )
+      })
+      .catch((e: unknown) => {
+        setPostsState((prev) =>
+          prev.phase === 'ready'
+            ? { ...prev, loadingMore: false, loadMoreError: errorMessage(e, 'Failed to load more posts') }
+            : prev,
+        )
+      })
+  }
 
   if (postsState.phase === 'unconfigured') {
     return (
@@ -125,7 +145,24 @@ export function UserProfile() {
         <p className="text-muted center-note">No posts yet.</p>
       )}
       {postsState.phase === 'ready' && postsState.posts.length > 0 && (
-        <FeedList posts={postsState.posts} />
+        <>
+          <FeedList posts={postsState.posts} />
+          {(postsState.hasMore || postsState.loadMoreError) && (
+            <div className="feed-load-more">
+              {postsState.loadMoreError && <p role="alert">{postsState.loadMoreError}</p>}
+              {postsState.hasMore && (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={loadMore}
+                  disabled={postsState.loadingMore}
+                >
+                  {postsState.loadingMore ? 'Loading…' : 'Load more'}
+                </button>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

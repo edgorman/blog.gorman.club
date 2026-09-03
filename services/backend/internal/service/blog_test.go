@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -82,12 +83,12 @@ func TestListBlogs_OnlyReadableBlogs(t *testing.T) {
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	var got []entity.Blog
+	var got blogListResponse
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	slugs := make([]string, 0, len(got))
-	for _, blog := range got {
+	slugs := make([]string, 0, len(got.Posts))
+	for _, blog := range got.Posts {
 		slugs = append(slugs, blog.Slug)
 	}
 	slices.Sort(slugs)
@@ -109,16 +110,16 @@ func TestListBlogs_NewestFirst(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.ListBlogs(rec, req)
 
-	var got []entity.Blog
+	var got blogListResponse
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(got) != 2 || got[0].Slug != "newer" || got[1].Slug != "older" {
-		t.Errorf("got %v, want newer before older", got)
+	if len(got.Posts) != 2 || got.Posts[0].Slug != "newer" || got.Posts[1].Slug != "older" {
+		t.Errorf("got %v, want newer before older", got.Posts)
 	}
 }
 
-// An empty collection must serialise as [] so clients can iterate the response unconditionally.
+// An empty page's posts must serialise as [] so clients can iterate the response unconditionally.
 func TestListBlogs_EmptyIsArray(t *testing.T) {
 	s := newTestService(nil, nil)
 
@@ -126,8 +127,108 @@ func TestListBlogs_EmptyIsArray(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.ListBlogs(rec, req)
 
-	if body := strings.TrimSpace(rec.Body.String()); body != "[]" {
-		t.Errorf("body = %q, want %q", body, "[]")
+	var got blogListResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body, err := json.Marshal(got.Posts); err != nil || string(body) != "[]" {
+		t.Errorf("posts = %s, want %q", body, "[]")
+	}
+	if got.HasMore {
+		t.Errorf("hasMore = true, want false")
+	}
+}
+
+// The page size is capped at the caller's `limit`, and hasMore says whether a further page exists
+// - the two things a client needs to drive "load more" without ever fetching the whole feed.
+func TestListBlogs_Paginates(t *testing.T) {
+	repo := newFakeBlogRepository()
+	for i, day := range []int{1, 2, 3} {
+		repo.seed(entity.Blog{
+			Slug:       fmt.Sprintf("post-%d", i),
+			OwnerID:    "caller",
+			Visibility: entity.VisibilityPublic,
+			CreatedAt:  time.Date(2026, 1, day, 0, 0, 0, 0, time.UTC),
+		})
+	}
+	s := newTestService(repo, nil)
+
+	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?limit=2", nil), "caller")
+	rec := httptest.NewRecorder()
+	s.ListBlogs(rec, req)
+
+	var page1 blogListResponse
+	if err := json.NewDecoder(rec.Body).Decode(&page1); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(page1.Posts) != 2 || page1.Posts[0].Slug != "post-2" || page1.Posts[1].Slug != "post-1" {
+		t.Fatalf("page1 = %v, want [post-2 post-1]", page1.Posts)
+	}
+	if !page1.HasMore {
+		t.Fatalf("page1.HasMore = false, want true")
+	}
+
+	cursor := page1.Posts[len(page1.Posts)-1].CreatedAt.Format(time.RFC3339Nano)
+	req2 := withUID(httptest.NewRequest(http.MethodGet, "/blogs?limit=2&startAfter="+url.QueryEscape(cursor), nil), "caller")
+	rec2 := httptest.NewRecorder()
+	s.ListBlogs(rec2, req2)
+
+	var page2 blogListResponse
+	if err := json.NewDecoder(rec2.Body).Decode(&page2); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(page2.Posts) != 1 || page2.Posts[0].Slug != "post-0" {
+		t.Fatalf("page2 = %v, want [post-0]", page2.Posts)
+	}
+	if page2.HasMore {
+		t.Fatalf("page2.HasMore = true, want false")
+	}
+}
+
+// A malformed limit or startAfter is a 400, not a value silently ignored.
+func TestListBlogs_RejectsMalformedParams(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		query string
+	}{
+		{"non-numeric limit", "limit=abc"},
+		{"negative limit", "limit=-1"},
+		{"non-timestamp startAfter", "startAfter=not-a-time"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestService(nil, nil)
+			req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?"+tt.query, nil), "caller")
+			rec := httptest.NewRecorder()
+			s.ListBlogs(rec, req)
+
+			if rec.Result().StatusCode != http.StatusBadRequest {
+				t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
+			}
+		})
+	}
+}
+
+// `ownerId` narrows a page to one author's posts - what a profile feed asks for - and still hides
+// what that viewer may not read, exactly as the general feed does.
+func TestListBlogs_OwnerIDScopesToOneAuthor(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.seed(
+		entity.Blog{Slug: "mine-public", OwnerID: "author", Visibility: entity.VisibilityPublic},
+		entity.Blog{Slug: "mine-private", OwnerID: "author", Visibility: entity.VisibilityPrivate},
+		entity.Blog{Slug: "someone-elses", OwnerID: "someone", Visibility: entity.VisibilityPublic},
+	)
+	s := newTestService(repo, nil)
+
+	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?ownerId=author", nil), "reader")
+	rec := httptest.NewRecorder()
+	s.ListBlogs(rec, req)
+
+	var got blogListResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got.Posts) != 1 || got.Posts[0].Slug != "mine-public" {
+		t.Errorf("posts = %v, want [mine-public]", got.Posts)
 	}
 }
 
@@ -706,12 +807,12 @@ func TestDeleteBlog_PostIsNoLongerReadableOrListed(t *testing.T) {
 
 	listRec := httptest.NewRecorder()
 	s.ListBlogs(listRec, withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "owner"))
-	var got []blogResponse
+	var got blogListResponse
 	if err := json.NewDecoder(listRec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(got) != 0 {
-		t.Errorf("ListBlogs after delete = %v, want the deleted post excluded", got)
+	if len(got.Posts) != 0 {
+		t.Errorf("ListBlogs after delete = %v, want the deleted post excluded", got.Posts)
 	}
 }
 
@@ -748,15 +849,15 @@ func TestListBlogs_EmptyAuthorWhenTheOwnerHasNoProfile(t *testing.T) {
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	var got []blogResponse
+	var got blogListResponse
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("posts = %d, want 1", len(got))
+	if len(got.Posts) != 1 {
+		t.Fatalf("posts = %d, want 1", len(got.Posts))
 	}
-	if got[0].AuthorUsername != "" {
-		t.Errorf("AuthorUsername = %q, want it empty", got[0].AuthorUsername)
+	if got.Posts[0].AuthorUsername != "" {
+		t.Errorf("AuthorUsername = %q, want it empty", got.Posts[0].AuthorUsername)
 	}
 }
 
@@ -776,14 +877,14 @@ func TestListBlogs_ResolvesEachAuthorOnce(t *testing.T) {
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	var got []blogResponse
+	var got blogListResponse
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("posts = %d, want 3", len(got))
+	if len(got.Posts) != 3 {
+		t.Fatalf("posts = %d, want 3", len(got.Posts))
 	}
-	for _, post := range got {
+	for _, post := range got.Posts {
 		if post.AuthorUsername != "sly-dancing-monkey" {
 			t.Fatalf("post %s carries author %q, want the owner's username", post.Slug, post.AuthorUsername)
 		}

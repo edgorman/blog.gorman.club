@@ -13,7 +13,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('createApi', () => {
   it('sends the auth headers and trims a trailing slash from the base URL', async () => {
-    const fetchMock = mockFetch({ json: () => Promise.resolve([]) })
+    const fetchMock = mockFetch({ json: () => Promise.resolve({ posts: [], hasMore: false }) })
 
     await createApi('https://api.example.com/', authHeaders).listBlogs()
 
@@ -22,6 +22,23 @@ describe('createApi', () => {
     expect(init.method).toBe('GET')
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
     expect((init.headers as Record<string, string>)['Authorization-Provider']).toBe('google')
+  })
+
+  // Only the params a caller actually sets end up on the query string, so a bare `listBlogs()`
+  // still reads as a plain `/blogs` request above.
+  it('carries listBlogs params on the query string', async () => {
+    const fetchMock = mockFetch({ json: () => Promise.resolve({ posts: [], hasMore: false }) })
+
+    await createApi('https://api.example.com', authHeaders).listBlogs({
+      limit: 10,
+      startAfter: '2026-08-01T00:00:00Z',
+      ownerId: 'uid-1',
+    })
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(
+      'https://api.example.com/blogs?limit=10&startAfter=2026-08-01T00%3A00%3A00Z&ownerId=uid-1',
+    )
   })
 
   it('serialises a JSON body for writes', async () => {

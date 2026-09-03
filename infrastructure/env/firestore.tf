@@ -32,3 +32,55 @@ resource "google_firestore_database" "database" {
 
 # No security rules are deployed deliberately: the backend is the only client and decides access
 # itself, and with no ruleset released the client SDKs cannot reach the database at all.
+
+# BlogRepository.List (services/backend/internal/repository/firestore/blog.go) pages the "blogs"
+# collection ordered by createdAt, so it can walk a feed one page at a time instead of reading the
+# whole collection on every call. Filtering the general feed on any of the three ways a post is
+# readable is a Firestore OR query, which runs as one query per branch behind the scenes - and a
+# query combining a filter with `ORDER BY createdAt` on a different field needs a composite index
+# for that combination, one per branch. A profile feed's ownerId-only branch reuses the second of
+# these.
+resource "google_firestore_index" "blogs_by_visibility_and_created_at" {
+  project    = var.gcp_project_id
+  database   = google_firestore_database.database.name
+  collection = "blogs"
+
+  fields {
+    field_path = "visibility"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "createdAt"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "blogs_by_owner_and_created_at" {
+  project    = var.gcp_project_id
+  database   = google_firestore_database.database.name
+  collection = "blogs"
+
+  fields {
+    field_path = "ownerId"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "createdAt"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "blogs_by_allowed_user_and_created_at" {
+  project    = var.gcp_project_id
+  database   = google_firestore_database.database.name
+  collection = "blogs"
+
+  fields {
+    field_path   = "allowedUserIds"
+    array_config = "CONTAINS"
+  }
+  fields {
+    field_path = "createdAt"
+    order      = "DESCENDING"
+  }
+}

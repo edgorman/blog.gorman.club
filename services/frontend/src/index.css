@@ -475,6 +475,10 @@ a {
   line-height: 1.6;
   max-width: 60ch;
 }
+.feed-load-more {
+  text-align: center;
+  margin-top: var(--space-6);
+}
 
 /* — profile header — */
 .profile-header {

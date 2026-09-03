@@ -6,6 +6,10 @@ updates:
       interval: 'weekly'
     labels:
       - ci
+    groups:
+      ci-deps:
+        patterns:
+          - '*'
 
   - package-ecosystem: 'terraform'
     directory: '/infrastructure/env'
@@ -13,6 +17,10 @@ updates:
       interval: 'weekly'
     labels:
       - infrastructure
+    groups:
+      terraform-deps:
+        patterns:
+          - '*'
 
   - package-ecosystem: 'npm'
     directory: '/services/frontend'
@@ -20,6 +28,10 @@ updates:
       interval: 'weekly'
     labels:
       - frontend
+    groups:
+      npm-deps:
+        patterns:
+          - '*'
 
   - package-ecosystem: 'gomod'
     directory: '/services/backend'
@@ -27,3 +39,7 @@ updates:
       interval: 'weekly'
     labels:
       - backend
+    groups:
+      gomod-deps:
+        patterns:
+          - '*'

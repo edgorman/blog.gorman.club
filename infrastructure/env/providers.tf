@@ -6,12 +6,12 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "7.45.0"
+      version = "8.0.0"
     }
     # Beta-only: google_firebase_project (firestore.tf) isn't in the GA google provider yet.
     google-beta = {
       source  = "hashicorp/google-beta"
-      version = "7.45.0"
+      version = "8.0.0"
     }
   }
 

@@ -22,6 +22,7 @@ func TestBlogMappingRoundTrip(t *testing.T) {
 		OwnerID:        "owner",
 		Title:          "Hello",
 		Content:        "Body",
+		Tags:           []string{"go", "web-dev"},
 		Visibility:     entity.VisibilityPrivate,
 		AllowedUserIDs: []string{"friend"},
 		CreatedAt:      created,

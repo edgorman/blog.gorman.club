@@ -66,6 +66,29 @@ not custom or combined ones, and they are addressed (`PUT`/`DELETE`) rather
 than toggled so a retried click is harmless. See `services/backend/README.md`
 for the ownership and moderation rules.
 
+### Finding Posts
+
+The feed is reverse-chronological, so `GET /blogs` carries two filters beside
+the `ownerId` a profile feed uses: `tag` narrows to one topic and `q` to a
+case-insensitive substring of a post's title or body. Both narrow the same feed
+and neither can widen it - each is applied on top of the read rules above, so a
+search can never surface a post the caller could not already have scrolled to,
+and a tag says nothing about who may read a post.
+
+Tags are normalized on the way in (lowercase, one hyphen between words), so the
+form a post is stored, filtered, and linked under is decided by the server
+rather than by however an author typed it. A tag becomes a Firestore
+`array-contains` filter with its own composite indexes, and replaces rather than
+joins the readability OR the general feed uses - a query may hold only one
+`array-contains` clause, and a tag is the more selective of the two, so
+readability falls back to the same in-Go filtering a profile feed already
+relies on.
+
+Search is deliberately a substring scan applied as the feed is walked, not a
+search index: there is no Firestore predicate for it, and at this scale the
+alternative is a service to run, pay for, and keep in step. It is bounded and
+paged, and is the first thing to revisit if the collection outgrows it.
+
 ### Resource Naming
 
 Strict environment suffixes (`backend-stag`, `backend-prod`) and scoped secrets (`stag-db-pass` vs `prod-db-pass`) ensure services in staging cannot accidentally reach production resources.

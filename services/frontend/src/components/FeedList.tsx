@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { TagList } from './TagList'
 import { postPath, type Blog } from '../lib/api'
 import { formatDate, snippetFrom } from '../lib/format'
 
@@ -31,6 +32,7 @@ function FeedRow({ post, delayMs }: { post: Blog; delayMs: number }) {
       </div>
       <h2 className="feed-title">{post.title || '(untitled)'}</h2>
       <p className="text-muted feed-snippet">{snippetFrom(post.content)}</p>
+      <TagList tags={post.tags} />
     </>
   )
   const style = { animationDelay: `${delayMs}ms` }

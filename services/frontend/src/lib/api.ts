@@ -21,6 +21,13 @@ export interface Blog {
   authorUsername: string
   title: string
   content: string
+  /**
+   * The topics the post is filed under, normalized server-side: lowercase, one hyphen between
+   * words, so "Web Dev" and "web-dev" are one tag. Absent for an untagged post. They are how a
+   * reader finds a post by subject rather than by date - `tagPath` builds the link - and say
+   * nothing about who may read it, which is `visibility`'s alone.
+   */
+  tags?: string[]
   visibility: 'public' | 'private'
   allowedUserIds?: string[]
   createdAt: string
@@ -45,6 +52,14 @@ export interface ListBlogsParams {
   startAfter?: string
   /** Narrows to one author's posts - a profile feed's `User.id`, not their username. */
   ownerId?: string
+  /** Narrows to one topic. Any spelling works - the backend normalizes it before matching. */
+  tag?: string
+  /**
+   * Narrows to posts holding this term in their title or body, ignoring case. It is a plain
+   * substring match rather than a search index, and it never widens what comes back: a post the
+   * caller may not read stays hidden however exactly it is named.
+   */
+  q?: string
 }
 
 export interface User {
@@ -186,6 +201,16 @@ export function userPath(username: string): string | null {
   return `/user/${encodeURIComponent(username)}`
 }
 
+/**
+ * The feed filtered to one topic, which is where a tag chip links. Tags live in the feed's query
+ * string rather than at a path of their own: a tag is one way of narrowing the feed, alongside the
+ * search box beside it, rather than a page in its own right - so the two compose in the URL and
+ * both survive a reload and a shared link.
+ */
+export function tagPath(tag: string): string {
+  return `/?tag=${encodeURIComponent(tag)}`
+}
+
 export type AuthHeaders = Record<string, string>
 
 async function request<T>(
@@ -223,6 +248,8 @@ function blogsListPath(params: ListBlogsParams = {}): string {
   if (params.limit !== undefined) query.set('limit', String(params.limit))
   if (params.startAfter) query.set('startAfter', params.startAfter)
   if (params.ownerId) query.set('ownerId', params.ownerId)
+  if (params.tag) query.set('tag', params.tag)
+  if (params.q) query.set('q', params.q)
 
   const search = query.toString()
   return search ? `/blogs?${search}` : '/blogs'

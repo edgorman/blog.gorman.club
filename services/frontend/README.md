@@ -3,11 +3,19 @@
 Vite/React single-page app for blog.gorman.club, deployed to Cloudflare Pages
 (see the repository root `CLAUDE.md` for the full deployment architecture).
 
-It is the public blog: a recent-posts feed, a single post view rendering
-markdown, a per-author profile feed, and a markdown editor for publishing.
+It is the public blog: a recent-posts feed with search and tag filtering, a
+single post view rendering markdown, a per-author profile feed, and a markdown
+editor for publishing.
 
 - **Feed** (`/`) — the 10 most recent posts the caller can read (every public
-  post, plus the signed-in caller's own private ones), across all authors.
+  post, plus the signed-in caller's own private ones), across all authors. A
+  search box and a tag filter narrow it, and both live in the query string
+  (`/?tag=go&q=generics`) rather than in component state: that is what makes a
+  filtered feed a place — it survives a reload, it can be linked to and shared,
+  and the tag chips on every post point at it. They compose with each other, and
+  neither can widen the feed: the backend applies both on top of the same read
+  rules, so a search cannot surface a post the caller could not have scrolled
+  to.
 - **Post** (`/post/:slug`) — `GET /blogs/{slug}`, rendered from markdown to
   HTML. The slug addresses the post on its own, since slugs are unique across
   every author, so `lib/api.ts`'s `postPath` builds a link from it alone. The
@@ -17,7 +25,10 @@ markdown, a per-author profile feed, and a markdown editor for publishing.
   anyone signed in. A body is rendered as *text*, not markdown — a post is
   written by the author whose page it is, a comment by whoever happened to read
   it, and the safe rendering of a stranger's input is the one with no syntax in
-  it. Delete is offered to a comment's own author and to the post's owner, who
+  it. The post's tags sit under the author as links into the feed filtered by
+  each (`components/TagList.tsx`); the same chips in a feed row are plain text
+  instead, since a row is itself one big link and an anchor inside an anchor is
+  not valid HTML. Delete is offered to a comment's own author and to the post's owner, who
   moderates their own post; the backend decides either way. Both the post and
   each comment carry a reaction bar (`components/ReactionBar.tsx`): five fixed
   emoji (👍 👎 ❤️ 😄 🎉), each a chip showing its count and whether you are in
@@ -29,7 +40,10 @@ markdown, a per-author profile feed, and a markdown editor for publishing.
 - **Edit post** (`/post/:slug/edit`) — the same editor over an existing post,
   saving via `PUT /blogs/{slug}`. Only the owner sees the form.
 - **New post** (`/post/new`) — a single-pane markdown editor with a Preview
-  toggle, publishing via `POST /blogs`. Requires sign-in. The literal outranks
+  toggle, publishing via `POST /blogs`. Requires sign-in. Tags are typed as one
+  comma-separated line; `lib/tags.ts` only splits it, since normalizing a tag
+  ("Web Dev" into "web-dev") is the backend's `entity.NormalizeTag` and doing it
+  here too would be a second definition of the same rule. The literal outranks
   the `:slug` wildcard beside it, and the backend reserves `new` as a slug, so
   no post can be published at a path the editor already occupies.
 - **Profile** (`/user/:username`) — that author's recent posts, plus their

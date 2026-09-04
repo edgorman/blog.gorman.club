@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
@@ -137,8 +138,11 @@ func (s *Service) ensureAuthor(ctx context.Context, uid string) error {
 // blogRequest is the client-settable half of a blog. The slug, ownerId, and the timestamps are
 // decided by the server, so they are absent here rather than decoded and then overwritten.
 type blogRequest struct {
-	Title          string            `json:"title"`
-	Content        string            `json:"content"`
+	Title   string   `json:"title"`
+	Content string   `json:"content"`
+	Tags    []string `json:"tags"`
+	// Visibility and the whitelist below are what a post's read audience is made of; Tags above is
+	// only what it is filed under, and narrows a feed rather than widening who may see one.
 	Visibility     entity.Visibility `json:"visibility"`
 	AllowedUserIDs []string          `json:"allowedUserIds"`
 }
@@ -150,6 +154,9 @@ func (b blogRequest) applyTo(blog *entity.Blog) error {
 		return err
 	}
 	if err := candidate.SetContent(b.Content); err != nil {
+		return err
+	}
+	if err := candidate.SetTags(b.Tags); err != nil {
 		return err
 	}
 	if err := candidate.SetVisibility(b.Visibility); err != nil {
@@ -254,14 +261,32 @@ type blogListResponse struct {
 	HasMore bool           `json:"hasMore"`
 }
 
-// parseBlogListParams reads ListBlogs' paging and scope out of the query string: `limit` bounds
-// the page, `startAfter` (an RFC3339 timestamp) continues one, and `ownerId` narrows to a single
-// author's posts for a profile feed. Each is optional, and a malformed one is reported as a 400
-// rather than silently ignored - a client sending garbage here is the one case among List's
-// callers where that garbage should not be read as "no preference".
+// parseBlogListParams reads ListBlogs' paging, scope and filters out of the query string: `limit`
+// bounds the page, `startAfter` (an RFC3339 timestamp) continues one, `ownerId` narrows to a
+// single author's posts for a profile feed, `tag` narrows to one topic, and `q` narrows to posts
+// holding a term. Each is optional, and a malformed one is reported as a 400 rather than silently
+// ignored - a client sending garbage here is the one case among List's callers where that garbage
+// should not be read as "no preference".
+//
+// They compose rather than exclude each other, because each answers a different question and a
+// reader asking two at once ("posts of mine about Go") means both.
 func parseBlogListParams(r *http.Request) (repository.ListParams, error) {
 	query := r.URL.Query()
-	params := repository.ListParams{Limit: listBlogsDefaultLimit, OwnerUID: query.Get("ownerId")}
+	params := repository.ListParams{
+		Limit:    listBlogsDefaultLimit,
+		OwnerUID: query.Get("ownerId"),
+		Query:    strings.TrimSpace(query.Get("q")),
+	}
+
+	// The tag is normalized here rather than in the repository, so what reaches Firestore is
+	// already the one form a post stores it in. A tag that normalizes away was still asked for -
+	// answering the unfiltered feed to it would silently ignore the filter - so it is a 400.
+	if raw := query.Get("tag"); strings.TrimSpace(raw) != "" {
+		params.Tag = entity.NormalizeTag(raw)
+		if params.Tag == "" {
+			return repository.ListParams{}, errors.New("tag must hold at least one letter or digit")
+		}
+	}
 
 	if raw := query.Get("limit"); raw != "" {
 		limit, err := strconv.Atoi(raw)
@@ -283,7 +308,12 @@ func parseBlogListParams(r *http.Request) (repository.ListParams, error) {
 }
 
 // ListBlogs returns one page of the blogs the caller is allowed to read, newest first - the whole
-// collection for the general feed, or (with `ownerId` set) one author's posts for a profile feed.
+// collection for the general feed, or narrowed by `ownerId` to one author's posts, by `tag` to one
+// topic, and by `q` to posts holding a term.
+//
+// Filtering never widens what comes back: every narrowing is applied on top of the same
+// entity.Blog.CanBeReadBy the unfiltered feed uses, so searching cannot surface a post a reader
+// could not have found by scrolling.
 func (s *Service) ListBlogs(w http.ResponseWriter, r *http.Request) {
 	params, err := parseBlogListParams(r)
 	if err != nil {

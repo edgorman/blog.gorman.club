@@ -47,6 +47,33 @@ describe('NewPost', () => {
     )
   })
 
+  // The field is one line of text; splitting it on commas is all the client does, since the tags
+  // themselves are normalized server-side.
+  it('splits the tags field on commas when publishing', async () => {
+    const api = fakeApi()
+    renderWithApp(<NewPost />, { context: { api, user: author } })
+
+    await userEvent.type(screen.getByLabelText('Title'), 'My post')
+    await userEvent.type(screen.getByLabelText('Tags'), 'Go, web dev,')
+    await userEvent.click(screen.getByRole('button', { name: 'Publish' }))
+
+    await screen.findByText('Published.')
+    expect(api.createBlog).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ['Go', 'web dev'] }),
+    )
+  })
+
+  it('publishes an untagged post with no tags', async () => {
+    const api = fakeApi()
+    renderWithApp(<NewPost />, { context: { api, user: author } })
+
+    await userEvent.type(screen.getByLabelText('Title'), 'My post')
+    await userEvent.click(screen.getByRole('button', { name: 'Publish' }))
+
+    await screen.findByText('Published.')
+    expect(api.createBlog).toHaveBeenCalledWith(expect.objectContaining({ tags: [] }))
+  })
+
   it('publishes as private when that visibility is chosen', async () => {
     const api = fakeApi()
     renderWithApp(<NewPost />, { context: { api, user: author } })

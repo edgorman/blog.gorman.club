@@ -4,6 +4,7 @@ import { AssistantPanel } from '../components/AssistantPanel'
 import { useApp } from '../context/AppContext'
 import { ApiError, errorMessage, postPath, type Blog } from '../lib/api'
 import { renderMarkdown } from '../lib/markdown'
+import { MAX_TAGS, formatTags, parseTags } from '../lib/tags'
 
 type State =
   | { phase: 'unconfigured' }
@@ -24,6 +25,8 @@ export function EditPost() {
   const [state, setState] = useState<State>(api ? { phase: 'loading' } : { phase: 'unconfigured' })
   const [title, setTitle] = useState('')
   const [markdown, setMarkdown] = useState('')
+  // The one line the author edits, seeded from the post's stored (already normalized) tags.
+  const [tags, setTags] = useState('')
   const [visibility, setVisibility] = useState<Visibility>('public')
   const [mode, setMode] = useState<Mode>('write')
   const [saving, setSaving] = useState(false)
@@ -41,6 +44,7 @@ export function EditPost() {
         setState({ phase: 'ready', post })
         setTitle(post.title)
         setMarkdown(post.content)
+        setTags(formatTags(post.tags))
         setVisibility(post.visibility)
       })
       .catch((e: unknown) => {
@@ -60,6 +64,7 @@ export function EditPost() {
       .updateBlog(slug, {
         title,
         content: markdown,
+        tags: parseTags(tags),
         visibility,
         allowedUserIds: state.post.allowedUserIds,
       })
@@ -144,6 +149,20 @@ export function EditPost() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
+      </div>
+
+      <div className="field">
+        <label htmlFor="gc-tags">Tags</label>
+        <input
+          id="gc-tags"
+          className="input"
+          placeholder="go, web dev"
+          value={tags}
+          onChange={(e) => setTags(e.target.value)}
+        />
+        <p className="field-hint text-muted">
+          Comma separated, up to {MAX_TAGS}. Readers use them to find posts on a topic.
+        </p>
       </div>
 
       <div className="seg" role="radiogroup" aria-label="Visibility" style={{ marginBottom: 'var(--space-3)' }}>

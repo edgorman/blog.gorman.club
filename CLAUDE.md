@@ -89,6 +89,32 @@ search index: there is no Firestore predicate for it, and at this scale the
 alternative is a service to run, pay for, and keep in step. It is bounded and
 paged, and is the first thing to revisit if the collection outgrows it.
 
+### Caching
+
+`GET /blogs` is the highest-traffic and most repeated read in the service - the
+landing feed is the same public data for every signed-out visitor - so the
+anonymous listing is cached in the serving process for a short TTL
+(`services/backend/internal/repository/cache`). It is a decorator over the blog
+repository rather than something a handler does, wired in `cmd/backend`: the
+service cannot tell a cached page from a fetched one, and the cache is removed by
+deleting a line.
+
+Only the anonymous caller's pages are cached, and that is what makes it safe
+rather than something to be careful with. A page is whatever the read rules above
+admit for one uid, so two callers may share an answer only if they share a uid -
+and the empty uid, which is not an account at all, is granted public posts and
+nothing else. A signed-in caller's page carries their own private and whitelisted
+posts, so it is neither stored nor served here; there is no per-uid keying to get
+wrong because there are no per-uid entries. Every filter is part of the key, so a
+tag or a search is its own entry rather than a variation on the feed.
+
+A write drops every cached page, so an author sees their own post in the feed at
+once; across instances the TTL is the real bound, since the cache - like the rate
+limiter's buckets - is held per-instance and is the same thing to revisit if the
+service scales past one. Entries are capped, because a caller sending a distinct
+search term per request would otherwise grow the map indefinitely; the read volume
+such a caller can provoke is bounded by the rate limiter rather than by the cache.
+
 ### Resource Naming
 
 Strict environment suffixes (`backend-stag`, `backend-prod`) and scoped secrets (`stag-db-pass` vs `prod-db-pass`) ensure services in staging cannot accidentally reach production resources.

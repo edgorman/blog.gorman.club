@@ -24,6 +24,7 @@ cmd/backend/          Entrypoint: reads config, builds adapters, hands them to t
 internal/
   entity/             Domain types and their rules - no I/O, no HTTP, no persistence tags
   repository/         Interfaces for everything external, plus ErrNotFound
+    cache/            A short-TTL in-process cache decorating the Blog repository's anonymous listing
     firestore/        Firestore implementations of the Blog, User, Chat, Comment and Reaction repositories
     google/           Google Identity Services implementation of TokenVerifier
     gemini/           Gemini Enterprise Agent Platform implementation of Assistant
@@ -32,7 +33,9 @@ internal/
 
 Dependencies point inward: `service` and `repository` both know `entity`, `entity` knows nothing
 else, and only `cmd/backend` knows which concrete adapters exist. Swapping Firestore for another
-store means adding a folder under `repository/` and changing one line in `cmd/backend`.
+store means adding a folder under `repository/` and changing one line in `cmd/backend`. `cache/`
+is not a store at all but a decorator over one, wired in the same place and by the same rule: it
+implements the interface it wraps, so it is enabled and disabled by that one line.
 
 Validation lives on the entities as setters (`SetUsername`, `SetVisibility`, ...) that trim,
 check, and only then apply, so a rejected value is never half-written. The HTTP layer decodes into
@@ -192,6 +195,52 @@ where Firestore already applied them. The entity stays the definition and the
 query is an optimisation over it that may not silently disagree — the same
 argument that has `CanBeReadBy` rechecked on documents the OR query already
 filtered.
+
+### Caching the anonymous feed
+
+`GET /blogs` is the highest-traffic read here and the most repeated one: the
+landing feed is the same public data for every signed-out visitor, and without a
+cache each of them re-runs the same Firestore query. So the anonymous listing is
+cached in the memory of the serving process for 30 seconds
+(`internal/repository/cache`).
+
+It is a decorator over `repository.BlogRepository` rather than something the
+handler does, which keeps the whole of the caching in one file: the service, its
+handlers and its tests cannot tell whether a page came from Firestore or from
+memory, and `cmd/backend` is where it is turned on.
+
+What makes it safe is that **only the anonymous caller's pages are cached**. A
+page is whatever `Blog.CanBeReadBy` admits for one uid, so two callers may share
+an answer only if they share a uid — and the empty uid, which is not an account
+at all, is granted public posts and nothing else. Every anonymous caller
+therefore really is asking the same question. A signed-in caller's page carries
+their own private and whitelisted posts, so it is never stored and never served
+from the cache; there is no per-uid keying to get wrong because there are no
+per-uid entries. Filters do not widen this either: `ownerId`, `tag`, `startAfter`,
+`limit` and `q` are all part of the key, so a narrowed page is its own entry
+rather than a variation on the feed.
+
+The cost is staleness, bounded two ways. A write through this repository drops
+every cached page at once — not the ones the written post appears in, since
+working out which those are means a second implementation of `List`'s filters,
+wrong in exactly the way that shows up as a stale feed — so an author who
+publishes sees their post in the feed immediately. That only holds within the
+process that served the write, though, so on more than one instance the TTL is
+the real guarantee: at most 30 seconds before a new post reaches the feed a
+stranger sees. A post fetched by slug is not cached at all, so a link to a brand
+new post always resolves.
+
+Two bounds keep it from being a lever. The entry count is capped, because `q` is
+free text and a caller sending a distinct term per request would otherwise grow
+the map for as long as it kept sending them; once full of live pages, new ones
+are simply not kept, which degrades to the uncached behaviour rather than to
+unbounded memory. The volume of Firestore reads such a caller can provoke is
+bounded by the rate limiter in front of the API rather than here — the cache is
+an optimisation, not a defence.
+
+Like the rate limiter's buckets, this lives in one process and so is a
+per-*instance* cache: N instances hold N copies, each expiring on its own
+schedule. That is the same thing to revisit before scaling out.
 
 Profiles are keyed by the owner's Google account ID, so there is no
 server-assigned ID to hand out and a profile is written with `PUT` rather than

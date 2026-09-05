@@ -4,6 +4,7 @@ import { GoogleSignInButton } from '../components/GoogleSignInButton'
 import { useApp } from '../context/AppContext'
 import { errorMessage, postPath, type Blog } from '../lib/api'
 import { renderMarkdown } from '../lib/markdown'
+import { MAX_TAGS, parseTags } from '../lib/tags'
 
 const STARTER_MD = `# Your title here
 
@@ -21,6 +22,9 @@ export function NewPost() {
   const { api, user, authError, authReady, renderSignInButton } = useApp()
   const [title, setTitle] = useState('')
   const [markdown, setMarkdown] = useState(STARTER_MD)
+  // Held as the one line the author edits rather than as a list, so a half-typed tag is not a
+  // tag yet - `parseTags` splits it only when the post is published.
+  const [tags, setTags] = useState('')
   const [mode, setMode] = useState<Mode>('write')
   const [visibility, setVisibility] = useState<Visibility>('public')
   const [publishing, setPublishing] = useState(false)
@@ -32,7 +36,7 @@ export function NewPost() {
     setPublishing(true)
     setError(null)
     api
-      .createBlog({ title, content: markdown, visibility })
+      .createBlog({ title, content: markdown, tags: parseTags(tags), visibility })
       .then(setPublished)
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to publish')))
       .finally(() => setPublishing(false))
@@ -82,6 +86,20 @@ export function NewPost() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
+          </div>
+
+          <div className="field">
+            <label htmlFor="gc-tags">Tags</label>
+            <input
+              id="gc-tags"
+              className="input"
+              placeholder="go, web dev"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+            />
+            <p className="field-hint text-muted">
+              Comma separated, up to {MAX_TAGS}. Readers use them to find posts on a topic.
+            </p>
           </div>
 
           <div className="seg" role="radiogroup" aria-label="Visibility" style={{ marginBottom: 'var(--space-3)' }}>

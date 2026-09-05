@@ -194,6 +194,9 @@ func TestListBlogs_RejectsMalformedParams(t *testing.T) {
 		{"non-numeric limit", "limit=abc"},
 		{"negative limit", "limit=-1"},
 		{"non-timestamp startAfter", "startAfter=not-a-time"},
+		// A tag that normalizes away was still asked for, so answering the whole feed to it
+		// would silently ignore the filter.
+		{"tag that names nothing", "tag=%21%21%21"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newTestService(nil, nil)
@@ -591,6 +594,202 @@ func TestCreateBlog_RejectsOverlongTitle(t *testing.T) {
 	}
 	if got := decodeAPIError(t, rec).Error; !strings.Contains(got, "title") {
 		t.Errorf("error = %q, want it to name the title field", got)
+	}
+}
+
+// `tag` narrows a page to one topic, matching the normalized form a post stores rather than the
+// spelling a link happened to carry.
+func TestListBlogs_TagNarrowsToOneTopic(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.seed(
+		entity.Blog{Slug: "about-go", OwnerID: "author", Visibility: entity.VisibilityPublic, Tags: []string{"go", "web-dev"}},
+		entity.Blog{Slug: "about-rust", OwnerID: "author", Visibility: entity.VisibilityPublic, Tags: []string{"rust"}},
+		entity.Blog{Slug: "untagged", OwnerID: "author", Visibility: entity.VisibilityPublic},
+	)
+	s := newTestService(repo, nil)
+
+	for _, query := range []string{"tag=web-dev", "tag=Web+Dev"} {
+		t.Run(query, func(t *testing.T) {
+			req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?"+query, nil), "reader")
+			rec := httptest.NewRecorder()
+			s.ListBlogs(rec, req)
+
+			if rec.Result().StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+			}
+			var got blogListResponse
+			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if len(got.Posts) != 1 || got.Posts[0].Slug != "about-go" {
+				t.Errorf("posts = %v, want [about-go]", got.Posts)
+			}
+		})
+	}
+}
+
+// `q` narrows a page to the posts holding a term in their title or body, ignoring case.
+func TestListBlogs_QuerySearchesTitleAndContent(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.seed(
+		entity.Blog{Slug: "by-title", OwnerID: "author", Visibility: entity.VisibilityPublic, Title: "Firestore notes"},
+		entity.Blog{Slug: "by-content", OwnerID: "author", Visibility: entity.VisibilityPublic, Content: "a post about firestore"},
+		entity.Blog{Slug: "unrelated", OwnerID: "author", Visibility: entity.VisibilityPublic, Title: "Something else"},
+	)
+	s := newTestService(repo, nil)
+
+	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?q=FIRESTORE", nil), "reader")
+	rec := httptest.NewRecorder()
+	s.ListBlogs(rec, req)
+
+	var got blogListResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	slugs := make([]string, 0, len(got.Posts))
+	for _, blog := range got.Posts {
+		slugs = append(slugs, blog.Slug)
+	}
+	slices.Sort(slugs)
+	if want := []string{"by-content", "by-title"}; !slices.Equal(slugs, want) {
+		t.Errorf("slugs = %v, want %v", slugs, want)
+	}
+}
+
+// Searching narrows what a reader could already have found by scrolling - it never widens it, so
+// a post they may not read stays invisible however exactly they name it.
+func TestListBlogs_SearchNeverSurfacesUnreadablePosts(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.seed(
+		entity.Blog{Slug: "secret", OwnerID: "someone", Visibility: entity.VisibilityPrivate, Title: "Firestore secrets", Tags: []string{"go"}},
+	)
+	s := newTestService(repo, nil)
+
+	for _, query := range []string{"q=firestore", "tag=go"} {
+		t.Run(query, func(t *testing.T) {
+			req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?"+query, nil), "reader")
+			rec := httptest.NewRecorder()
+			s.ListBlogs(rec, req)
+
+			var got blogListResponse
+			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if len(got.Posts) != 0 {
+				t.Errorf("posts = %v, want none", got.Posts)
+			}
+		})
+	}
+}
+
+// The filters compose rather than exclude each other: "that author's posts about Go" is one page.
+func TestListBlogs_FiltersCompose(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.seed(
+		entity.Blog{Slug: "wanted", OwnerID: "author", Visibility: entity.VisibilityPublic, Title: "Generics", Tags: []string{"go"}},
+		entity.Blog{Slug: "wrong-author", OwnerID: "someone", Visibility: entity.VisibilityPublic, Title: "Generics", Tags: []string{"go"}},
+		entity.Blog{Slug: "wrong-tag", OwnerID: "author", Visibility: entity.VisibilityPublic, Title: "Generics", Tags: []string{"rust"}},
+		entity.Blog{Slug: "wrong-term", OwnerID: "author", Visibility: entity.VisibilityPublic, Title: "Channels", Tags: []string{"go"}},
+	)
+	s := newTestService(repo, nil)
+
+	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?ownerId=author&tag=go&q=generics", nil), "reader")
+	rec := httptest.NewRecorder()
+	s.ListBlogs(rec, req)
+
+	var got blogListResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got.Posts) != 1 || got.Posts[0].Slug != "wanted" {
+		t.Errorf("posts = %v, want [wanted]", got.Posts)
+	}
+}
+
+// Tags are normalized on the way in, so the form a post is stored - and so filtered and linked -
+// under is decided by the server rather than by however the author typed them.
+func TestCreateBlog_NormalizesTags(t *testing.T) {
+	repo := newFakeBlogRepository()
+	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
+
+	body := blogRequestBody(t, blogRequest{
+		Title:      "Hello, world!",
+		Visibility: entity.VisibilityPublic,
+		Tags:       []string{"Go", " Web Dev ", "go", "!!!"},
+	})
+	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
+	rec := httptest.NewRecorder()
+	s.CreateBlog(rec, req)
+
+	if rec.Result().StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
+	}
+	got := decodeBlog(t, rec)
+	if want := []string{"go", "web-dev"}; !slices.Equal(got.Tags, want) {
+		t.Errorf("tags = %v, want %v", got.Tags, want)
+	}
+	stored, ok := repo.stored(got.Slug)
+	if !ok {
+		t.Fatalf("no post stored at %q", got.Slug)
+	}
+	if !slices.Equal(stored.Tags, got.Tags) {
+		t.Errorf("stored tags = %v, want %v", stored.Tags, got.Tags)
+	}
+}
+
+func TestCreateBlog_RejectsTooManyTags(t *testing.T) {
+	s := newTestService(nil, nil)
+
+	tags := make([]string, entity.MaxTags+1)
+	for i := range tags {
+		tags[i] = fmt.Sprintf("tag%d", i)
+	}
+	body := blogRequestBody(t, blogRequest{Title: "New post", Visibility: entity.VisibilityPublic, Tags: tags})
+	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
+	rec := httptest.NewRecorder()
+	s.CreateBlog(rec, req)
+
+	if rec.Result().StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
+	}
+	if got := decodeAPIError(t, rec).Error; !strings.Contains(got, "tags") {
+		t.Errorf("error = %q, want it to name the tags field", got)
+	}
+}
+
+// Retagging is a plain update, and leaves everything the request does not carry alone.
+func TestUpdateBlog_ReplacesTags(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.seed(entity.Blog{
+		Slug: "hello-world", OwnerID: "owner", Title: "Hello", Visibility: entity.VisibilityPublic,
+		Tags: []string{"go", "web-dev"},
+	})
+	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
+
+	body := blogRequestBody(t, blogRequest{Title: "Hello", Visibility: entity.VisibilityPublic, Tags: []string{"Rust"}})
+	req := withUID(blogPathRequest(http.MethodPut, "hello-world", body), "owner")
+	rec := httptest.NewRecorder()
+	s.UpdateBlog(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	stored, ok := repo.stored("hello-world")
+	if !ok {
+		t.Fatal("post is gone")
+	}
+	if want := []string{"rust"}; !slices.Equal(stored.Tags, want) {
+		t.Errorf("tags = %v, want %v", stored.Tags, want)
+	}
+
+	// An update carrying no tags at all clears them, since a blog request is a full replace.
+	body = blogRequestBody(t, blogRequest{Title: "Hello", Visibility: entity.VisibilityPublic})
+	req = withUID(blogPathRequest(http.MethodPut, "hello-world", body), "owner")
+	rec = httptest.NewRecorder()
+	s.UpdateBlog(rec, req)
+
+	if stored, _ = repo.stored("hello-world"); stored.Tags != nil {
+		t.Errorf("tags = %v, want nil", stored.Tags)
 	}
 }
 

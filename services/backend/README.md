@@ -151,6 +151,48 @@ outranks the `:slug` wildcard beside it, so a post there would be unreachable.
 A title that slugs to one takes the suffixed form straight away, and `SetSlug`
 refuses a reserved slug outright.
 
+### Finding a post
+
+The feed is reverse-chronological, which is the right default and a poor way to
+find one post among many, so `GET /blogs` takes two filters beside the `ownerId`
+a profile feed already used. Both narrow the page and neither can widen it: each
+is applied on top of `Blog.CanBeReadBy`, so a private post cannot be surfaced by
+a search that names it exactly, and a stranger cannot use the search box to
+discover what somebody wrote.
+
+- **`tag`** — the topics a post is filed under. `entity.NormalizeTag` reduces
+  what an author typed to the one form a tag is stored, filtered, and linked
+  under (lowercase, one hyphen between words), so "Web Dev", "web dev" and
+  "WEB-DEV" are one tag rather than three that look alike; the same reduction is
+  applied to the query param, so a link may spell it however it likes. Unlike a
+  slug it keeps every script rather than only ASCII — a slug has to survive being
+  read off a screen and typed back in, a tag is only ever followed from a link a
+  post rendered. Tags carry no access meaning: a post's audience is `visibility`
+  and `allowedUserIds`, and nothing else.
+- **`q`** — a case-insensitive substring of a post's title or body. It is
+  deliberately not a search index: at this scale the alternative is a service to
+  run, pay for, and keep in step, and what a reader wants from a search box on a
+  personal blog is to find the post they half remember. Tags are not searched,
+  since they have an exact filter of their own.
+
+The two are applied in different places, and the reason is what Firestore can
+do. A tag becomes an `array-contains` filter on the query (with its own
+composite indexes in `infrastructure/env/firestore.tf`), *replacing* the
+readability OR the general feed uses — a query may hold only one
+`array-contains` clause and that OR already spends it on `allowedUserIds`.
+Replacing it is the right way round: a tag is far more selective than
+"readable", so the tag goes to the index and readability falls back to the
+same in-Go filtering the profile feed already relies on. A search term has no
+Firestore predicate at all, so it is applied as `List` walks, which means a term
+matching nothing walks the whole collection — bounded, paged, and the first
+thing to revisit if the collection outgrows it.
+
+Both filters are rechecked against the entity as the walk keeps each post, even
+where Firestore already applied them. The entity stays the definition and the
+query is an optimisation over it that may not silently disagree — the same
+argument that has `CanBeReadBy` rechecked on documents the OR query already
+filtered.
+
 Profiles are keyed by the owner's Google account ID, so there is no
 server-assigned ID to hand out and a profile is written with `PUT` rather than
 `POST`. That key is never a URL, though: a profile is addressed by its
@@ -217,7 +259,7 @@ Adding another provider means extending `authProvider` and the switch in
 
 | Method | Path          | Description                                                           |
 | ------ | ------------- | --------------------------------------------------------------------- |
-| GET    | `/blogs`      | List the blogs the caller may read, newest first. No credential required. |
+| GET    | `/blogs`      | List the blogs the caller may read, newest first. `tag` narrows to one topic and `q` to a search term, both on top of the same read rules. No credential required. |
 | GET    | `/blogs/{slug}` | Fetch a single blog. No credential required for a public one; a private one the caller may not read is a `404`, the same as a missing one. |
 | POST   | `/blogs`      | Create a blog. `ownerId` is always the caller, and the slug comes from the title, regardless of the body. |
 | PUT    | `/blogs/{slug}` | Replace a blog's fields. A post the caller may not read is a `404`; one they may read but do not own is a `403`. The slug does not move, even when the title changes. |

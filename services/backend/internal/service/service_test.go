@@ -51,9 +51,10 @@ func (r *fakeBlogRepository) Get(_ context.Context, slug string) (entity.Blog, e
 	return blog, nil
 }
 
-// List mirrors the Firestore repository's contract - filter, sort newest first, cut at the
-// StartAfter cursor, cap at Limit, report whether anything was cut - over the in-memory map rather
-// than a real cursor-walked query, since the two are observably the same from a caller's side.
+// List mirrors the Firestore repository's contract - filter by readability, owner, tag and search
+// term, sort newest first, cut at the StartAfter cursor, cap at Limit, report whether anything was
+// cut - over the in-memory map rather than a real cursor-walked query, since the two are
+// observably the same from a caller's side.
 func (r *fakeBlogRepository) List(_ context.Context, uid string, params repository.ListParams) ([]entity.Blog, bool, error) {
 	limit := params.Limit
 	if limit <= 0 {
@@ -66,6 +67,12 @@ func (r *fakeBlogRepository) List(_ context.Context, uid string, params reposito
 			continue
 		}
 		if params.OwnerUID != "" && blog.OwnerID != params.OwnerUID {
+			continue
+		}
+		if params.Tag != "" && !blog.HasTag(params.Tag) {
+			continue
+		}
+		if !blog.MatchesQuery(params.Query) {
 			continue
 		}
 		if !params.StartAfter.IsZero() && !blog.CreatedAt.Before(params.StartAfter) {

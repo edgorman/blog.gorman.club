@@ -20,6 +20,7 @@ type blogDocument struct {
 	Slug           string     `firestore:"slug"`
 	Title          string     `firestore:"title"`
 	Content        string     `firestore:"content"`
+	Tags           []string   `firestore:"tags"`
 	Visibility     string     `firestore:"visibility"`
 	AllowedUserIDs []string   `firestore:"allowedUserIds"`
 	CreatedAt      time.Time  `firestore:"createdAt"`
@@ -33,6 +34,7 @@ func blogToDocument(blog entity.Blog) blogDocument {
 		Slug:           blog.Slug,
 		Title:          blog.Title,
 		Content:        blog.Content,
+		Tags:           blog.Tags,
 		Visibility:     string(blog.Visibility),
 		AllowedUserIDs: blog.AllowedUserIDs,
 		CreatedAt:      blog.CreatedAt,
@@ -49,6 +51,7 @@ func (d blogDocument) toEntity() entity.Blog {
 		OwnerID:        d.OwnerID,
 		Title:          d.Title,
 		Content:        d.Content,
+		Tags:           d.Tags,
 		Visibility:     entity.Visibility(d.Visibility),
 		AllowedUserIDs: d.AllowedUserIDs,
 		CreatedAt:      d.CreatedAt,
@@ -119,19 +122,37 @@ const maxBlogListPageSize = 50
 //
 // A profile feed (params.OwnerUID set) narrows to one author's documents with a plain equality
 // filter; whether the caller may actually read each one is left to the CanBeReadBy check List
-// applies to every document either query yields, rather than folded in here as a second Firestore
-// filter. That keeps this to the one composite index (ownerId, createdAt) List's other branch
-// already needs, at the cost of walking past a private post of that author's before reaching the
-// next visible one - a cost bounded by that one author's post count, not the whole collection.
+// applies to every document any of these queries yields, rather than folded in here as a second
+// Firestore filter. That keeps this to the one composite index (ownerId, createdAt) List's other
+// branch already needs, at the cost of walking past a private post of that author's before
+// reaching the next visible one - a cost bounded by that one author's post count, not the whole
+// collection.
 //
 // The general feed (params.OwnerUID empty) runs CanBeReadBy's predicate as a Firestore OR query,
-// so a caller never fetches a private post they aren't on in the first place. Both branches still
-// recheck CanBeReadBy in List: that is what keeps this filter and entity.Blog.CanBeReadBy from
+// so a caller never fetches a private post they aren't on in the first place. Every branch still
+// rechecks CanBeReadBy in List: that is what keeps this filter and entity.Blog.CanBeReadBy from
 // drifting apart unnoticed, since a mismatch here would just cost an extra document read rather
 // than leak one.
-func (r *BlogRepository) listQuery(uid string, ownerUID string) fs.Query {
-	if ownerUID != "" {
-		return r.blogs.Where("ownerId", "==", ownerUID)
+//
+// A tag filter (params.Tag set) replaces that OR rather than joining it, and the reason is a
+// Firestore rule rather than a preference: a query may hold only one array-contains clause, and
+// the OR branch already spends it on allowedUserIds. Replacing it is the right way round - a tag
+// is far more selective than "readable", so the tag goes to the index and readability falls back
+// to the same walk the profile feed already relies on, costing a few unreadable documents read
+// and discarded rather than a scan.
+//
+// params.Query is not here at all: Firestore has no substring predicate to give it, so it is
+// applied in the walk (see List).
+func (r *BlogRepository) listQuery(uid string, params repository.ListParams) fs.Query {
+	if params.Tag != "" {
+		query := r.blogs.Where("tags", "array-contains", params.Tag)
+		if params.OwnerUID != "" {
+			query = query.Where("ownerId", "==", params.OwnerUID)
+		}
+		return query
+	}
+	if params.OwnerUID != "" {
+		return r.blogs.Where("ownerId", "==", params.OwnerUID)
 	}
 	return r.blogs.WhereEntity(fs.OrFilter{
 		Filters: []fs.EntityFilter{
@@ -142,25 +163,41 @@ func (r *BlogRepository) listQuery(uid string, ownerUID string) fs.Query {
 	})
 }
 
+// searchCandidateBatch is how many documents a walk fetches at a time while a search term is
+// narrowing it. Without it the walk would ask for exactly the posts it still needs, which is right
+// when nearly every candidate is kept and pathological when few are: a term matching one post in a
+// hundred would fetch a single document per round trip. A term matching nothing still walks the
+// whole collection - that is what a substring search over Firestore costs - but it does so in
+// pages rather than one document at a time.
+const searchCandidateBatch = 100
+
 // List walks listQuery's candidates in createdAt order, one Firestore page at a time, discarding
-// whatever the caller may not read and whatever is soft-deleted as it goes - until it has
-// params.Limit+1 live, readable posts or the candidates run out. The +1 is never returned; its
-// presence is what hasMore reports, so a caller learns whether to offer a further page without
-// this answering more than it was asked for. Ordering is a plain OrderBy here, unlike the old
-// unpaginated List's in-memory sort, because a cursor has to be a position the query itself
-// understands.
+// whatever the caller may not read, whatever is soft-deleted, and whatever the search term does
+// not match as it goes - until it has params.Limit+1 live, readable, matching posts or the
+// candidates run out. The +1 is never returned; its presence is what hasMore reports, so a caller
+// learns whether to offer a further page without this answering more than it was asked for.
+// Ordering is a plain OrderBy here, unlike the old unpaginated List's in-memory sort, because a
+// cursor has to be a position the query itself understands.
+//
+// The tag filter is rechecked here even though listQuery gave it to Firestore, for the same
+// reason CanBeReadBy is rechecked: the entity stays the definition, and the query is an
+// optimisation over it that may not silently disagree.
 func (r *BlogRepository) List(ctx context.Context, uid string, params repository.ListParams) ([]entity.Blog, bool, error) {
 	limit := params.Limit
 	if limit <= 0 || limit > maxBlogListPageSize {
 		limit = maxBlogListPageSize
 	}
 
-	query := r.listQuery(uid, params.OwnerUID).OrderBy("createdAt", fs.Desc)
+	query := r.listQuery(uid, params).OrderBy("createdAt", fs.Desc)
 	cursor := params.StartAfter
 
 	blogs := make([]entity.Blog, 0, limit)
 	for len(blogs) <= limit {
-		page := query.Limit(limit + 1 - len(blogs))
+		want := limit + 1 - len(blogs)
+		if params.Query != "" {
+			want = max(want, searchCandidateBatch)
+		}
+		page := query.Limit(want)
 		if !cursor.IsZero() {
 			page = page.StartAfter(cursor)
 		}
@@ -184,7 +221,20 @@ func (r *BlogRepository) List(ctx context.Context, uid string, params repository
 			if blog.IsDeleted() || !blog.CanBeReadBy(uid) {
 				continue
 			}
+			if params.Tag != "" && !blog.HasTag(params.Tag) {
+				continue
+			}
+			if !blog.MatchesQuery(params.Query) {
+				continue
+			}
 			blogs = append(blogs, blog)
+		}
+
+		// Fewer documents than asked for means the candidates are exhausted, so there is no point
+		// spending another round trip to be told so - which a search, walking many rounds deep,
+		// would otherwise do on every call that runs out.
+		if len(docs) < want {
+			break
 		}
 	}
 

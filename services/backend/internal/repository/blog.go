@@ -22,6 +22,13 @@ type ListParams struct {
 	// caller that only holds a username resolves it first, the same way any other owner-facing
 	// lookup does.
 	OwnerUID string
+	// Tag, when set, narrows the page to posts filed under it (entity.Blog.HasTag). It is expected
+	// already normalized (entity.NormalizeTag), since that is the only form a post stores.
+	Tag string
+	// Query, when set, narrows the page to posts whose title or body holds it, ignoring case
+	// (entity.Blog.MatchesQuery). It is a substring test rather than a search index, so a
+	// repository is free to apply it as it walks rather than as a datastore filter.
+	Query string
 }
 
 // BlogRepository persists blogs. A post is identified by its slug alone - slugs are unique across
@@ -32,7 +39,8 @@ type BlogRepository interface {
 	// Get returns ErrNotFound if no undeleted post holds slug.
 	Get(ctx context.Context, slug string) (entity.Blog, error)
 	// List returns one page of the undeleted blogs uid may read, newest first, applying the same
-	// predicate as entity.Blog.CanBeReadBy, and reports whether a further page follows.
+	// predicate as entity.Blog.CanBeReadBy plus whatever params narrows to, and reports whether a
+	// further page follows.
 	List(ctx context.Context, uid string, params ListParams) (blogs []entity.Blog, hasMore bool, err error)
 	// Create writes a new blog at the slug its caller chose, stamping the creation/update
 	// timestamps. It rejects a blog that fails entity.Blog.Validate without writing anything, and

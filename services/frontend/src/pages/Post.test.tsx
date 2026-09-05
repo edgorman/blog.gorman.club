@@ -44,6 +44,23 @@ describe('Post', () => {
     expect(screen.getByText('Body text.')).toBeInTheDocument()
   })
 
+  // A tag on the post page is the way into the rest of what an author wrote on that topic, so it
+  // is a link to the filtered feed rather than a label.
+  it('links each of the post\'s tags to the feed filtered by it', async () => {
+    const api = fakeApi({ getBlog: vi.fn().mockResolvedValue({ ...blog, tags: ['go', 'web-dev'] }) })
+    renderWithApp(<Post />, { context: { api }, route: '/post/hello-world', path: '/post/:slug' })
+
+    expect(await screen.findByRole('link', { name: 'go' })).toHaveAttribute('href', '/?tag=go')
+    expect(screen.getByRole('link', { name: 'web-dev' })).toHaveAttribute('href', '/?tag=web-dev')
+  })
+
+  it('renders no tag row for an untagged post', async () => {
+    renderWithApp(<Post />, { context: { api: fakeApi() }, route: '/post/hello-world', path: '/post/:slug' })
+
+    await screen.findByText('Hello world')
+    expect(screen.queryByRole('list', { name: 'Tags' })).not.toBeInTheDocument()
+  })
+
   it('shows a not-found message for a missing post', async () => {
     const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(404, 'not found')) })
     renderWithApp(<Post />, { context: { api }, route: '/post/missing', path: '/post/:slug' })

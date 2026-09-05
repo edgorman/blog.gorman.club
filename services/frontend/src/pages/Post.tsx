@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Comments } from '../components/Comments'
 import { ReactionBar } from '../components/ReactionBar'
+import { TagList } from '../components/TagList'
 import { useApp } from '../context/AppContext'
 import { useReactions } from '../hooks/useReactions'
 import { ApiError, postPath, userPath, type Blog } from '../lib/api'
@@ -121,6 +122,9 @@ export function Post() {
         ) : (
           <span className="text-muted post-author">by {authorName}</span>
         )}
+        {/* Followed rather than only read, unlike the feed's: this header is not itself a link,
+            and a tag here is the most natural way into the rest of what an author wrote on it. */}
+        <TagList tags={post.tags} linked />
       </header>
       <hr className="hr" />
       <div className="post-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(post.content) }} />

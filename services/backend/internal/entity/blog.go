@@ -47,10 +47,15 @@ func (v Visibility) Valid() bool {
 // leaves every link to it working - the title readers see is the stored Title, which is free to
 // change beneath a fixed slug.
 type Blog struct {
-	Slug           string     `json:"slug"`
-	OwnerID        string     `json:"ownerId"`
-	Title          string     `json:"title"`
-	Content        string     `json:"content"`
+	Slug    string `json:"slug"`
+	OwnerID string `json:"ownerId"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+	// Tags are the topics a post is filed under, normalized (see NormalizeTag). They are how a
+	// reader finds a post by subject rather than by date, and carry no access meaning of their
+	// own: a private post's tags narrow the same feed everything else does, and are seen by
+	// exactly whoever may already read the post.
+	Tags           []string   `json:"tags,omitempty"`
 	Visibility     Visibility `json:"visibility"`
 	AllowedUserIDs []string   `json:"allowedUserIds,omitempty"`
 	CreatedAt      time.Time  `json:"createdAt"`
@@ -101,6 +106,43 @@ func (b *Blog) SetContent(content string) error {
 	}
 
 	b.Content = content
+	return nil
+}
+
+// SetTags normalizes and applies the topics a post is filed under, dropping the ones that name
+// nothing and the ones already there. Normalization is what makes "Web Dev" and "web-dev" the
+// same tag rather than two, so it happens on the way in - a tag is stored in the one form it is
+// filtered and linked by.
+func (b *Blog) SetTags(tags []string) error {
+	// Bounded before the loop for the same reason SetAllowedUserIDs is: de-duplication is
+	// quadratic, so cleaning first would let a caller spend arbitrary CPU on a request that is
+	// rejected anyway.
+	if len(tags) > MaxTags {
+		return ValidationError{
+			Field:   "tags",
+			Message: fmt.Sprintf("must hold %d entries or fewer", MaxTags),
+		}
+	}
+
+	cleaned := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		normalized := NormalizeTag(tag)
+		if normalized == "" || slices.Contains(cleaned, normalized) {
+			continue
+		}
+		// Length is refused rather than truncated, unlike the punctuation normalization drops:
+		// cutting a tag short would file the post under a topic nobody wrote.
+		if utf8.RuneCountInString(normalized) > MaxTagLength {
+			return ValidationError{Field: "tags", Message: lengthMessage(MaxTagLength)}
+		}
+		cleaned = append(cleaned, normalized)
+	}
+
+	if len(cleaned) == 0 {
+		b.Tags = nil
+		return nil
+	}
+	b.Tags = cleaned
 	return nil
 }
 
@@ -166,10 +208,43 @@ func (b Blog) Validate() error {
 	if err := candidate.SetContent(b.Content); err != nil {
 		return err
 	}
+	if err := candidate.SetTags(b.Tags); err != nil {
+		return err
+	}
 	if err := candidate.SetVisibility(b.Visibility); err != nil {
 		return err
 	}
 	return candidate.SetAllowedUserIDs(b.AllowedUserIDs)
+}
+
+// HasTag reports whether the post is filed under tag. The argument is normalized first, since a
+// tag arrives from a query string where nothing has normalized it yet - so a reader following
+// "?tag=Web%20Dev" finds the post stored under "web-dev".
+//
+// An empty tag matches nothing rather than everything: it is a filter nobody could have meant,
+// and answering the whole feed to it would quietly ignore a request that went wrong.
+func (b Blog) HasTag(tag string) bool {
+	normalized := NormalizeTag(tag)
+	return normalized != "" && slices.Contains(b.Tags, normalized)
+}
+
+// MatchesQuery reports whether query occurs in the post's title or body, ignoring case. It is
+// deliberately a plain substring test rather than anything resembling a search index: at this
+// scale the alternative is a service to run and keep in step, and what a reader wants from a
+// search box on a personal blog is to find the post they half remember.
+//
+// Tags are not searched, because they have a filter of their own that matches them exactly - a
+// post about Go should not surface for every query that happens to be a prefix of a topic.
+//
+// An empty query matches every post, so a caller passing a term nobody entered does not have to
+// check for one first.
+func (b Blog) MatchesQuery(query string) bool {
+	needle := strings.ToLower(strings.TrimSpace(query))
+	if needle == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(b.Title), needle) ||
+		strings.Contains(strings.ToLower(b.Content), needle)
 }
 
 // IsDeleted reports whether the post has been soft-deleted.

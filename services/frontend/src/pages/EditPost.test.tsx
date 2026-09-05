@@ -92,6 +92,46 @@ describe('EditPost', () => {
     )
   })
 
+  // The field is seeded from the post's stored tags, so an author edits what is there rather than
+  // retyping the list to keep it.
+  it('pre-fills and saves the tags field', async () => {
+    const tagged: Blog = { ...blog, tags: ['go', 'web-dev'] }
+    const api = fakeApi({ getBlog: vi.fn().mockResolvedValue(tagged) })
+    renderWithApp(<EditPost />, {
+      context: { api, user: owner },
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
+    })
+
+    const tagsInput = await screen.findByLabelText('Tags')
+    expect(tagsInput).toHaveValue('go, web-dev')
+
+    await userEvent.clear(tagsInput)
+    await userEvent.type(tagsInput, 'Rust, systems')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(api.updateBlog).toHaveBeenCalledWith(
+      'hello-world',
+      expect.objectContaining({ tags: ['Rust', 'systems'] }),
+    )
+  })
+
+  // A blog request is a full replace, so emptying the field is how a post is untagged.
+  it('clears a post\'s tags when the field is emptied', async () => {
+    const tagged: Blog = { ...blog, tags: ['go'] }
+    const api = fakeApi({ getBlog: vi.fn().mockResolvedValue(tagged) })
+    renderWithApp(<EditPost />, {
+      context: { api, user: owner },
+      route: '/post/hello-world/edit',
+      path: '/post/:slug/edit',
+    })
+
+    await userEvent.clear(await screen.findByLabelText('Tags'))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(api.updateBlog).toHaveBeenCalledWith('hello-world', expect.objectContaining({ tags: [] }))
+  })
+
   it('switches visibility to private before saving', async () => {
     const api = fakeApi()
     renderWithApp(<EditPost />, {

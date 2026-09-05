@@ -12,19 +12,19 @@ func TestJSONFieldNamesMatchFrontendContract(t *testing.T) {
 	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	blog, err := json.Marshal(Blog{
-		Slug: "b1", OwnerID: "o1", Title: "T", Content: "C",
+		Slug: "b1", OwnerID: "o1", Title: "T", Content: "C", Tags: []string{"go"},
 		Visibility: VisibilityPublic, AllowedUserIDs: []string{"u1"},
 		CreatedAt: at, UpdatedAt: at,
 	})
 	if err != nil {
 		t.Fatalf("marshal blog: %v", err)
 	}
-	wantBlog := `{"slug":"b1","ownerId":"o1","title":"T","content":"C","visibility":"public","allowedUserIds":["u1"],"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}`
+	wantBlog := `{"slug":"b1","ownerId":"o1","title":"T","content":"C","tags":["go"],"visibility":"public","allowedUserIds":["u1"],"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}`
 	if string(blog) != wantBlog {
 		t.Errorf("blog JSON =\n %s\nwant\n %s", blog, wantBlog)
 	}
 
-	// allowedUserIds is omitempty, and bio likewise, so both drop out when unset.
+	// tags and allowedUserIds are omitempty, and bio likewise, so all three drop out when unset.
 	bare, err := json.Marshal(Blog{Slug: "b1", OwnerID: "o1", Visibility: VisibilityPrivate, CreatedAt: at, UpdatedAt: at})
 	if err != nil {
 		t.Fatalf("marshal bare blog: %v", err)

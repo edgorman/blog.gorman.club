@@ -33,11 +33,13 @@ describe('createApi', () => {
       limit: 10,
       startAfter: '2026-08-01T00:00:00Z',
       ownerId: 'uid-1',
+      tag: 'web dev',
+      q: 'firestore notes',
     })
 
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe(
-      'https://api.example.com/blogs?limit=10&startAfter=2026-08-01T00%3A00%3A00Z&ownerId=uid-1',
+      'https://api.example.com/blogs?limit=10&startAfter=2026-08-01T00%3A00%3A00Z&ownerId=uid-1&tag=web+dev&q=firestore+notes',
     )
   })
 

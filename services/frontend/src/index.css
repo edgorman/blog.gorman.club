@@ -195,6 +195,10 @@ a {
 .field {
   margin-bottom: var(--space-4);
 }
+.field-hint {
+  font-size: 12px;
+  margin: 5px 0 0;
+}
 .field > label {
   display: block;
   font-size: 12px;
@@ -273,6 +277,25 @@ a {
 .tag-outline {
   border: 1px solid var(--color-accent);
   color: var(--color-accent);
+}
+/* A topic, as opposed to the accented .tag-outline a private post is marked with: a tag is
+   information about the post, not a warning about it, so it stays quiet until hovered. */
+.tag-topic {
+  border: 1px solid var(--color-divider);
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  text-decoration: none;
+}
+a.tag-topic:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
 }
 
 /* — navigation — */
@@ -478,6 +501,17 @@ a {
 .feed-load-more {
   text-align: center;
   margin-top: var(--space-6);
+}
+.feed-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+/* The box takes the row; the buttons beside it stay their own width. */
+.feed-search .input {
+  flex: 1;
+  min-width: 0;
 }
 
 /* — profile header — */

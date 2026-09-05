@@ -35,6 +35,7 @@ type Service struct {
 	reactions repository.ReactionRepository
 	verifier  repository.TokenVerifier
 	assistant repository.Assistant
+	payments  repository.Payments
 	// The rate limiters live on the Service rather than being built in Handler(), so a budget is
 	// spent by the service that served the request rather than by the handler tree - two calls to
 	// Handler() must not hand a caller two budgets. See ratelimit.go for what each one bounds.
@@ -52,6 +53,7 @@ func New(
 	reactions repository.ReactionRepository,
 	verifier repository.TokenVerifier,
 	assistant repository.Assistant,
+	payments repository.Payments,
 ) *Service {
 	return &Service{
 		cfg:              cfg,
@@ -62,6 +64,7 @@ func New(
 		reactions:        reactions,
 		verifier:         verifier,
 		assistant:        assistant,
+		payments:         payments,
 		ipLimiter:        newRateLimiter(requestsPerIP),
 		callerLimiter:    newRateLimiter(requestsPerCaller),
 		assistantLimiter: newRateLimiter(assistantTurnsPerCaller),
@@ -109,6 +112,22 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("PUT /users/me", authed(s.PutUser))
 	mux.Handle("DELETE /users/me", authed(s.DeleteUser))
 	mux.Handle("GET /users/{username}", optional(s.GetUser))
+	// Buying the entitlement the assistant is gated on. The checkout is the account's own business
+	// and so needs a credential, exactly as writing its profile does - the purchase is for
+	// whoever asked and cannot name anybody else.
+	//
+	// The webhook beside it is the one route here with no credential at all, because the caller is
+	// Stripe rather than a person: it is authenticated by a signature over its body instead, and
+	// nothing else about the request is trusted (see billing.go). It is also the only write in
+	// this service that no caller can reach, which is what makes it safe for it to be the one
+	// thing that grants paid access.
+	mux.Handle("POST /billing/checkout", authed(s.CreateCheckout))
+	// Managing the subscription an account already has, which is the provider's hosted page too:
+	// a card, an invoice history, and a cancel button are all things it would be worse for this
+	// service to hold. It names no customer for the same reason the checkout names no account -
+	// the customer comes off the caller's own stored profile.
+	mux.Handle("POST /billing/portal", authed(s.CreateBillingPortalSession))
+	mux.HandleFunc("POST /billing/webhook", s.HandleStripeWebhook)
 	// The assistant conversation hangs off the post it is about rather than living at a collection
 	// of its own, because that is exactly what it is: a chat has no identity apart from its post,
 	// and no route here could name one that a /blogs/{slug} route would not have resolved first.

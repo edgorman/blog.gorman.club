@@ -47,9 +47,19 @@ The platform is chosen over the **Gemini API** (`generativelanguage.googleapis.c
 
 The model id and its location are Terraform variables (`assistant_model`, `assistant_location`) rather than constants, since model availability is regional and model ids change faster than this service is redeployed.
 
-Access is an entitlement, and it is expressed in the same access model as every other rule (see Access Control below): a whitelist whose membership is worked out per request rather than stored on a document. An account is entitled while its subscription has not expired (`subscribedUntil` on its profile) and no other way - there is no per-environment allowlist to be on, so granting access is writing that field and revoking it is clearing it, neither of which needs a deploy. It is set by hand until a checkout writes it. The subscription is keyed on the account rather than on an address: the profile is loaded by the uid in the verified ID token, so nothing a request asserts about itself is consulted, and a username - freely chosen and, once released, claimable by anybody - is never what access follows.
+Access is an entitlement, and it is expressed in the same access model as every other rule (see Access Control below): a whitelist whose membership is worked out per request rather than stored on a document. An account is entitled while its subscription has not expired (`subscribedUntil` on its profile) and no other way - there is no per-environment allowlist to be on, so granting access is writing that field and revoking it is clearing it, neither of which needs a deploy. That field is written by a Stripe webhook and nothing else (see Subscriptions below). The subscription is keyed on the account rather than on an address: the profile is loaded by the uid in the verified ID token, so nothing a request asserts about itself is consulted, and a username - freely chosen and, once released, claimable by anybody - is never what access follows.
 
 The entitlement says who may spend, not how much, so volume is bounded separately: assistant turns are rate limited per account by the backend, on a much tighter budget than any other route, because a turn is the only request that calls a paid model. The buckets are held in the serving process, which makes them per-instance budgets and is the one thing to revisit if the service ever scales past a single instance (see `services/backend/README.md`).
+
+### Subscriptions
+
+The entitlement above is bought through **Stripe**, and a payment writes exactly one thing: the expiry on the account's profile. There is one tier, so what is bought is time rather than a plan, and nothing else about the billing relationship - invoices, proration, the plan's name - reaches this codebase, because nothing here decides anything with it.
+
+The buyer is sent to Stripe's own hosted pages rather than to anything served here: a Checkout page to subscribe, and the billing portal to change a card, read an invoice, or cancel. Both are addressed as URLs the backend hands back, and neither request names an account or a customer - the purchase is for whoever the credential identifies, and the customer comes off that caller's own stored profile, so there is nothing in either that could ask for somebody else's billing.
+
+Paid access is granted by the **webhook and nothing else**. It is the one route with no credential, because its caller is Stripe rather than a person: it is authenticated by an HMAC over its body, checked before the body is parsed, and the account it acts on comes off the signed subscription rather than from anything the request claims. A browser returning from a successful checkout has been redirected, not verified, and grants itself nothing. The events acted on are the subscription's own lifecycle (`customer.subscription.created`, `.updated`, `.deleted`) rather than the checkout's, so one path covers buying, renewing, lapsing and cancelling; a delivery this service has nothing to do with is answered successfully, an unverifiable one with a `400`, and a failed write with a `500` so Stripe redelivers it.
+
+Stripe's two secrets are the only long-lived credentials in this deployment, since Stripe has no federated equivalent of the Workload Identity Federation everything else here authenticates with. They are handled like the repository's other unavoidable secrets: held in **GCP Secret Manager**, mounted into Cloud Run at start-up, and per-environment, so staging holds test-mode keys that cannot move real money. Terraform creates the secret containers and the runtime service account's access to them but deliberately does not manage their values - the live key never passes through a tfvars file, a plan output, or Terraform state; a human adds the versions, and a rotation is a new version rather than a deploy. A deployment missing them serves every route but the billing ones, and subscriptions already recorded keep granting the assistant until they run out.
 
 ### Access Control
 
@@ -91,7 +101,7 @@ paged, and is the first thing to revisit if the collection outgrows it.
 
 ### Resource Naming
 
-Strict environment suffixes (`backend-stag`, `backend-prod`) and scoped secrets (`stag-db-pass` vs `prod-db-pass`) ensure services in staging cannot accidentally reach production resources.
+Strict environment suffixes (`backend-stag`, `backend-prod`) and scoped secrets (`stag-db-pass` vs `prod-db-pass`) ensure services in staging cannot accidentally reach production resources. Secrets that live in an environment's own project (`stripe-secret-key`, `stripe-webhook-secret`) take their scope from the project rather than from a prefix - the isolation that keeps staging off production's Firestore keeps a test-mode Stripe key off real customers.
 
 ## CI/CD, Branching, & Release Lifecycle
 

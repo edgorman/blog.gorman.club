@@ -82,6 +82,27 @@ export interface CurrentUser extends User {
    * this only keeps the panel off the screen for somebody who would be told no.
    */
   assistantEnabled: boolean
+  /**
+   * When this account's paid access runs out, and absent for one that has never subscribed. It is
+   * what `assistantEnabled` above is decided from, which is why both are here rather than either
+   * being derived from the other: this says when the entitlement lapses, that says whether this
+   * deployment can honour it at all - a backend with no model configured enables nothing however
+   * long somebody has paid for.
+   *
+   * A date in the past is a lapsed subscription rather than a live one, so it is compared against
+   * the clock rather than merely tested for presence (see `lib/subscription`).
+   */
+  subscribedUntil?: string
+}
+
+/** Where to send a buyer to pay, from `createCheckout`. */
+export interface CheckoutSession {
+  /**
+   * The payment provider's own hosted page. It is a URL to navigate to rather than a redirect the
+   * browser has already followed: this app fetches the call, so a 303 would hand it the provider's
+   * HTML instead of somewhere to go.
+   */
+  url: string
 }
 
 /** One change the assistant made to the post, shown beneath the message that made it. */
@@ -302,6 +323,19 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
     putUser: (user: Partial<User>) =>
       request<CurrentUser>(baseUrl, authHeaders, 'PUT', '/users/me', user),
     deleteUser: () => request<void>(baseUrl, authHeaders, 'DELETE', '/users/me'),
+
+    // Buying the subscription the assistant is gated on. It takes no arguments and names no
+    // account on purpose: the purchase is for the caller the credential identifies and can be for
+    // nobody else, exactly as /users/me writes nobody else's profile. What comes back is where to
+    // send them; the subscription itself is written by the provider's webhook to the backend, so
+    // a buyer returning to this app is not what grants anything - which is why the profile is
+    // re-read on their return rather than assumed to have changed.
+    createCheckout: () => request<CheckoutSession>(baseUrl, authHeaders, 'POST', '/billing/checkout'),
+    // The provider's own page for a subscription that already exists: a card, an invoice history,
+    // and the cancel button. It names no customer for the same reason the checkout names no
+    // account - the backend reads it off the caller's own stored profile - and 404s for an account
+    // that has never paid, which has nothing to manage.
+    createPortalSession: () => request<CheckoutSession>(baseUrl, authHeaders, 'POST', '/billing/portal'),
 
     // Comments hang off their post like the chat below, but they are the readers' half of it: the
     // thread is readable by exactly whoever may read the post - signed out included, for a public

@@ -47,11 +47,32 @@ editor for publishing.
   the `:slug` wildcard beside it, and the backend reserves `new` as a slug, so
   no post can be published at a path the editor already occupies.
 - **Profile** (`/user/:username`) — that author's recent posts, plus their
-  username and bio from `GET /users/{username}`.
+  username and bio from `GET /users/{username}`. Your own profile also shows
+  your subscription, taken from your own `GET /users/me` rather than from the
+  public lookup: a profile lookup does not report who is paying, so there is no
+  way to render somebody else's even by accident.
 - **Edit profile** (`/user/:username/edit`) — the signed-in caller's own
   username and bio, saved via `PUT /users/me`. The path names a profile but the
   credential decides whose is written, so following somebody else's edit link is
   refused rather than silently applied to your own.
+
+The account drawer (`components/AccountPanel.tsx`) is where an account's
+subscription lives: whether it is paying and until when
+(`components/SubscriptionStatus.tsx`), a **Subscribe** button for an account
+that is not, and a **Manage subscription** button for one that has ever paid,
+which opens Stripe's own portal — where a card is changed, an invoice is read,
+and a subscription is cancelled. Both buttons do the same thing: ask the backend
+where the provider wants this account sent, then navigate there. Neither names
+an account or a customer, and neither grants anything — what grants paid access
+is Stripe's webhook to the backend, so returning from a checkout only means the
+payment was taken, which is why the note on the feed says the subscription "will
+appear" rather than that it has.
+
+`isSubscribed` (`lib/subscription.ts`) compares `subscribedUntil` against the
+clock rather than testing it for presence: a profile keeps the expiry of a
+subscription that has run out. It agrees with the backend rather than standing
+in for it — every paid route is enforced server-side whatever this decides to
+draw.
 
 Every page degrades to an explanatory message rather than an error when its
 configuration is missing, so the page is still useful before anything is

@@ -19,6 +19,7 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/firestore"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/gemini"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/google"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/stripe"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/service"
 )
 
@@ -70,6 +71,24 @@ func run() error {
 	}
 	entitlement := entity.NewAssistantEntitlement(assistant.Configured())
 
+	// What that entitlement is bought with. The two secrets are the only long-lived credentials
+	// this process holds - Stripe has no federated equivalent of the Workload Identity Federation
+	// everything else here authenticates with - so they are mounted from GCP Secret Manager by
+	// Cloud Run rather than baked into the image (see infrastructure/env/stripe.tf), and they are
+	// per-environment: staging holds test-mode keys that cannot move real money.
+	//
+	// A deployment missing any of them sells nothing and is told about nothing, which is a
+	// perfectly good deployment: every route but the two billing ones is unaffected, and the
+	// subscriptions already recorded in Firestore keep granting the assistant until they run out.
+	payments := stripe.NewPayments(stripe.Config{
+		SecretKey:     os.Getenv("STRIPE_SECRET_KEY"),
+		WebhookSecret: os.Getenv("STRIPE_WEBHOOK_SECRET"),
+		PriceID:       os.Getenv("STRIPE_PRICE_ID"),
+	})
+	if !payments.Configured() {
+		log.Print("warning: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET or STRIPE_PRICE_ID is unset, so subscriptions cannot be bought")
+	}
+
 	api := service.New(
 		service.Config{
 			Environment:          environment,
@@ -84,6 +103,7 @@ func run() error {
 		firestore.NewReactionRepository(client),
 		google.NewTokenVerifier(googleClientID),
 		assistant,
+		payments,
 	)
 
 	// The server is built explicitly rather than handed to http.ListenAndServe, which supplies a

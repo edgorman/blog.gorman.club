@@ -191,16 +191,29 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 
 // DeleteUser removes the caller's own profile, addressed as /users/me for the same reason PutUser
 // is: the owner comes from the credential, so only the owner can ever be the target.
+//
+// A profile with live paid access is refused, because the subscription is recorded on the profile
+// and the billing is not: deleting one would drop this side of the arrangement while the payment
+// provider carried on charging for a feature the account could no longer reach. The account has to
+// cancel first, which is what the billing portal is for (see billing.go), and a cancellation
+// arrives here as a webhook that clears the field this refusal reads.
 func (s *Service) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := uidFromContext(r.Context())
 
 	// Firestore deletes are idempotent, so a missing profile is looked up first to give the same
 	// 404 a client gets from GET.
-	if _, err := s.users.Get(r.Context(), id); errors.Is(err, repository.ErrNotFound) {
+	user, err := s.users.Get(r.Context(), id)
+	if errors.Is(err, repository.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if user.Subscribed(time.Now().UTC()) {
+		writeError(w, http.StatusConflict,
+			"cancel your subscription before deleting your profile")
 		return
 	}
 

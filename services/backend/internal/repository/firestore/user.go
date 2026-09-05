@@ -21,9 +21,21 @@ type userDocument struct {
 	// subscribed, so "has never paid" is an absent field rather than a date in 1 AD - which a
 	// query for live subscriptions would otherwise have to know to exclude.
 	SubscribedUntil *time.Time `firestore:"subscribedUntil,omitempty"`
-	CreatedAt       time.Time  `firestore:"createdAt"`
-	UpdatedAt       time.Time  `firestore:"updatedAt"`
+	// StripeCustomerID is the payment provider's id for this account, and is absent for one that
+	// has never reached a checkout. Like the expiry above it is written by SetSubscription alone.
+	StripeCustomerID string    `firestore:"stripeCustomerId,omitempty"`
+	CreatedAt        time.Time `firestore:"createdAt"`
+	UpdatedAt        time.Time `firestore:"updatedAt"`
 }
+
+// The stored names of the two fields SetSubscription writes. They are named here rather than
+// spelled into the update below because a Firestore field path is a string either way, and a typo
+// in one would silently write a second field instead of the one meant.
+const (
+	subscribedUntilField  = "subscribedUntil"
+	stripeCustomerIDField = "stripeCustomerId"
+	updatedAtField        = "updatedAt"
+)
 
 // usernameDocument is a claim on one username, keyed by entity.User.UsernameKey. Uniqueness is a
 // property of that key rather than something the code checks: a second claim on a name would have
@@ -34,23 +46,25 @@ type usernameDocument struct {
 
 func userToDocument(user entity.User) userDocument {
 	return userDocument{
-		Username:        user.Username,
-		Bio:             user.Bio,
-		SubscribedUntil: user.SubscribedUntil,
-		CreatedAt:       user.CreatedAt,
-		UpdatedAt:       user.UpdatedAt,
+		Username:         user.Username,
+		Bio:              user.Bio,
+		SubscribedUntil:  user.SubscribedUntil,
+		StripeCustomerID: user.StripeCustomerID,
+		CreatedAt:        user.CreatedAt,
+		UpdatedAt:        user.UpdatedAt,
 	}
 }
 
 // toEntity rebuilds a profile from its stored fields; id is the document key.
 func (d userDocument) toEntity(id string) entity.User {
 	return entity.User{
-		ID:              id,
-		Username:        d.Username,
-		Bio:             d.Bio,
-		SubscribedUntil: d.SubscribedUntil,
-		CreatedAt:       d.CreatedAt,
-		UpdatedAt:       d.UpdatedAt,
+		ID:               id,
+		Username:         d.Username,
+		Bio:              d.Bio,
+		SubscribedUntil:  d.SubscribedUntil,
+		StripeCustomerID: d.StripeCustomerID,
+		CreatedAt:        d.CreatedAt,
+		UpdatedAt:        d.UpdatedAt,
 	}
 }
 
@@ -167,7 +181,13 @@ func (r *UserRepository) Put(ctx context.Context, user entity.User) (entity.User
 		}
 
 		// createdAt comes from the stored profile rather than from the argument, so it cannot be
-		// backdated by a caller that assembles one itself.
+		// backdated by a caller that assembles one itself. The subscription comes from there for a
+		// sharper version of the same reason: this is the write a caller's own request reaches, so
+		// paid access surviving it is what stops an account granting itself a subscription by
+		// sending one - and, incidentally, what stops a profile edit racing a webhook and undoing
+		// a payment that landed between the read above and this write.
+		user.SubscribedUntil = current.SubscribedUntil
+		user.StripeCustomerID = current.StripeCustomerID
 		user.CreatedAt = current.CreatedAt
 		if user.CreatedAt.IsZero() {
 			user.CreatedAt = now
@@ -190,6 +210,36 @@ func (r *UserRepository) Put(ctx context.Context, user entity.User) (entity.User
 		return entity.User{}, err
 	}
 	return user, nil
+}
+
+// SetSubscription writes the account's paid access and nothing else, as an update of two fields
+// rather than a read-modify-write of the whole profile: it is reached from a webhook, which runs
+// concurrently with whatever the account itself is doing, and a profile edit in flight must not be
+// overwritten by a payment landing - nor the other way round, which is what Put preserving these
+// fields settles from the far side.
+//
+// A subscription that has ended clears the expiry rather than storing a past date, so "not paying"
+// is one state in the datastore however it was arrived at (see entity.Subscription).
+func (r *UserRepository) SetSubscription(ctx context.Context, id string, subscription entity.Subscription) error {
+	updates := []fs.Update{
+		{Path: subscribedUntilField, Value: subscription.SubscribedUntil()},
+		{Path: updatedAtField, Value: time.Now().UTC()},
+	}
+	// An event that names no customer leaves the stored one alone rather than clearing it: the id
+	// is how a later billing flow finds the customer this profile already has, and forgetting it
+	// would mean making a second one for an account that is still paying through the first.
+	if subscription.CustomerID != "" {
+		updates = append(updates, fs.Update{Path: stripeCustomerIDField, Value: subscription.CustomerID})
+	}
+
+	// Update, rather than Set, so a webhook for an account with no profile fails loudly instead of
+	// creating a document with a subscription and no owner - which no lookup could reach and no
+	// username claim would match.
+	_, err := r.users.Doc(id).Update(ctx, updates)
+	if status.Code(err) == codes.NotFound {
+		return repository.ErrNotFound
+	}
+	return err
 }
 
 // Delete removes the profile and the reservation together. Dropping only the profile would leave

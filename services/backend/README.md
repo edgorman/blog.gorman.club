@@ -454,11 +454,9 @@ things are worth knowing about how it is bounded:
 
   A deployment with no model configured is the zero entitlement: nobody is
   entitled, whatever anyone paid, because there is nothing for an entitlement to
-  buy. Note that `SubscribedUntil` lives on the profile, so deleting a profile
-  drops the subscription with it - which is fine while the field is set by hand,
-  and is the first thing to settle when a checkout writes it (either by refusing
-  to delete a profile with live paid access, or by storing the subscription
-  beside the profile rather than in it).
+  buy. What writes `SubscribedUntil` is a Stripe webhook and nothing else - see
+  **Subscriptions** below, which also covers why deleting a profile with live
+  paid access is refused.
 - **What the draft is.** A chat request carries the title and body the author
   has on screen, unsaved changes included - asking to tighten a paragraph has to
   mean the paragraph they can see, not the one last written to Firestore. The
@@ -511,6 +509,122 @@ a narrower struct turns it into `{}`, which the API rejects. The rule is
 therefore not to model more fields but to stop paraphrasing what the model
 said.
 
+## Subscriptions
+
+The assistant entitlement is bought through Stripe, and the whole of what a
+payment does here is write one field: `User.SubscribedUntil`. There is one tier,
+so what is bought is time rather than a plan - `entity.Subscription` carries an
+expiry and the provider's customer id, and nothing else about the billing
+relationship reaches this codebase, because nothing here decides anything with
+it.
+
+Three routes, and one of them is the only one that grants anything:
+
+| Route                    | Who calls it | What it does                                                     |
+| ------------------------ | ------------ | ---------------------------------------------------------------- |
+| `POST /billing/checkout` | The buyer    | Answers with the URL of Stripe's hosted checkout page.            |
+| `POST /billing/portal`   | A subscriber | Answers with the URL of Stripe's billing portal: card, invoices, cancel. |
+| `POST /billing/webhook`  | Stripe       | Records what a signed event says about one account's paid access. |
+
+Neither of the first two names an account or a customer. The purchase is for the
+caller the credential identifies, and the customer comes off that caller's own
+stored profile, so there is nothing in either request that could ask for
+somebody else's billing. Both answer with a URL rather than a redirect, because
+the caller is a `fetch()` from a single-page app: a `303` would be followed by
+the browser behind the app's back.
+
+**The webhook is the only thing that writes paid access,** and it is the only
+route with no credential - the caller is Stripe rather than a person. It is
+authenticated by an HMAC over its body instead, checked before the body is
+parsed, and the account it acts on comes off the signed subscription rather than
+from anything the request claims. Returning from a successful checkout grants
+nothing at all: a browser arriving at the success URL has been redirected, not
+verified.
+
+What the webhook answers matters as much as what it does, since Stripe retries
+anything that is not a `2xx` for days:
+
+- A delivery this service has nothing to do with - another event type, or a
+  subscription created by hand in the dashboard with no account attached - is a
+  success. Ignoring a delivery and asking for it again forever are not the same
+  thing.
+- A delivery whose signature does not verify is a `400`. It is never retried
+  into working, and it is logged loudly: on this route it is either a
+  misconfigured secret or somebody trying to grant themselves a subscription.
+- A delivery that could not be recorded is a `500`, so Stripe redelivers it.
+  That retry is what lets this endpoint be as simple as it is; it also covers
+  the case of a payment arriving for an account whose profile does not exist
+  yet.
+
+Only `customer.subscription.created`, `.updated` and `.deleted` are acted on -
+the subscription's own lifecycle rather than the checkout's. A
+`checkout.session.completed` says a purchase happened but not what it bought or
+for how long, and it never fires again, whereas a renewal twelve months later is
+a subscription event; listening to the subscription means one path covers buying,
+renewing, lapsing and cancelling. Access runs to the period end for a
+subscription Stripe calls `active` or `trialing`, and is cleared for every other
+status - `past_due` included, which is the conservative half of that pair.
+
+The account is joined to the subscription by a `userId` written into the
+subscription's Stripe metadata when the checkout is created, so every event
+about it - years of renewals later - names the account that bought it. It is
+never an email address: an address is not what access follows here, precisely so
+that access cannot be claimed by holding one.
+
+Two consequences worth knowing:
+
+- **A profile write can never grant paid access.** `UserRepository.Put`
+  preserves the stored subscription fields whatever profile it is handed,
+  exactly as it preserves `createdAt`, and `SetSubscription` is a separate
+  method that updates those two fields alone. That also settles the race between
+  a profile edit and a webhook landing mid-request.
+- **`DELETE /users/me` is refused with a `409` while paid access is live.** The
+  subscription is recorded on the profile and the billing is not, so deleting
+  one would leave Stripe charging for a feature the account can no longer reach.
+  Cancelling is what the billing portal is for, and a cancellation arrives back
+  as the webhook that clears the field this refusal reads.
+
+Stripe is reached over plain `net/http` rather than through its Go SDK
+(`internal/repository/stripe`), for the same reason the Gemini package speaks
+REST directly: what this service asks of a payment provider is two calls wide,
+and the SDK's value is in the hundred endpoints that are not used here. Two
+things follow. No API version is pinned on outbound calls - the checkout
+parameters have been stable across every version that has a hosted Checkout, and
+a webhook endpoint's version is a setting on the Stripe account rather than
+something a request can ask for, so the event decoder reads both shapes of the
+one field that has moved (`current_period_end`, now on the subscription's
+items). And signature verification is implemented here rather than imported: it
+is thirty lines of HMAC and a timestamp check, and it is the whole of what
+stands between a public URL and free subscriptions, so it is worth having where
+it can be read and tested.
+
+### Operating it
+
+Terraform creates the two secrets and grants the runtime service account
+`roles/secretmanager.secretAccessor` on them, but deliberately does not manage
+their values - the live API key never passes through a tfvars file, a plan
+output, or Terraform state (`infrastructure/env/stripe.tf`). Bringing an
+environment up therefore goes:
+
+1. `terraform apply` with `stripe_price_id` unset, which creates the secret
+   containers with placeholder versions.
+2. In Stripe, create the product and its recurring price, a webhook endpoint
+   pointing at `https://<backend>/billing/webhook` subscribed to
+   `customer.subscription.created`, `.updated` and `.deleted`, and a billing
+   portal configuration (the portal call fails without one).
+3. `gcloud secrets versions add stripe-secret-key --data-file=-` and the same
+   for `stripe-webhook-secret`, in that environment's project.
+4. Set `stripe_price_id` in that environment's tfvars and apply again, which is
+   what wires all three values into the Cloud Run service.
+
+Staging holds test-mode keys, which cannot move real money; production holds
+live ones. A key is rotated by adding a new secret version - Cloud Run mounts
+`latest`, so the next revision picks it up without a Terraform change.
+
+A deployment missing any of the three values sells nothing and is told nothing:
+the billing routes answer `503`, every other route is unaffected, and
+subscriptions already recorded keep granting the assistant until they run out.
+
 ## Development
 
 ```sh
@@ -533,6 +647,9 @@ make build     # builds bin/backend
 | `GCP_PROJECT_ID`       | Project the model is called through and billed to. Unset disables the writing assistant. |
 | `ASSISTANT_MODEL`      | Model id, e.g. `gemini-3.7-flash`. It has to be one the platform serves in `ASSISTANT_LOCATION`. Unset disables the writing assistant. |
 | `ASSISTANT_LOCATION`   | Location the model is called in: a region such as `europe-west1`, or `global` for the multi-region endpoint. Defaults to `global`. |
+| `STRIPE_SECRET_KEY`    | Stripe API key (`sk_test_...` in staging, `sk_live_...` in production), mounted from Secret Manager. Unset disables the billing routes. |
+| `STRIPE_WEBHOOK_SECRET`| Signing secret of this environment's Stripe webhook endpoint (`whsec_...`), mounted from Secret Manager. Unset disables the billing routes, since a delivery could not be verified. |
+| `STRIPE_PRICE_ID`      | The price the subscription is sold at (`price_...`). There is one tier, so this is the whole catalogue. Unset disables the billing routes. |
 
 `commit` is not an env var — it's baked into the binary at build time via
 `-ldflags "-X main.commit=..."` (see `Dockerfile`), since the same image is

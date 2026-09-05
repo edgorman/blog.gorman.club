@@ -157,8 +157,8 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
-  # Runs on every merge, since the patch-bump pre-release isn't gated on what changed. Drafts the
-  # body from commits since the last tag, plus a read-only prod plan showing the infra impact.
+  # Runs on every merge, since the pre-release isn't gated on what changed. Drafts the body from
+  # commits since the last tag, plus a read-only prod plan showing the infra impact.
   pre-release:
     runs-on: ubuntu-latest
     permissions:
@@ -169,32 +169,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Reads Conventional Commit subjects (see CLAUDE.md) from the squash-merge history on `main`
+      # to pick the bump: a bare `feat:` is minor, `!` or a `BREAKING CHANGE:` footer is major,
+      # anything else (`fix:`, `chore:`, ...) is patch - same fallback as the old always-patch logic.
       - id: version
         name: Calculate Next Version
-        shell: bash
-        run: |
-          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
-          LAST_TAG=${LAST_TAG:-v0.0.0}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "${LAST_TAG#v}"
-          {
-            echo "version=v${MAJOR}.${MINOR}.$((PATCH + 1))"
-            echo "last_tag=$LAST_TAG"
-          } >> "$GITHUB_OUTPUT"
-
-      - id: commits
-        name: Summarize Commits Since Last Release
-        shell: bash
-        run: |
-          if git rev-parse "${{ steps.version.outputs.last_tag }}" >/dev/null 2>&1; then
-            RANGE="${{ steps.version.outputs.last_tag }}..HEAD"
-          else
-            RANGE="HEAD"
-          fi
-          {
-            echo 'log<<COMMITS_EOF'
-            git log "$RANGE" --pretty='- %s (%h)'
-            echo 'COMMITS_EOF'
-          } >> "$GITHUB_OUTPUT"
+        uses: Fresa/trunk-based-release-versioning@8b8150e3258028d42d7a8d30aec43491f5794d9e # v0.2.0
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -225,8 +205,11 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## Commits since ${{ steps.version.outputs.last_tag }}"
-            echo "${{ steps.commits.outputs.log }}"
+            echo "## Commits since v${{ steps.version.outputs.last-version || '0.0.0' }}"
+            echo
+            echo '```yaml'
+            cat "${{ steps.version.outputs.commit-logs-path }}"
+            echo '```'
             echo
             echo "### Terraform Plan for \`prod\` Environment"
             echo
@@ -243,7 +226,7 @@ jobs:
       - name: Create Pre-Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
-          tag_name: ${{ steps.version.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
           target_commitish: ${{ github.sha }}
           prerelease: true
           body_path: RELEASE_NOTES.md

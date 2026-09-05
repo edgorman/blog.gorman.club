@@ -74,9 +74,13 @@ Strict environment suffixes (`backend-stag`, `backend-prod`) and scoped secrets 
 
 All build, test, infrastructure provisioning, and deployment pipelines run exclusively through GitHub Actions (bypassing GCP Cloud Build). Sequential execution rules ensure infrastructure provisioning completes successfully before service updates occur.
 
+### Commit Message Convention
+
+Every PR title must be a valid [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/) subject — `type(scope)?: description`, e.g. `feat(backend): paginate GET /blogs` — because the repo squash-merges every PR (`.github/settings.yml` sets `squash_merge_commit_title: PR_TITLE`), so the PR title becomes the subject line of the one commit that lands on `main`, and that's what Versioning (below) actually parses. Use `feat:` for a new capability, `fix:` for a bug fix, and any other Conventional Commits type (`build`, `chore`, `ci`, `docs`, `perf`, `refactor`, `revert`, `style`, `test`) for a change that shouldn't move the version on its own. Mark a breaking change with `!` after the type/scope (`feat!:`) or a `BREAKING CHANGE:` footer in the PR body — either bumps major regardless of type. A title that doesn't match any recognized type still merges fine; it just falls back to a patch bump, same as everything did before this convention existed. This applies to Claude Code equally: title PRs it opens the same way.
+
 ### Versioning
 
-Releases use plain semantic versioning — `major.minor.patch`, with no `-rc.N` or other pre-release suffix on the tag itself (pre-release vs. formal release is tracked via GitHub's release "prerelease" flag, not the tag name). The default increment on every merge to `main` is a **patch** bump over the last tag; developers can rename the generated pre-release before promotion if a `minor` or `major` bump is warranted instead.
+Releases use plain semantic versioning — `major.minor.patch`, with no `-rc.N` or other pre-release suffix on the tag itself (pre-release vs. formal release is tracked via GitHub's release "prerelease" flag, not the tag name). The bump on every merge to `main` is calculated automatically from the Conventional Commit subjects landed since the last tag, via the [`trunk-based-release-versioning`](https://github.com/Fresa/trunk-based-release-versioning) action: a bare `feat:` bumps **minor**, a breaking change (`!` or `BREAKING CHANGE:`) bumps **major**, and everything else bumps **patch**, with major taking precedence over minor over patch when a range of commits mixes types. Developers can still rename the generated pre-release before promotion if the calculated bump isn't the one they want.
 
 ### Staging Deployments (Push to main)
 

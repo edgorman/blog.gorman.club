@@ -16,6 +16,7 @@ import (
 	fs "cloud.google.com/go/firestore"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/cache"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/firestore"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/gemini"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/google"
@@ -70,6 +71,13 @@ func run() error {
 	}
 	entitlement := entity.NewAssistantEntitlement(assistant.Configured())
 
+	// The blog repository is wrapped in a cache before it reaches the service, which is the whole
+	// of how caching is enabled: the decorator implements the same interface, so nothing above here
+	// knows it is there, and removing it is deleting this line. It caches only the anonymous
+	// listing - the highest-traffic, most repeated read in the service, and the one read whose
+	// answer is identical for every caller (see internal/repository/cache).
+	blogs := cache.NewBlogRepository(firestore.NewBlogRepository(client))
+
 	api := service.New(
 		service.Config{
 			Environment:          environment,
@@ -77,7 +85,7 @@ func run() error {
 			AllowedOrigin:        os.Getenv("CORS_ALLOWED_ORIGIN"),
 			AssistantEntitlement: entitlement,
 		},
-		firestore.NewBlogRepository(client),
+		blogs,
 		firestore.NewUserRepository(client),
 		firestore.NewChatRepository(client),
 		firestore.NewCommentRepository(client),

@@ -108,6 +108,41 @@ describe('UserProfile', () => {
     expect(listBlogs).not.toHaveBeenCalled()
   })
 
+  // Your own profile is where you look to see what your account has, so the subscription is shown
+  // there as well as in the account panel.
+  it('shows the caller their own subscription', async () => {
+    renderWithApp(<UserProfile />, {
+      context: {
+        api: fakeApi(),
+        profile: { ...profile, subscribedUntil: '2099-01-01T00:00:00Z' },
+      },
+      route: '/user/calm-smiling-kestrel',
+      path: '/user/:username',
+    })
+
+    expect(await screen.findByText('Subscribed')).toBeInTheDocument()
+    expect(screen.getByText(/Renews Jan 1, 2099/)).toBeInTheDocument()
+  })
+
+  // Who is paying is nobody else's business, and the public profile a lookup returns does not
+  // carry it - so a signed-in reader looking at somebody else's page is shown their own
+  // subscription nowhere near it, which is to say not at all.
+  it("says nothing about a subscription on somebody else's profile", async () => {
+    const other: User = { ...user, id: 'uid-2', username: 'bold-leaping-lynx' }
+    renderWithApp(<UserProfile />, {
+      context: {
+        api: fakeApi({ getUser: vi.fn().mockResolvedValue(other) }),
+        profile: { ...profile, subscribedUntil: '2099-01-01T00:00:00Z' },
+      },
+      route: '/user/bold-leaping-lynx',
+      path: '/user/:username',
+    })
+
+    expect(await screen.findByRole('heading', { name: 'bold-leaping-lynx' })).toBeInTheDocument()
+    expect(screen.queryByText('Subscribed')).not.toBeInTheDocument()
+    expect(screen.queryByText('Not subscribed')).not.toBeInTheDocument()
+  })
+
   // Editing is reached from the account panel alone, so the owner's own profile page carries no
   // Edit link either.
   it('leaves the Edit profile link to the account panel', async () => {

@@ -36,6 +36,11 @@ export function Landing() {
   const tag = searchParams.get('tag') ?? ''
   const query = searchParams.get('q') ?? ''
   const filtered = tag !== '' || query !== ''
+  // Where the payment provider returns a buyer (see the backend's billing routes). It says what
+  // happened to the checkout and nothing more: arriving here having been redirected is not
+  // evidence of a payment, which is why the note below says the subscription will appear rather
+  // than that it has. What actually grants it is the provider's webhook to the backend.
+  const checkout = searchParams.get('subscription')
 
   const [state, setState] = useState<State>(api ? { phase: 'loading' } : { phase: 'unconfigured' })
   // What is in the box, which becomes `q` only once the reader submits it: typing must not refetch
@@ -103,6 +108,17 @@ export function Landing() {
         <span className="page-kicker text-muted">Feed</span>
         <h1 className="title-feed">{tag ? `Posts tagged ${tag}` : 'Recent posts'}</h1>
       </header>
+
+      {checkout === 'success' && (
+        <p className="notice" role="status">
+          Payment received. Your subscription will appear on your account shortly.
+        </p>
+      )}
+      {checkout === 'cancelled' && (
+        <p className="notice text-muted" role="status">
+          Checkout cancelled - nothing was charged.
+        </p>
+      )}
 
       <form
         className="feed-search"

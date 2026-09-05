@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { FeedList } from '../components/FeedList'
+import { SubscriptionStatus } from '../components/SubscriptionStatus'
 import { useApp } from '../context/AppContext'
 import { errorMessage, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
@@ -25,7 +26,7 @@ const FEED_SIZE = 10
 /** A single author's recent posts, with as much of their profile as the caller is allowed to see. */
 export function UserProfile() {
   const { username } = useParams<{ username: string }>()
-  const { api } = useApp()
+  const { api, profile: me } = useApp()
   const [profile, setProfile] = useState<ProfileInfo | null>(null)
   const [missing, setMissing] = useState(false)
   const [postsState, setPostsState] = useState<PostsState>(
@@ -132,6 +133,11 @@ export function UserProfile() {
             )}
           </div>
         </div>
+        {/* Only on your own profile, and only from your own /users/me - a public lookup does not
+            report who is paying, so this is not something that could be shown for anybody else
+            even by mistake. The ids are compared rather than the usernames: a name is a handle its
+            owner can change, and the uid is what both sides of this actually are. */}
+        {me && profile && me.id === profile.id && <SubscriptionStatus profile={me} />}
         {profile?.bio && <p className="profile-bio text-muted">{profile.bio}</p>}
       </header>
 

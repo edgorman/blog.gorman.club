@@ -32,7 +32,16 @@ resource "google_service_account_iam_member" "backend_runtime_actas" {
 }
 
 resource "google_cloud_run_v2_service" "backend" {
-  depends_on = [google_project_service.run, google_project_service.agent_platform]
+  # The secret bindings below have to exist, and be readable by the runtime identity, before a
+  # revision that mounts them will start.
+  depends_on = [
+    google_project_service.run,
+    google_project_service.agent_platform,
+    google_secret_manager_secret_version.stripe_secret_key_placeholder,
+    google_secret_manager_secret_version.stripe_webhook_secret_placeholder,
+    google_secret_manager_secret_iam_member.backend_runtime_stripe_secret_key_accessor,
+    google_secret_manager_secret_iam_member.backend_runtime_stripe_webhook_secret_accessor,
+  ]
 
   project  = var.gcp_project_id
   name     = "backend-${var.environment}"
@@ -84,6 +93,44 @@ resource "google_cloud_run_v2_service" "backend" {
       env {
         name  = "ASSISTANT_LOCATION"
         value = var.assistant_location
+      }
+
+      # What the assistant entitlement is bought with. All three are set together or not at all,
+      # because two out of three is worse than none: a checkout nothing is listening for would take
+      # a buyer's money and grant them nothing (the backend refuses to sell on anything less - see
+      # the stripe package's Configured). An environment with no price configured therefore serves
+      # every route but the two billing ones, which is what staging looks like until its Stripe
+      # account exists.
+      #
+      # The two secrets are mounted from Secret Manager rather than passed as values, so the API
+      # key is never in this file, in a tfvars, or in state (see stripe.tf). "latest" is the
+      # version deliberately: a key rotated by adding a new version is picked up by the next
+      # revision without a Terraform change, which is what makes rotating one an operational act
+      # rather than a deploy.
+      dynamic "env" {
+        for_each = var.stripe_price_id == "" ? [] : [1]
+        content {
+          name  = "STRIPE_PRICE_ID"
+          value = var.stripe_price_id
+        }
+      }
+
+      # The two secrets are one block because they are mounted identically and differ only in
+      # which secret they name.
+      dynamic "env" {
+        for_each = var.stripe_price_id == "" ? {} : {
+          STRIPE_SECRET_KEY     = google_secret_manager_secret.stripe_secret_key.secret_id
+          STRIPE_WEBHOOK_SECRET = google_secret_manager_secret.stripe_webhook_secret.secret_id
+        }
+        content {
+          name = env.key
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
+          }
+        }
       }
     }
   }

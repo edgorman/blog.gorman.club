@@ -97,6 +97,34 @@ describe('createApi', () => {
   })
 
   // A comment is addressed beneath the post it is on, since it has no identity apart from it.
+  // The checkout names no account: the purchase is for whoever the credential identifies, and
+  // there is deliberately nothing in the request that could name anybody else.
+  it('starts a checkout without naming an account', async () => {
+    const fetchMock = mockFetch({ json: () => Promise.resolve({ url: 'https://checkout.test/c/pay/cs_1' }) })
+
+    const session = await createApi('https://api.example.com', authHeaders).createCheckout()
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://api.example.com/billing/checkout')
+    expect(init.method).toBe('POST')
+    expect(init.body).toBeUndefined()
+    expect(session.url).toBe('https://checkout.test/c/pay/cs_1')
+  })
+
+  // Managing an existing subscription names no customer either: the backend reads it off the
+  // caller's own stored profile, so there is no id in the request to ask for somebody else's.
+  it('opens the billing portal without naming a customer', async () => {
+    const fetchMock = mockFetch({ json: () => Promise.resolve({ url: 'https://billing.test/p/session/1' }) })
+
+    const session = await createApi('https://api.example.com', authHeaders).createPortalSession()
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://api.example.com/billing/portal')
+    expect(init.method).toBe('POST')
+    expect(init.body).toBeUndefined()
+    expect(session.url).toBe('https://billing.test/p/session/1')
+  })
+
   it('addresses comments beneath their post', async () => {
     const fetchMock = mockFetch({ status: 201, json: () => Promise.resolve({ id: 'cmt1' }) })
     const api = createApi('https://api.example.com', authHeaders)

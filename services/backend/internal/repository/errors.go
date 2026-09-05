@@ -24,3 +24,18 @@ var ErrAuthNotConfigured = errors.New("authentication is not configured")
 // ErrAssistantNotConfigured means the deployment has no model to call - an operator problem rather
 // than a caller one, in the same way ErrAuthNotConfigured is.
 var ErrAssistantNotConfigured = errors.New("assistant is not configured")
+
+// ErrPaymentsNotConfigured means the deployment cannot take a payment - no provider credentials,
+// or nothing to sell. An operator problem rather than a caller one, like the two above.
+var ErrPaymentsNotConfigured = errors.New("payments are not configured")
+
+// ErrInvalidSignature is returned by Payments.DecodeEvent for a delivery this deployment cannot
+// prove came from the payment provider. A webhook endpoint is a public URL that grants paid
+// access, so a delivery that fails this check is not a malformed request to be tolerated: it is
+// either a bug or somebody trying to grant themselves a subscription.
+var ErrInvalidSignature = errors.New("invalid signature")
+
+// ErrEventIgnored is returned by Payments.DecodeEvent for a verified delivery that says nothing
+// about a subscription this service granted. It is not a failure - a webhook endpoint is told
+// about far more than it asked for - so a caller answers it by doing nothing, successfully.
+var ErrEventIgnored = errors.New("event ignored")

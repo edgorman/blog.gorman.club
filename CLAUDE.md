@@ -99,6 +99,32 @@ search index: there is no Firestore predicate for it, and at this scale the
 alternative is a service to run, pay for, and keep in step. It is bounded and
 paged, and is the first thing to revisit if the collection outgrows it.
 
+### Caching
+
+`GET /blogs` is the highest-traffic and most repeated read in the service - the
+landing feed is the same public data for every signed-out visitor - so the
+anonymous listing is cached in the serving process for a short TTL
+(`services/backend/internal/repository/cache`). It is a decorator over the blog
+repository rather than something a handler does, wired in `cmd/backend`: the
+service cannot tell a cached page from a fetched one, and the cache is removed by
+deleting a line.
+
+Only the anonymous caller's pages are cached, and that is what makes it safe
+rather than something to be careful with. A page is whatever the read rules above
+admit for one uid, so two callers may share an answer only if they share a uid -
+and the empty uid, which is not an account at all, is granted public posts and
+nothing else. A signed-in caller's page carries their own private and whitelisted
+posts, so it is neither stored nor served here; there is no per-uid keying to get
+wrong because there are no per-uid entries. Every filter is part of the key, so a
+tag or a search is its own entry rather than a variation on the feed.
+
+A write drops every cached page, so an author sees their own post in the feed at
+once; across instances the TTL is the real bound, since the cache - like the rate
+limiter's buckets - is held per-instance and is the same thing to revisit if the
+service scales past one. Entries are capped, because a caller sending a distinct
+search term per request would otherwise grow the map indefinitely; the read volume
+such a caller can provoke is bounded by the rate limiter rather than by the cache.
+
 ### Resource Naming
 
 Strict environment suffixes (`backend-stag`, `backend-prod`) and scoped secrets (`stag-db-pass` vs `prod-db-pass`) ensure services in staging cannot accidentally reach production resources. Secrets that live in an environment's own project (`stripe-secret-key`, `stripe-webhook-secret`) take their scope from the project rather than from a prefix - the isolation that keeps staging off production's Firestore keeps a test-mode Stripe key off real customers.
@@ -107,9 +133,13 @@ Strict environment suffixes (`backend-stag`, `backend-prod`) and scoped secrets 
 
 All build, test, infrastructure provisioning, and deployment pipelines run exclusively through GitHub Actions (bypassing GCP Cloud Build). Sequential execution rules ensure infrastructure provisioning completes successfully before service updates occur.
 
+### Commit Message Convention
+
+Every PR title must be a valid [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/) subject — `type(scope)?: description`, e.g. `feat(backend): paginate GET /blogs` — because the repo squash-merges every PR (`.github/settings.yml` sets `squash_merge_commit_title: PR_TITLE`), so the PR title becomes the subject line of the one commit that lands on `main`, and that's what Versioning (below) actually parses. Use `feat:` for a new capability, `fix:` for a bug fix, and any other Conventional Commits type (`build`, `chore`, `ci`, `docs`, `perf`, `refactor`, `revert`, `style`, `test`) for a change that shouldn't move the version on its own. Mark a breaking change with `!` after the type/scope (`feat!:`) or a `BREAKING CHANGE:` footer in the PR body — either bumps major regardless of type. A title that doesn't match any recognized type still merges fine; it just falls back to a patch bump, same as everything did before this convention existed. This applies to Claude Code equally: title PRs it opens the same way.
+
 ### Versioning
 
-Releases use plain semantic versioning — `major.minor.patch`, with no `-rc.N` or other pre-release suffix on the tag itself (pre-release vs. formal release is tracked via GitHub's release "prerelease" flag, not the tag name). The default increment on every merge to `main` is a **patch** bump over the last tag; developers can rename the generated pre-release before promotion if a `minor` or `major` bump is warranted instead.
+Releases use plain semantic versioning — `major.minor.patch`, with no `-rc.N` or other pre-release suffix on the tag itself (pre-release vs. formal release is tracked via GitHub's release "prerelease" flag, not the tag name). The bump on every merge to `main` is calculated automatically from the Conventional Commit subjects landed since the last tag, via the [`trunk-based-release-versioning`](https://github.com/Fresa/trunk-based-release-versioning) action: a bare `feat:` bumps **minor**, a breaking change (`!` or `BREAKING CHANGE:`) bumps **major**, and everything else bumps **patch**, with major taking precedence over minor over patch when a range of commits mixes types. Developers can still rename the generated pre-release before promotion if the calculated bump isn't the one they want.
 
 ### Staging Deployments (Push to main)
 

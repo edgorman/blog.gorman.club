@@ -207,9 +207,11 @@ jobs:
           {
             echo "## Commits since v${{ steps.version.outputs.last-version || '0.0.0' }}"
             echo
-            echo '```yaml'
-            cat "${{ steps.version.outputs.commit-logs-path }}"
-            echo '```'
+            # commit-logs-path holds one "hash: <H>\nmessage: | \n <subject>\n <body...>" record per
+            # commit, separated by "---"; pull just the subject (record line 3, minus its 1-space
+            # indent) so each commit renders as a normal markdown bullet instead of raw commit bodies.
+            awk 'BEGIN { RS="\n---\n"; FS="\n" } NF>=3 { printf "- %s (%.7s)\n", substr($3,2), substr($1,7) }' \
+              "${{ steps.version.outputs.commit-logs-path }}"
             echo
             echo "### Terraform Plan for \`prod\` Environment"
             echo

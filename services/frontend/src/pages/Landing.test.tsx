@@ -173,6 +173,30 @@ describe('Landing', () => {
     expect(screen.queryByRole('link', { name: 'web-dev' })).not.toBeInTheDocument()
   })
 
+  // Where the payment provider returns a buyer. The note is careful about what it claims: being
+  // redirected here is not evidence of anything - the subscription is granted by the provider's
+  // webhook to the backend, which may not have landed yet.
+  it('acknowledges a buyer returning from a completed checkout', async () => {
+    renderWithApp(<Landing />, { context: { api: fakeApi() }, route: '/?subscription=success', path: '/' })
+
+    const notice = await screen.findByRole('status')
+    expect(notice).toHaveTextContent('Payment received')
+    expect(notice).toHaveTextContent('will appear')
+  })
+
+  it('says nothing was charged when a checkout was cancelled', async () => {
+    renderWithApp(<Landing />, { context: { api: fakeApi() }, route: '/?subscription=cancelled', path: '/' })
+
+    expect(await screen.findByRole('status')).toHaveTextContent('nothing was charged')
+  })
+
+  it('shows no checkout note on the ordinary feed', async () => {
+    renderWithApp(<Landing />, { context: { api: fakeApi() } })
+
+    await screen.findByRole('heading', { name: 'Recent posts' })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
   // Clicking "Load more" continues from the last post already shown, and appends rather than
   // replaces what is on screen.
   it('loads and appends the next page on "Load more"', async () => {

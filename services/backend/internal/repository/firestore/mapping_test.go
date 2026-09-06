@@ -103,12 +103,13 @@ func TestChatMappingRoundTrip_NoMessages(t *testing.T) {
 func TestUserMappingRoundTrip(t *testing.T) {
 	subscribed := updated.AddDate(0, 1, 0)
 	user := entity.User{
-		ID:              "user-1",
-		Username:        "sly-dancing-monkey",
-		Bio:             "hello",
-		SubscribedUntil: &subscribed,
-		CreatedAt:       created,
-		UpdatedAt:       updated,
+		ID:               "user-1",
+		Username:         "sly-dancing-monkey",
+		Bio:              "hello",
+		SubscribedUntil:  &subscribed,
+		StripeCustomerID: "cus_1",
+		CreatedAt:        created,
+		UpdatedAt:        updated,
 	}
 
 	got := userToDocument(user).toEntity(user.ID)
@@ -127,6 +128,11 @@ func TestUserMappingWithoutASubscription(t *testing.T) {
 
 	if document.SubscribedUntil != nil {
 		t.Errorf("SubscribedUntil = %v, want nothing stored", document.SubscribedUntil)
+	}
+	// The same for the customer: an account that has never reached a checkout has no id at the
+	// payment provider, so the field is absent rather than empty.
+	if document.StripeCustomerID != "" {
+		t.Errorf("StripeCustomerID = %q, want nothing stored", document.StripeCustomerID)
 	}
 	if got := document.toEntity(user.ID); got.Subscribed(created) {
 		t.Error("Subscribed = true for a profile that never subscribed, want false")

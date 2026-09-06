@@ -143,6 +143,9 @@ type fakeUserRepository struct {
 	// getErr fails a lookup by id the in-memory state would otherwise answer, for a test asserting
 	// that a handler which needs the caller's own profile does not carry on without it.
 	getErr error
+	// setSubscriptionErr fails a subscription write, for a test asserting that a webhook delivery
+	// this service could not record is answered so that Stripe redelivers it.
+	setSubscriptionErr error
 }
 
 func newFakeUserRepository() *fakeUserRepository {
@@ -201,6 +204,11 @@ func (r *fakeUserRepository) Put(_ context.Context, user entity.User) (entity.Us
 	now := time.Now().UTC()
 	if previous, ok := r.users[user.ID]; ok {
 		user.CreatedAt = previous.CreatedAt
+		// Paid access survives a profile write here as it does in the real repository, which is
+		// what makes it unreachable from any request: this is the write a caller's own body gets
+		// to, so a subscription that could be set through it could be forged through it.
+		user.SubscribedUntil = previous.SubscribedUntil
+		user.StripeCustomerID = previous.StripeCustomerID
 		delete(r.usernames, previous.UsernameKey())
 	}
 	if user.CreatedAt.IsZero() {
@@ -211,6 +219,26 @@ func (r *fakeUserRepository) Put(_ context.Context, user entity.User) (entity.Us
 	r.users[user.ID] = user
 	r.usernames[key] = user.ID
 	return user, nil
+}
+
+// SetSubscription mirrors the real repository: it touches the two subscription fields and nothing
+// else, and refuses an id that holds no profile - which is what the webhook route reports as a
+// retryable failure rather than swallowing.
+func (r *fakeUserRepository) SetSubscription(_ context.Context, id string, subscription entity.Subscription) error {
+	if r.setSubscriptionErr != nil {
+		return r.setSubscriptionErr
+	}
+	user, ok := r.users[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	user.SubscribedUntil = subscription.SubscribedUntil()
+	if subscription.CustomerID != "" {
+		user.StripeCustomerID = subscription.CustomerID
+	}
+	user.UpdatedAt = time.Now().UTC()
+	r.users[id] = user
+	return nil
 }
 
 func (r *fakeUserRepository) Delete(_ context.Context, id string) error {
@@ -537,14 +565,83 @@ func newFullService(
 		assistant = &fakeAssistant{}
 	}
 
+	return newPaymentsService(blogs, users, chats, comments, reactions, assistant, &fakePayments{configured: true})
+}
+
+// newPaymentsService is newFullService with the payment provider named too, for the billing routes.
+// Every other helper here leaves it configured and unused: what a test cares about is almost never
+// that a subscription could be bought, only that one was.
+func newPaymentsService(
+	blogs repository.BlogRepository,
+	users repository.UserRepository,
+	chats repository.ChatRepository,
+	comments repository.CommentRepository,
+	reactions repository.ReactionRepository,
+	assistant repository.Assistant,
+	payments repository.Payments,
+) *Service {
 	return New(
 		Config{
 			Environment:          "test",
 			Commit:               "abc123",
+			AllowedOrigin:        testOrigin,
 			AssistantEntitlement: entity.NewAssistantEntitlement(true),
 		},
-		blogs, users, chats, comments, reactions, fakeVerifier{uid: "caller"}, assistant,
+		blogs, users, chats, comments, reactions, fakeVerifier{uid: "caller"}, assistant, payments,
 	)
+}
+
+// fakePayments is an in-memory repository.Payments. It stands in for a provider on both sides:
+// what it was asked to sell, and what it says a delivery meant.
+type fakePayments struct {
+	configured bool
+	// url and err are what Checkout answers with; requests records what it was asked, for a test
+	// asserting the account a purchase was attached to.
+	url      string
+	err      error
+	requests []repository.CheckoutRequest
+	// event and eventErr are what DecodeEvent answers with. Signature verification is the stripe
+	// package's own business and is tested there; what matters here is how the route treats each
+	// kind of answer.
+	event    repository.SubscriptionEvent
+	eventErr error
+	// payloads records the bodies handed to DecodeEvent, so a test can assert the route verified
+	// the bytes as they arrived rather than a re-encoding of them.
+	payloads []string
+	// portalCustomers records which customer the billing portal was opened for, which is the whole
+	// of the authorization on that route: it comes off the caller's own profile.
+	portalCustomers []string
+	portalReturnURL string
+}
+
+func (p *fakePayments) Configured() bool { return p.configured }
+
+func (p *fakePayments) Checkout(_ context.Context, req repository.CheckoutRequest) (string, error) {
+	p.requests = append(p.requests, req)
+	if p.err != nil {
+		return "", p.err
+	}
+	if p.url == "" {
+		return "https://checkout.test/session", nil
+	}
+	return p.url, nil
+}
+
+func (p *fakePayments) BillingPortal(_ context.Context, customerID, returnURL string) (string, error) {
+	p.portalCustomers = append(p.portalCustomers, customerID)
+	p.portalReturnURL = returnURL
+	if p.err != nil {
+		return "", p.err
+	}
+	if p.url == "" {
+		return "https://billing.test/session", nil
+	}
+	return p.url, nil
+}
+
+func (p *fakePayments) DecodeEvent(payload []byte, _ string) (repository.SubscriptionEvent, error) {
+	p.payloads = append(p.payloads, string(payload))
+	return p.event, p.eventErr
 }
 
 func withUID(req *http.Request, uid string) *http.Request {

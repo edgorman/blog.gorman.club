@@ -43,6 +43,12 @@ variable "assistant_location" {
   default     = "global"
 }
 
+variable "stripe_price_id" {
+  description = "The Stripe price the subscription is sold at (price_...), which is the whole of the catalogue: there is one tier, so what is bought is time rather than a plan. Empty disables the billing routes, which is what a deployment whose Stripe secrets have not been filled in yet should be - the price id is public (it is sent to a checkout the buyer can read), which is why it is a plain variable here while the two secrets beside it are not (see stripe.tf)."
+  type        = string
+  default     = ""
+}
+
 variable "alert_notification_emails" {
   description = "Addresses the monitoring alerts in monitoring.tf are sent to. Empty leaves the policies in place but silent - they still show in the console, nobody is told. These are recipients rather than an entitlement: an address here is where a message goes, not an account admitted to anything."
   type        = list(string)

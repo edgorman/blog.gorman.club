@@ -410,6 +410,63 @@ a.tag-topic:hover {
 .panel-identity-email {
   font-size: 12px;
 }
+/* A labelled group in the drawer, for the things that are about the account rather than actions it
+   can take - the buttons below it are a stack, this is a block with a heading. */
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
+}
+.panel-section-title {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* — subscription — */
+.subscription-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+}
+.subscription-date {
+  font-size: 12px;
+}
+/* Quiet by default and accented only when the subscription is live: "not subscribed" is the
+   ordinary state of an account rather than something to warn about, so it is drawn like the tag
+   on a post rather than like the mark on a private one. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 3px 10px;
+  border: 1px solid var(--color-divider);
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  border-radius: calc(var(--radius-md) * 0.75);
+}
+.badge-active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* A one-line message about something that just happened elsewhere - returning from a checkout, so
+   far - rather than about the page's own state, which is what role="alert" errors are for. */
+.notice {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface);
+  font-size: 14px;
+}
 
 /* — page layout — */
 .page {

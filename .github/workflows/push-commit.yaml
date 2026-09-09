@@ -81,6 +81,7 @@ jobs:
         with:
           secrets: ${{ steps.secrets.outputs.secrets }}
           cloudflare_project_name: 'frontend-stag'
+          backend_url: ${{ steps.backend.outputs.backend_url }}
 
   infrastructure-root:
     needs: diff

@@ -55,7 +55,7 @@ export function Post() {
   if (state.phase === 'unconfigured') {
     return (
       <div className="page">
-        <p className="text-muted center-note">No backend deployed yet - VITE_BACKEND_URL is unset.</p>
+        <p className="text-muted center-note">No backend deployed yet - no backend URL is configured.</p>
       </div>
     )
   }

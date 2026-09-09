@@ -17,9 +17,9 @@ function NotFound() {
   )
 }
 
-function App() {
+function App({ backendUrl }: { backendUrl?: string }) {
   return (
-    <AppProvider>
+    <AppProvider backendUrl={backendUrl}>
       <NavBar />
       <Routes>
         <Route path="/" element={<Landing />} />

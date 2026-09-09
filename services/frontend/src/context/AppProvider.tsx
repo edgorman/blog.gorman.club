@@ -4,15 +4,22 @@ import { ApiError, createApi, type CurrentUser } from '../lib/api'
 import { useTheme } from '../lib/theme'
 import { AppContext, type AppContextValue } from './AppContext'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
-
-export function AppProvider({ children }: { children: ReactNode }) {
+export function AppProvider({
+  children,
+  // Resolved once at bootstrap by main.tsx (see lib/config.ts) before this ever renders. The
+  // default is only for a caller that skips that bootstrap - tests, and vite.config.ts's test env
+  // stands in for it there.
+  backendUrl = import.meta.env.VITE_BACKEND_URL,
+}: {
+  children: ReactNode
+  backendUrl?: string
+}) {
   const { user, authHeaders, error, ready, renderButton, signOut } = useGoogleAuth()
   const { theme, toggleTheme } = useTheme()
 
   const api = useMemo(
-    () => (BACKEND_URL ? createApi(BACKEND_URL, authHeaders) : null),
-    [authHeaders],
+    () => (backendUrl ? createApi(backendUrl, authHeaders) : null),
+    [backendUrl, authHeaders],
   )
 
   const [profile, setProfile] = useState<CurrentUser | null>(null)

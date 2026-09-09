@@ -12,6 +12,10 @@ inputs:
     description: 'Directory of already-built static files to deploy, relative to services/frontend'
     required: false
     default: 'dist'
+  backend_url:
+    description: 'Base URL of the backend service, written into config.json for the app to read at runtime (see CLAUDE.md). Omit to deploy the build unmodified.'
+    required: false
+    default: ''
 
 runs:
   using: "composite"
@@ -22,6 +26,17 @@ runs:
       env:
         SECRETS: ${{ inputs.secrets }}
       run: printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
+
+    # Written next to the static files rather than baked into the image, so one build can serve
+    # any environment - see the Read the backend URL at runtime issue and src/lib/config.ts.
+    - name: Write Runtime Config
+      if: inputs.backend_url != ''
+      shell: bash
+      env:
+        BACKEND_URL: ${{ inputs.backend_url }}
+        CONFIG_PATH: services/frontend/${{ inputs.dist_directory }}/config.json
+      run: |
+        jq -n --arg backendUrl "$BACKEND_URL" '{backendUrl: $backendUrl}' > "$CONFIG_PATH"
 
     # --branch=main is required: wrangler infers production vs. preview from GITHUB_REF_NAME, which
     # is the release tag on a `release` event, and would silently deploy as Preview.

@@ -49,7 +49,7 @@ export function NewPost() {
         <h1 className="title-editor">Write something</h1>
       </header>
 
-      {!api && <p className="text-muted">No backend deployed yet - VITE_BACKEND_URL is unset.</p>}
+      {!api && <p className="text-muted">No backend deployed yet - no backend URL is configured.</p>}
 
       {api && !user && (
         <div className="center-note">

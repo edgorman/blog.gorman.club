@@ -1,7 +1,10 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** Base URL of the backend service (see /services/backend); unset until it is deployed. */
+  /**
+   * Base URL of the backend service (see /services/backend); unset until it is deployed. Used
+   * only as a fallback when `config.json` is absent or malformed - see src/lib/config.ts.
+   */
   readonly VITE_BACKEND_URL?: string
   /** Google OAuth 2.0 client ID. Not a secret - it identifies the app. */
   readonly VITE_GOOGLE_CLIENT_ID?: string

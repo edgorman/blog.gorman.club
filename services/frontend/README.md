@@ -154,8 +154,17 @@ sitting in Artifact Registry, and a rollback can redeploy that image's files wit
 
 | Env var                     | Description                                              |
 | ---------------------------- | --------------------------------------------------------- |
-| `VITE_BACKEND_URL`           | Base URL of the backend service. Unset in local dev; set automatically in CI from the deployed Cloud Run service's URL. |
-| `VITE_GOOGLE_CLIENT_ID`      | Google OAuth 2.0 client ID. Not a secret; see above.      |
+| `VITE_BACKEND_URL`           | Fallback base URL of the backend service, baked into the bundle at build time. Unset in local dev; set automatically in CI from the deployed Cloud Run service's URL. |
+| `VITE_GOOGLE_CLIENT_ID`      | Google OAuth 2.0 client ID. Not a secret; baked in at build time; see above. |
 
-Both are baked into the bundle at build time — the frontend has no runtime
-configuration.
+The backend URL is otherwise **runtime** configuration: `src/lib/config.ts`
+fetches `/config.json` (`{ "backendUrl": "..." }`) once at bootstrap, before
+the app's first render, so the same built image can serve any environment
+just by which `config.json` sits next to its static files. `frontend-deploy`
+writes that file from the just-deployed Cloud Run URL as part of the staging
+pipeline. `VITE_BACKEND_URL` above is only the fallback for when
+`config.json` is absent or malformed - local dev, and a rollback to an image
+built before this file existed.
+
+`VITE_GOOGLE_CLIENT_ID` stays build-time only: one client ID serves every
+environment (see above), so there is nothing for a runtime config to vary.

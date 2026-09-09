@@ -131,7 +131,7 @@ export function Landing() {
       </form>
 
       {state.phase === 'unconfigured' && (
-        <p className="text-muted">No backend deployed yet - VITE_BACKEND_URL is unset.</p>
+        <p className="text-muted">No backend deployed yet - no backend URL is configured.</p>
       )}
       {state.phase === 'loading' && <p className="text-muted">Loading…</p>}
       {state.phase === 'error' && <p role="alert">{state.message}</p>}

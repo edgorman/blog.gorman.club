@@ -119,6 +119,12 @@ such a caller can provoke is bounded by the rate limiter rather than by the cach
 
 Strict environment suffixes (`backend-stag`, `backend-prod`) and scoped secrets (`stag-db-pass` vs `prod-db-pass`) ensure services in staging cannot accidentally reach production resources.
 
+### Artifact Stores
+
+Every service has one store per environment project rather than one shared store copied between them: the backend publishes to that project's own Artifact Registry `backend` repository, and the frontend to that project's own `frontend-<env>` Cloud Storage bucket (`infrastructure/env/storage.tf`). The GitHub Actions service account is granted write on both stores in staging and prod alike (per-project, per the IAM section above, never a broad grant), so either can be published straight into every environment's store from the job that builds and validates it.
+
+The pipeline doesn't do that yet - Staging Deployments (below) still write only staging's stores, and Production Releases still fills prod's by copying staging's validated artifact across the project boundary with `gcrane`. That copy is what having a store in every project from the start makes unnecessary: once the build job is updated to publish to both, promotion stops reading across the boundary at all and becomes nothing but a deploy - each project's store written once, by the job that built it, and never read from the other.
+
 ## CI/CD, Branching, & Release Lifecycle
 
 All build, test, infrastructure provisioning, and deployment pipelines run exclusively through GitHub Actions (bypassing GCP Cloud Build). Sequential execution rules ensure infrastructure provisioning completes successfully before service updates occur.

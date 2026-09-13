@@ -13,6 +13,11 @@ output "frontend_artifact_registry_repository" {
   value       = google_artifact_registry_repository.frontend.name
 }
 
+output "frontend_bucket" {
+  description = "Name of this environment's frontend static-build bucket"
+  value       = google_storage_bucket.frontend.name
+}
+
 output "firestore_database" {
   description = "Full resource name of the Firestore database"
   value       = google_firestore_database.database.name

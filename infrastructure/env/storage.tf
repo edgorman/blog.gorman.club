@@ -2,9 +2,13 @@
 # Artifact Registry image (see the frontend build issue tracked alongside this one): CI writes the
 # built site here on merge and reads it back on deploy, and Cloudflare Pages serves the extracted
 # files. Not public - nothing outside the pipeline needs to reach it directly.
+#
+# Named after the project rather than just the environment because bucket names are global across
+# all of GCS, not scoped to a project like most other resources here - the same reason the
+# Terraform state buckets in infrastructure/root are prefixed the same way.
 resource "google_storage_bucket" "frontend" {
   project                     = var.gcp_project_id
-  name                        = "frontend-${var.environment}"
+  name                        = "${var.gcp_project_id}-frontend"
   location                    = var.gcp_region
   force_destroy               = false
   uniform_bucket_level_access = true

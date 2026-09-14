@@ -8,8 +8,9 @@ This is a single-repository (monorepo), multi-cloud deployment strategy built on
 
 ## Repository Structure
 
+- `/go.mod`, `/go.sum` — A single Go module (`github.com/edgorman/blog.gorman.club`) rooted at the repo, not per-service, so future shared Go code or a second service lives in the same module without `replace` directives. Every package's import path is its path from the repo root (e.g. `.../services/backend/internal/entity`); Go commands for the backend are run against `./services/backend/...` rather than from within that directory.
 - `/infrastructure` — Centralized Terraform manifests. The `env` subfolder holds the manifests applied once per environment (staging/prod) using environment-specific variable configurations (`staging.tfvars`, `prod.tfvars`); the `root` subfolder holds shared, manually-bootstrapped resources (see Root Environment below).
-- `/services/backend` — Golang backend service(s) packaged as Docker containers targeted for GCP Cloud Run.
+- `/services/backend` — Golang backend service(s) packaged as Docker containers targeted for GCP Cloud Run. Its Docker build context is the repo root (see `services/backend/Dockerfile`), since the Go module it builds from lives there.
 - `/services/frontend` — Conventional Vite/React single-page app deployed to Cloudflare Pages.
 - `/services/*/Makefile` — Per-service `lint` and `test` targets used by both local development and CI (to be added later).
 - `/.github/actions` — Modular, local GitHub Composite Actions (`action.yml`) encapsulating reusable workflow logic.

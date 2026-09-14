@@ -5,10 +5,10 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY . .
+COPY services/backend ./services/backend
 
 ARG COMMIT_SHA=unknown
-RUN CGO_ENABLED=0 go build -ldflags "-X main.commit=${COMMIT_SHA}" -o /out/backend ./cmd/backend
+RUN CGO_ENABLED=0 go build -ldflags "-X main.commit=${COMMIT_SHA}" -o /out/backend ./services/backend/cmd/backend
 
 # distroless/static: no shell or package manager for a compromised process to use.
 FROM gcr.io/distroless/static-debian12:nonroot

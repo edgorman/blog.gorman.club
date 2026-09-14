@@ -56,8 +56,9 @@ runs:
       run: |
         docker build \
           --build-arg COMMIT_SHA="${{ inputs.image_tag }}" \
+          -f services/backend/Dockerfile \
           -t "${{ steps.image.outputs.staging_ref }}" \
-          services/backend
+          .
 
     # Same bytes under both tags - one build feeds both registries, so promotion later has nothing
     # to rebuild or copy, only a `gcloud run deploy` against the tag already sitting in prod's own

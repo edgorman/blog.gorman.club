@@ -1,0 +1,3 @@
+services/backend/bin/
+services/backend/**/*_test.go
+services/backend/README.md

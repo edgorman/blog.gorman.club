@@ -8,16 +8,16 @@ install: ## Installs dependencies
 	go mod download
 
 lint: ## Runs the linter
-	@unformatted=$$(gofmt -l .); \
+	@unformatted=$$(gofmt -l ./services/backend); \
 	if [ -n "$$unformatted" ]; then \
 		echo "The following files are not gofmt'd:"; \
 		echo "$$unformatted"; \
 		exit 1; \
 	fi
-	go vet ./...
+	go vet ./services/backend/...
 
 test: ## Runs the test suite
-	go test ./... -cover
+	go test ./services/backend/... -cover
 
 build: ## Builds the production binary
-	CGO_ENABLED=0 go build -o bin/backend ./cmd/backend
+	CGO_ENABLED=0 go build -o services/backend/bin/backend ./services/backend/cmd/backend

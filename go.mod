@@ -1,4 +1,4 @@
-module github.com/edgorman/blog.gorman.club/services/backend
+module github.com/edgorman/blog.gorman.club
 
 go 1.26.0
 

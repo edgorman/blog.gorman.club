@@ -34,7 +34,7 @@ updates:
           - '*'
 
   - package-ecosystem: 'gomod'
-    directory: '/services/backend'
+    directory: '/'
     schedule:
       interval: 'weekly'
     labels:

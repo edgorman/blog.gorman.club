@@ -6,24 +6,20 @@ runs:
   steps:
     - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
       with:
-        go-version-file: services/backend/go.mod
+        go-version-file: go.mod
 
     - name: Install Dependencies
       shell: bash
-      working-directory: services/backend
-      run: make install
+      run: make -f services/backend/Makefile install
 
     - name: Lint
       shell: bash
-      working-directory: services/backend
-      run: make lint
+      run: make -f services/backend/Makefile lint
 
     - name: Test
       shell: bash
-      working-directory: services/backend
-      run: make test
+      run: make -f services/backend/Makefile test
 
     - name: Build
       shell: bash
-      working-directory: services/backend
-      run: make build
+      run: make -f services/backend/Makefile build

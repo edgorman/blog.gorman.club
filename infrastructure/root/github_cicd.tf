@@ -71,6 +71,27 @@ resource "google_project_iam_member" "github_actions_service_usage_consumer" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+# The backend repository's writer binding in env/artifact_registry.tf needs
+# artifactregistry.repositories.setIamPolicy, which roles/editor excludes.
+resource "google_project_iam_member" "github_actions_artifact_registry_admin" {
+  for_each = local.all_projects
+
+  project = each.value.project_id
+  role    = "roles/artifactregistry.repoAdmin"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+# The frontend bucket's writer binding in env/storage.tf needs storage.buckets.setIamPolicy,
+# which roles/editor excludes the same way it excludes setIamPolicy on the resources above.
+# storage.buckets.create itself needs no extra grant - that part is already covered by editor.
+resource "google_project_iam_member" "github_actions_storage_admin" {
+  for_each = local.all_projects
+
+  project = each.value.project_id
+  role    = "roles/storage.admin"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
 resource "google_iam_workload_identity_pool" "github_pool" {
   project                   = var.gcp_provider_project_id
   workload_identity_pool_id = "github-pool"

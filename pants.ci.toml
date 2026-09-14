@@ -5,6 +5,9 @@
 dynamic_ui = false
 colors = true
 
-# The remote cache itself is provided by init-pants' experimental-remote-cache-via-gha input.
+# init-pants' experimental-remote-cache-via-gha input points remote_store_address at the GitHub
+# Actions cache service (an https:// URL), which only the experimental-github-actions-cache
+# provider understands - the default `reapi` provider only accepts grpc(s)://.
+remote_provider = "experimental-github-actions-cache"
 remote_cache_read = true
 remote_cache_write = true

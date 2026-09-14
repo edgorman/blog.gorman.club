@@ -66,9 +66,10 @@ jobs:
           service_name: 'backend-prod'
           image: 'europe-west1-docker.pkg.dev/blog-gorman-club-prod/backend/backend:${{ github.sha }}'
 
-  # Step 3: promote the commit-SHA-tagged image already built and validated on staging by digest
-  # (a rollback re-promotes an earlier release's, which is a no-op if already there), then deploy
-  # its static files with config.json written from the just-promoted backend URL.
+  # Step 3: fetch the commit-SHA folder already published to prod's own bucket when this commit was
+  # built and validated on staging (a rollback fetches an earlier release's, already sitting there
+  # too), then deploy those static files with config.json written from the just-promoted backend
+  # URL. No cross-project read and no copy - the bucket promotion reads from is prod's own.
   services-frontend:
     needs: [infrastructure-prod, services-backend]
     runs-on: ubuntu-latest
@@ -88,19 +89,12 @@ jobs:
           secrets_list: |
             CLOUDFLARE_API_TOKEN=cloudflare_api_token
             CLOUDFLARE_ACCOUNT_ID=cloudflare_account_id
-      - id: image
-        uses: ./.github/actions/frontend-image-promote
+      - uses: ./.github/actions/frontend-fetch
         with:
-          staging_project_id: 'blog-gorman-club-stag'
-          prod_project_id: 'blog-gorman-club-prod'
-          gcp_region: 'europe-west1'
-          source_tag: ${{ github.sha }}
-          target_tag: ${{ github.event.release.tag_name }}
+          gcp_project_id: 'blog-gorman-club-prod'
+          sha: ${{ github.sha }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
-      - uses: ./.github/actions/frontend-image-extract
-        with:
-          image_ref: ${{ steps.image.outputs.image_ref }}
       - uses: ./.github/actions/frontend-deploy
         with:
           secrets: ${{ steps.secrets.outputs.secrets }}

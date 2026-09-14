@@ -1,0 +1,40 @@
+name: 'Frontend Fetch'
+description: 'Downloads a previously-published commit-SHA folder out of an environment''s frontend bucket into a local directory'
+
+inputs:
+  gcp_project_id:
+    description: 'GCP project the frontend bucket lives in'
+    required: true
+  sha:
+    description: 'Commit SHA the build was published under'
+    required: true
+  output_directory:
+    description: 'Local directory to download the static files into'
+    required: false
+    default: 'services/frontend/dist'
+  workload_identity_provider:
+    description: 'The Workload Identity Provider resource name'
+    required: true
+  service_account:
+    description: 'The Google Service Account email'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+
+    - name: Fetch Static Files
+      shell: bash
+      run: |
+        mkdir -p "${{ inputs.output_directory }}"
+        gcloud storage rsync --recursive \
+          "gs://${{ inputs.gcp_project_id }}-frontend/${{ inputs.sha }}" \
+          "${{ inputs.output_directory }}"

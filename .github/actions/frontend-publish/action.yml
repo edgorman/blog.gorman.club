@@ -1,0 +1,53 @@
+name: 'Frontend Publish'
+description: 'Uploads an already-built frontend dist/ into both environments'' frontend buckets under a commit-SHA folder'
+
+inputs:
+  gcp_project_id:
+    description: 'GCP project the staging frontend bucket lives in'
+    required: true
+  prod_project_id:
+    description: 'GCP project the production frontend bucket lives in'
+    required: true
+  dist_directory:
+    description: 'Directory of already-built static files to publish, relative to services/frontend'
+    required: false
+    default: 'dist'
+  sha:
+    description: 'Commit SHA to publish the build under - see the Staging Deployments section of CLAUDE.md'
+    required: true
+  workload_identity_provider:
+    description: 'The Workload Identity Provider resource name'
+    required: true
+  service_account:
+    description: 'The Google Service Account email'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+
+    # Same bytes into both buckets - one build feeds both environments, so promotion later has
+    # nothing to rebuild or copy, only a download of the folder already sitting in prod's own
+    # bucket. config.json is never part of the uploaded folder (see frontend-deploy), so the
+    # published bytes stay environment-neutral.
+    - name: Publish To Staging Bucket
+      shell: bash
+      run: |
+        gcloud storage rsync --recursive \
+          "services/frontend/${{ inputs.dist_directory }}" \
+          "gs://${{ inputs.gcp_project_id }}-frontend/${{ inputs.sha }}"
+
+    - name: Publish To Prod Bucket
+      shell: bash
+      run: |
+        gcloud storage rsync --recursive \
+          "services/frontend/${{ inputs.dist_directory }}" \
+          "gs://${{ inputs.prod_project_id }}-frontend/${{ inputs.sha }}"

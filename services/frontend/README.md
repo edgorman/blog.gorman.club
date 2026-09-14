@@ -121,7 +121,7 @@ apply `infrastructure/root`. That apply writes it into the `GOOGLE_CLIENT_ID`
 GitHub Actions variable, and CI takes it from there for both environments with
 no further per-environment configuration:
 
-- the frontend Docker build gets it as `VITE_GOOGLE_CLIENT_ID`;
+- the frontend build gets it as `VITE_GOOGLE_CLIENT_ID`;
 - `infrastructure/env` gets it as `TF_VAR_google_client_id`, which becomes the
   backend Cloud Run service's `GOOGLE_CLIENT_ID` — the audience it verifies
   tokens against.
@@ -146,25 +146,29 @@ make build     # tsc -b && vite build
 
 `npm run dev` starts the Vite dev server directly.
 
-CI builds the `Dockerfile` here instead of running `make build` directly, then extracts its
-static files for the Cloudflare Pages deploy - so what's live always matches an image already
-sitting in Artifact Registry, and a rollback can redeploy that image's files without a rebuild.
+CI runs `make build` once on merge to `main` (`frontend-build`), then uploads the same `dist/` to
+both environments' buckets under a commit-SHA folder (`frontend-publish`) - so what's live always
+matches a folder already sitting in the bucket, and a rollback can redeploy that folder's files
+without a rebuild. The bundle carries nothing environment-specific, so identical bytes serve every
+environment.
 
 ## Configuration
 
 | Env var                     | Description                                              |
 | ---------------------------- | --------------------------------------------------------- |
-| `VITE_BACKEND_URL`           | Fallback base URL of the backend service, baked into the bundle at build time. Unset in local dev; set automatically in CI from the deployed Cloud Run service's URL. |
+| `VITE_BACKEND_URL`           | Fallback base URL of the backend service. Unset in CI; only used in local dev and for a rollback to a build that predates `config.json`. |
 | `VITE_GOOGLE_CLIENT_ID`      | Google OAuth 2.0 client ID. Not a secret; baked in at build time; see above. |
 
 The backend URL is otherwise **runtime** configuration: `src/lib/config.ts`
 fetches `/config.json` (`{ "backendUrl": "..." }`) once at bootstrap, before
-the app's first render, so the same built image can serve any environment
-just by which `config.json` sits next to its static files. `frontend-deploy`
-writes that file from the just-deployed Cloud Run URL as part of the staging
-pipeline. `VITE_BACKEND_URL` above is only the fallback for when
-`config.json` is absent or malformed - local dev, and a rollback to an image
-built before this file existed.
+the app's first render, so the same published folder can serve any
+environment just by which `config.json` sits next to its static files.
+`frontend-deploy` writes that file from the just-deployed backend URL as
+part of both the staging and promotion pipelines - it is written after the
+folder is fetched and never uploaded, so the stored folder stays
+environment-neutral. `VITE_BACKEND_URL` above is only the fallback for when
+`config.json` is absent or malformed - local dev, and a rollback to a build
+that predates this file.
 
 `VITE_GOOGLE_CLIENT_ID` stays build-time only: one client ID serves every
 environment (see above), so there is nothing for a runtime config to vary.

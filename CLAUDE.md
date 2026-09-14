@@ -16,6 +16,10 @@ This is a single-repository (monorepo), multi-cloud deployment strategy built on
 - `/.github/settings.yml` — Repository settings, branch permissions, and rulesets managed declaratively as code via the Probot Settings App.
 - `/.github/workflows` — Event-specific workflow YAMLs (e.g. pull request, commit, release) that use reusable GitHub Actions.
 
+Each language's manifest lives in the directory that owns that language's code, and the repository root declares no ecosystem of its own: `services/backend/go.mod` is the Go module, `services/frontend/package.json` the npm project, `infrastructure/*/` the Terraform roots. `.github/dependabot.yml` is that same list read back — every `directory` there names the manifest's own folder, and the single entry rooted at `/` is `github-actions`, which genuinely is repository-wide. A manifest at the root would claim the whole tree for one language: a root `go.mod` makes `go mod tidy` walk `infrastructure/` and the frontend, roots editor tooling's workspace at the repository, and would outlive the code that justified it if the Go service were ever removed.
+
+Shared Go code, when there is any, therefore gets a second module beside the first — `packages/go`, consumed through a `require` paired with a relative `replace` — rather than one module hoisted to the root to cover both. Generated code follows its consumer rather than the contract it came from: a shared `.proto` is the shared thing, while the Go and TypeScript bindings generated from it are build output committed for the sake of editor tooling, and belong next to the service that compiles them.
+
 ## Cloud Infrastructure & Security Isolation
 
 ### Isolated GCP Projects

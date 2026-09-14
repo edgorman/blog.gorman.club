@@ -72,12 +72,16 @@ resource "google_project_iam_member" "github_actions_service_usage_consumer" {
 }
 
 # The backend repository's writer binding in env/artifact_registry.tf needs
-# artifactregistry.repositories.setIamPolicy, which roles/editor excludes.
+# artifactregistry.repositories.setIamPolicy, which roles/editor excludes. repoAdmin isn't enough
+# for this despite the name - it covers repository content administration (deleting images,
+# managing tags, cleanup policies) but not IAM policy on the repository itself; only
+# artifactregistry.admin reaches that, confirmed against staging still failing after repoAdmin
+# was granted and propagation delay was ruled out.
 resource "google_project_iam_member" "github_actions_artifact_registry_admin" {
   for_each = local.all_projects
 
   project = each.value.project_id
-  role    = "roles/artifactregistry.repoAdmin"
+  role    = "roles/artifactregistry.admin"
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 

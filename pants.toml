@@ -1,0 +1,11 @@
+[GLOBAL]
+pants_version = "2.33.0"
+backend_packages = [
+  "pants.backend.experimental.go",
+  "pants.backend.experimental.go.lint.vet",
+]
+
+[source]
+root_patterns = [
+  "/services/backend",
+]

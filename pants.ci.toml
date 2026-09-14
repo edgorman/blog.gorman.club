@@ -1,0 +1,10 @@
+# CI-only settings, layered on top of pants.toml via PANTS_CONFIG_FILES
+# (set by the pantsbuild/actions/init-pants composite action).
+
+[GLOBAL]
+dynamic_ui = false
+colors = true
+
+# The remote cache itself is provided by init-pants' experimental-remote-cache-via-gha input.
+remote_cache_read = true
+remote_cache_write = true

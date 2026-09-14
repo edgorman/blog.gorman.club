@@ -1,0 +1,21 @@
+name: 'Backend Pants'
+description: 'Lints, type-checks, and tests the backend service with Pants'
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      with:
+        go-version-file: services/backend/go.mod
+
+    - uses: pantsbuild/actions/init-pants@0aaef864bd133c4055feb6adad0bfdce0de1c2e4 # v11
+      with:
+        gha-cache-key: v0-go
+        # The Go backend has no named caches to key on; see pantsbuild/example-golang.
+        named-caches-hash: ''
+        cache-lmdb-store: 'true'
+        experimental-remote-cache-via-gha: 'true'
+
+    - name: Lint, Check, Test
+      shell: bash
+      run: pants lint check test ::

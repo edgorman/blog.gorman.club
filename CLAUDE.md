@@ -140,6 +140,12 @@ Both are dry-run before they can delete anything for real: the registry ships wi
 
 All build, test, infrastructure provisioning, and deployment pipelines run exclusively through GitHub Actions (bypassing GCP Cloud Build). Sequential execution rules ensure infrastructure provisioning completes successfully before service updates occur.
 
+### Building with Pants
+
+[Pants](https://www.pantsbuild.org/) is being adopted alongside the existing Makefile/`paths-filter` pipeline, one service at a time and proven green in parallel before anything depends on it (see #110). `pants.toml` sits at the repository root because Pants is the build orchestrator itself, not a language manifest - it claims no directory and generates no code of its own, only pointing at the manifests that already exist (`services/backend/go.mod` today), so it isn't the root ecosystem file the Repository Structure section above rules out. `pants.ci.toml` layers CI-only settings (the GitHub Actions remote cache) on top via `PANTS_CONFIG_FILES`, applied by the `pantsbuild/actions/init-pants` composite action.
+
+The Go backend is the only target so far: `pants tailor ::` generates the `go_mod`/`go_package`/`go_binary` BUILD files from imports alone, with no hand-written dependencies. `services-backend-pants` runs `pants lint check test ::` in its own PR job, next to (not instead of) the Makefile-based `services-backend` job - it is purely additive until the cutover in #120.
+
 ### Commit Message Convention
 
 Every PR title must be a valid [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/) subject — `type(scope)?: description`, e.g. `feat(backend): paginate GET /blogs` — because the repo squash-merges every PR (`.github/settings.yml` sets `squash_merge_commit_title: PR_TITLE`), so the PR title becomes the subject line of the one commit that lands on `main`, and that's what Versioning (below) actually parses. Use `feat:` for a new capability, `fix:` for a bug fix, and any other Conventional Commits type (`build`, `chore`, `ci`, `docs`, `perf`, `refactor`, `revert`, `style`, `test`) for a change that shouldn't move the version on its own. Mark a breaking change with `!` after the type/scope (`feat!:`) or a `BREAKING CHANGE:` footer in the PR body — either bumps major regardless of type. A title that doesn't match any recognized type still merges fine; it just falls back to a patch bump, same as everything did before this convention existed. This applies to Claude Code equally: title PRs it opens the same way.

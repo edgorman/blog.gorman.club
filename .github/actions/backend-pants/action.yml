@@ -18,4 +18,5 @@ runs:
 
     - name: Lint, Check, Test
       shell: bash
-      run: pants lint check test ::
+      run: |
+        pants lint check test ::

@@ -31,6 +31,10 @@ runs:
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
+    # gcloud storage rsync treats a bucket prefix with no matching objects as an empty source
+    # rather than an error, so a missing or not-yet-published folder would otherwise sync zero
+    # files and leave frontend-deploy to push an empty dist/ straight over the live site. Failing
+    # loudly here turns that into a failed job instead of a silent wipe.
     - name: Fetch Static Files
       shell: bash
       run: |
@@ -38,3 +42,8 @@ runs:
         gcloud storage rsync --recursive \
           "gs://${{ inputs.gcp_project_id }}-frontend/${{ inputs.sha }}" \
           "${{ inputs.output_directory }}"
+
+        if [ -z "$(ls -A "${{ inputs.output_directory }}")" ]; then
+          echo "::error::No files found under gs://${{ inputs.gcp_project_id }}-frontend/${{ inputs.sha }}/ - refusing to deploy an empty build."
+          exit 1
+        fi

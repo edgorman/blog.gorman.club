@@ -36,8 +36,9 @@ jobs:
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
 
-  # Step 2: promote whatever image is live on backend-stag by digest, since a release commit may
-  # not have touched the backend at all.
+  # Step 2: deploy the commit-SHA-tagged image already sitting in prod's own registry, pushed there
+  # when this commit was built and deployed to staging (see Staging Deployments in CLAUDE.md).
+  # Promotion is nothing but a deploy - it reads nothing from the staging project.
   services-backend:
     needs: infrastructure-prod
     runs-on: ubuntu-latest
@@ -45,22 +46,25 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      backend_url: ${{ steps.promote.outputs.backend_url }}
+      backend_url: ${{ steps.deploy.outputs.backend_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.sha }}
-      - id: promote
-        uses: ./.github/actions/backend-promote
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
-          staging_project_id: 'blog-gorman-club-stag'
-          prod_project_id: 'blog-gorman-club-prod'
-          gcp_region: 'europe-west1'
-          staging_service_name: 'backend-stag'
-          prod_service_name: 'backend-prod'
-          target_tag: ${{ github.event.release.tag_name }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+      - id: deploy
+        uses: ./.github/actions/backend-cloudrun-deploy
+        with:
+          gcp_project_id: 'blog-gorman-club-prod'
+          gcp_region: 'europe-west1'
+          service_name: 'backend-prod'
+          image: 'europe-west1-docker.pkg.dev/blog-gorman-club-prod/backend/backend:${{ github.sha }}'
 
   # Step 3: promote the commit-SHA-tagged image already built and validated on staging by digest
   # (a rollback re-promotes an earlier release's, which is a no-op if already there), then deploy

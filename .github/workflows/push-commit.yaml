@@ -135,12 +135,13 @@ jobs:
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
 
-  # Must follow infrastructure-staging so the target resources exist.
+  # Runs on every merge - not gated on the services-backend diff - so every commit on `main`, and
+  # therefore every release tag, has a commit-SHA image in both registries. Must still follow
+  # infrastructure-staging so the staging deploy target exists.
   services-backend:
     needs: [diff, infrastructure-staging]
     if: |
       always() &&
-      needs.diff.outputs.services-backend == 'true' &&
       needs.diff.result == 'success' &&
       (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
     runs-on: ubuntu-latest
@@ -152,6 +153,7 @@ jobs:
       - uses: ./.github/actions/backend-deploy
         with:
           gcp_project_id: 'blog-gorman-club-stag'
+          prod_project_id: 'blog-gorman-club-prod'
           gcp_region: 'europe-west1'
           service_name: 'backend-stag'
           image_tag: ${{ github.sha }}

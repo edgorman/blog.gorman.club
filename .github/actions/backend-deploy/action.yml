@@ -1,12 +1,15 @@
 name: 'Backend Deploy'
-description: 'Builds the backend image, pushes it to Artifact Registry tagged with the commit SHA, and deploys it to Cloud Run'
+description: 'Builds the backend image, pushes it to both environments'' Artifact Registries tagged with the commit SHA, and deploys it to staging Cloud Run'
 
 inputs:
   gcp_project_id:
-    description: 'GCP project the Artifact Registry repository and Cloud Run service live in'
+    description: 'GCP project the staging Artifact Registry repository and Cloud Run service live in'
+    required: true
+  prod_project_id:
+    description: 'GCP project of the production Artifact Registry repository the image is also pushed to'
     required: true
   gcp_region:
-    description: 'GCP region of the Artifact Registry repository and Cloud Run service'
+    description: 'GCP region of both Artifact Registry repositories and the Cloud Run service'
     required: true
   service_name:
     description: 'Cloud Run service name (e.g. backend-stag)'
@@ -44,19 +47,30 @@ runs:
 
     - id: image
       shell: bash
-      run: echo "ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/backend:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+      run: |
+        echo "staging_ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/backend:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+        echo "prod_ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.prod_project_id }}/backend/backend:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
 
     - name: Build Image
       shell: bash
       run: |
         docker build \
           --build-arg COMMIT_SHA="${{ inputs.image_tag }}" \
-          -t "${{ steps.image.outputs.ref }}" \
+          -t "${{ steps.image.outputs.staging_ref }}" \
           services/backend
+
+    # Same bytes under both tags - one build feeds both registries, so promotion later has nothing
+    # to rebuild or copy, only a `gcloud run deploy` against the tag already sitting in prod's own
+    # registry.
+    - name: Tag Image For Prod
+      shell: bash
+      run: docker tag "${{ steps.image.outputs.staging_ref }}" "${{ steps.image.outputs.prod_ref }}"
 
     - name: Push Image
       shell: bash
-      run: docker push "${{ steps.image.outputs.ref }}"
+      run: |
+        docker push "${{ steps.image.outputs.staging_ref }}"
+        docker push "${{ steps.image.outputs.prod_ref }}"
 
     - id: deploy
       uses: ./.github/actions/backend-cloudrun-deploy
@@ -64,4 +78,4 @@ runs:
         gcp_project_id: ${{ inputs.gcp_project_id }}
         gcp_region: ${{ inputs.gcp_region }}
         service_name: ${{ inputs.service_name }}
-        image: ${{ steps.image.outputs.ref }}
+        image: ${{ steps.image.outputs.staging_ref }}

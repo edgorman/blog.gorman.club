@@ -48,6 +48,7 @@ runs:
           services-backend:
             - 'services/backend/**'
             - '.github/actions/backend-test/**'
+            - '.github/actions/backend-deploy/**'
 
           # infrastructure/env/** is shared, so it appears in both filters below.
           infrastructure-staging:
@@ -59,7 +60,7 @@ runs:
           infrastructure-prod:
             - 'infrastructure/env/**'
             - 'infrastructure/config/prod/**'
-            - '.github/actions/backend-promote/**'
+            - '.github/actions/backend-deploy/**'
             - '.github/actions/backend-cloudrun-deploy/**'
             - '.github/actions/frontend-image-promote/**'
             - '.github/actions/frontend-image-extract/**'

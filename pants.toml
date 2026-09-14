@@ -1,8 +1,14 @@
 [GLOBAL]
 pants_version = "2.33.0"
+# pants.backend.experimental.go.lint.vet is left disabled: its `run_go_vet` rule invokes
+# `go vet ./<pkg-dir>` without ever setting the process's working directory, so `go` only finds
+# go.mod when it sits at the Pants build root - still true on pantsbuild/pants@main today, not
+# just 2.33.0. services/backend/go.mod deliberately doesn't (#114), so vet fails every package
+# with "go.mod file not found in current directory or any parent directory". `check` and `test`
+# aren't affected - they run pre-built binaries/the compiler directly rather than shelling out to
+# a `go` subcommand that needs module discovery. Re-enable once that's fixed upstream.
 backend_packages = [
   "pants.backend.experimental.go",
-  "pants.backend.experimental.go.lint.vet",
 ]
 
 [source]

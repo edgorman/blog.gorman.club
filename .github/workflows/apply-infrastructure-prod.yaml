@@ -1,0 +1,63 @@
+name: 'Apply Prod Infrastructure (Manual)'
+
+# This is an escape hatch, not the normal path. Prod infrastructure is meant to change through
+# Promote Release (`promote-release.yaml`), where a `terraform apply` on `blog-gorman-club-prod`
+# runs as step 1 of promoting a specific, already-reviewed pre-release - so infra always lands
+# alongside a deliberate decision to ship a commit, with the accumulated plan visible in that
+# pre-release's notes first. This workflow exists only to backfill a newly-added per-environment
+# resource (a bucket, a registry, an IAM binding, ...) into prod ahead of that, for the narrow case
+# where `infrastructure/env` gained something new that a merge-time job now assumes already exists
+# in prod - the trunk-based model's staging-applies-on-merge / prod-applies-on-promotion split means
+# prod can otherwise lag main by however long it takes for someone to promote, and a merge in that
+# gap has nothing to write into. Reach for this only to close that specific gap, and prefer letting
+# the next promotion carry the change whenever the timing isn't forcing your hand.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "apply" to confirm: this runs terraform apply on blog-gorman-club-prod right now, outside of a release promotion.'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  # Shared with Promote Release: both mutate the same prod Terraform state, so one must queue
+  # behind the other rather than risk a concurrent apply.
+  group: promote-release-main
+  cancel-in-progress: false
+
+jobs:
+  confirm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Confirmation
+        shell: bash
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "apply" ]; then
+            echo "::error::Input 'confirm' must be exactly \"apply\" - refusing to run terraform apply on blog-gorman-club-prod. If you're not deliberately backfilling a new resource ahead of a promotion, use Promote Release instead."
+            exit 1
+          fi
+
+  infrastructure-prod:
+    needs: confirm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+      - uses: ./.github/actions/terraform-push-commit
+        with:
+          terraform_directory: 'infrastructure/env'
+          config_directory: 'infrastructure/config/prod'
+          # One client ID, defined in infrastructure/root, serves every environment.
+          secrets: |
+            TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}

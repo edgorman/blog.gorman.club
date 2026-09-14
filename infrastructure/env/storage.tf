@@ -13,6 +13,25 @@ resource "google_storage_bucket" "frontend" {
   force_destroy               = false
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
+
+  # Every merge publishes a commit-SHA folder here in both buckets alike (see Staging Deployments
+  # in CLAUDE.md), so like the backend registry, this fills up from merges whether or not the
+  # environment it lives in is promoted to often. Unlike the registry's keep-count policy, GCS
+  # lifecycle rules only condition on object age - there is no "keep the N most recent folders"
+  # equivalent - so this expires anything older than frontend_retention_days outright. See the
+  # Artifact Stores section of CLAUDE.md for how that number was chosen and, since an age-based
+  # rule cannot single out "the folder currently deployed to prod" the way the registry's keep-count
+  # can single out recent versions, what has to stay true operationally for it to never be caught by
+  # this rule.
+  lifecycle_rule {
+    condition {
+      age = var.frontend_retention_days
+    }
+
+    action {
+      type = "Delete"
+    }
+  }
 }
 
 # CI needs to both write the build on merge and read it back on deploy; objectAdmin covers both

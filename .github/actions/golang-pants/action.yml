@@ -1,0 +1,30 @@
+name: 'Golang Pants'
+description: 'Lints, type-checks, and tests a Go module with Pants'
+
+inputs:
+  go-mod-path:
+    description: 'Path to the module Go version file (e.g. services/backend/go.mod), used to pick the Go toolchain'
+    required: true
+  pants-target:
+    description: 'Pants target spec to lint/check/test (e.g. services/backend::)'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      with:
+        go-version-file: ${{ inputs.go-mod-path }}
+
+    - uses: pantsbuild/actions/init-pants@0aaef864bd133c4055feb6adad0bfdce0de1c2e4 # v11
+      with:
+        gha-cache-key: v0-go
+        # The Go backend has no named caches to key on; see pantsbuild/example-golang.
+        named-caches-hash: ''
+        cache-lmdb-store: 'true'
+        experimental-remote-cache-via-gha: 'true'
+
+    - name: Lint, Check, Test
+      shell: bash
+      run: |
+        pants lint check test ${{ inputs.pants-target }}

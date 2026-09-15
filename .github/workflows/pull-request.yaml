@@ -59,7 +59,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/backend-pants
+      - uses: ./.github/actions/golang-pants
+        with:
+          go-mod-path: services/backend/go.mod
+          pants-target: 'services/backend::'
 
   infrastructure-root:
     needs: diff

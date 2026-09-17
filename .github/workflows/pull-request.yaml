@@ -49,6 +49,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/backend-test
 
+  # Runs alongside services-backend rather than replacing it - advisory only, nothing depends on
+  # it passing yet. See CLAUDE.md's "Building with Pants" note and #110.
+  services-backend-pants:
+    needs: diff
+    if: needs.diff.outputs.services-backend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/golang-pants
+        with:
+          go-mod-path: services/backend/go.mod
+          pants-target: 'services/backend::'
+
   infrastructure-root:
     needs: diff
     if: needs.diff.outputs.infrastructure-root == 'true'

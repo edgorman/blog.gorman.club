@@ -20,9 +20,12 @@ root_patterns = [
 # The repo has no Python code of its own - this is required because the Terraform backend's
 # dependency inference parses .tf files with a Python-implemented HCL2 parser
 # (pants.backend.terraform.hcl2_parser), which Pants runs as a PEX and therefore needs an
-# interpreter to build one for, regardless of what this repo's own code is written in.
+# interpreter to build one for, regardless of what this repo's own code is written in. A range
+# rather than a single pinned minor version, since this only has to match whatever CPython
+# happens to already be on a given machine (e.g. 3.12 on GitHub's ubuntu-latest runners) rather
+# than a version this repo actually depends on.
 [python]
-interpreter_constraints = ["==3.11.*"]
+interpreter_constraints = [">=3.9,<3.13"]
 
 # Pinned to match the terraform_version the terraform-pull-request/terraform-push-commit actions
 # already install via hashicorp/setup-terraform, so `pants check` validates against the same CLI

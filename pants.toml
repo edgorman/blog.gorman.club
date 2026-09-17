@@ -17,6 +17,13 @@ root_patterns = [
   "/services/backend",
 ]
 
+# The repo has no Python code of its own - this is required because the Terraform backend's
+# dependency inference parses .tf files with a Python-implemented HCL2 parser
+# (pants.backend.terraform.hcl2_parser), which Pants runs as a PEX and therefore needs an
+# interpreter to build one for, regardless of what this repo's own code is written in.
+[python]
+interpreter_constraints = ["==3.11.*"]
+
 # Pinned to match the terraform_version the terraform-pull-request/terraform-push-commit actions
 # already install via hashicorp/setup-terraform, so `pants check` validates against the same CLI
 # version plan/apply run with - required_version in infrastructure/*/providers.tf is an exact pin,

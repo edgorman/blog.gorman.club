@@ -40,7 +40,8 @@ known_versions.add = [
   "1.15.8|macos_x86_64|e2e812e783771159bf758fd4e55d6dc9bb08f63e2af2c63d212721807a02c5dc|36512579",
   "1.15.8|macos_arm64|f210110c5698b94d803a7a63cdb0251b5455c150841478808e2bbb343f95ed68|32885003",
 ]
-# terraform's provider installer otherwise fails with `exec: "getent": executable file not found
-# in $PATH`: Pants runs it in a hermetic sandbox whose PATH has no `getent`, but Go's default
-# resolver shells out to it for DNS unless told to use its pure-Go resolver instead.
-extra_env_vars = ["GODEBUG=netdns=go"]
+# pants.backend.terraform.tool.setup_terraform_process only ever builds the sandboxed process's
+# PATH from a "PATH" entry in this list - with none listed, PATH was "", so the provider installer
+# failed every download with `exec: "getent": executable file not found in $PATH` (needed for DNS
+# resolution) before it ever reached the network. Pulling the host's PATH through fixes that.
+extra_env_vars = ["PATH"]

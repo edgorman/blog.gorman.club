@@ -91,6 +91,33 @@ jobs:
           secrets: ${{ steps.secrets.outputs.secrets }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+  # Runs alongside the infrastructure-{root,staging,prod} plan jobs below rather than replacing
+  # them - advisory only, nothing depends on it passing yet. See CLAUDE.md's "Building with Pants"
+  # note and #110. Unlike those jobs, `pants check` (`terraform validate`) needs no cloud auth: it
+  # doesn't touch state or a real backend, so it runs once for the whole infrastructure/ tree
+  # rather than once per environment.
+  infrastructure-pants:
+    needs: diff
+    if: |
+      needs.diff.outputs.infrastructure-root == 'true' ||
+      needs.diff.outputs.infrastructure-staging == 'true' ||
+      needs.diff.outputs.infrastructure-prod == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pantsbuild/actions/init-pants@0aaef864bd133c4055feb6adad0bfdce0de1c2e4 # v11
+        with:
+          gha-cache-key: v0-terraform
+          # The Terraform backend has no named caches to key on.
+          named-caches-hash: ''
+          cache-lmdb-store: 'true'
+      - name: Check
+        shell: bash
+        run: |
+          pants check infrastructure::
+
   # infrastructure/env/** is shared, so a change to it plans against both environments.
   infrastructure-staging:
     needs: diff

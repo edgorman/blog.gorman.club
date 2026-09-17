@@ -9,9 +9,24 @@ pants_version = "2.33.0"
 # a `go` subcommand that needs module discovery. Re-enable once that's fixed upstream.
 backend_packages = [
   "pants.backend.experimental.go",
+  "pants.backend.experimental.terraform",
 ]
 
 [source]
 root_patterns = [
   "/services/backend",
+]
+
+# Pinned to match the terraform_version the terraform-pull-request/terraform-push-commit actions
+# already install via hashicorp/setup-terraform, so `pants check` validates against the same CLI
+# version plan/apply run with - required_version in infrastructure/*/providers.tf is an exact pin,
+# so any other version fails `terraform validate` outright. Checksums are for the platforms CI
+# (linux_x86_64) and local development (macos) run on; add a platform's entry if that changes.
+[download-terraform]
+version = "1.15.8"
+known_versions.add = [
+  "1.15.8|linux_x86_64|d25ce7b6902013ad905db3d2eab0be4cd905887fe88b81a6171b8d5503c31f3d|35332471",
+  "1.15.8|linux_arm64|8891e9dcedc9e3b8950bc6af9d4d8af1f4cfade3062f53b9dc403a89f6ce8c9c|31597571",
+  "1.15.8|macos_x86_64|e2e812e783771159bf758fd4e55d6dc9bb08f63e2af2c63d212721807a02c5dc|36512579",
+  "1.15.8|macos_arm64|f210110c5698b94d803a7a63cdb0251b5455c150841478808e2bbb343f95ed68|32885003",
 ]

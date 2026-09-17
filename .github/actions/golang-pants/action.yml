@@ -22,7 +22,6 @@ runs:
         # The Go backend has no named caches to key on; see pantsbuild/example-golang.
         named-caches-hash: ''
         cache-lmdb-store: 'true'
-        experimental-remote-cache-via-gha: 'true'
 
     - name: Lint, Check, Test
       shell: bash

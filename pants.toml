@@ -10,12 +10,24 @@ pants_version = "2.33.0"
 backend_packages = [
   "pants.backend.experimental.go",
   "pants.backend.experimental.terraform",
+  # Unlike Go and Terraform above, the Docker backend has graduated out of `experimental` - it
+  # lives at `pants.backend.docker`, and `pants.backend.experimental.docker` doesn't exist.
+  "pants.backend.docker",
 ]
 
 [source]
 root_patterns = [
   "/services/backend",
 ]
+
+# Registered so a `docker_image` target can reference them by `@stag`/`@prod`, not because anything
+# publishes through them yet - both are `skip_push` and neither is `default`, so a stray `pants
+# publish` can't push to either before the deploy path is ever switched onto Pants-built images,
+# which #117 explicitly leaves for later. See the Artifact Stores section of CLAUDE.md for the real
+# (Makefile-driven) paths these mirror.
+[docker.registries]
+stag = {address = "europe-west1-docker.pkg.dev/blog-gorman-club-stag", default = false, skip_push = true}
+prod = {address = "europe-west1-docker.pkg.dev/blog-gorman-club-prod", default = false, skip_push = true}
 
 # The repo has no Python code of its own - this is required because the Terraform backend's
 # dependency inference parses .tf files with a Python-implemented HCL2 parser

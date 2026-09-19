@@ -63,6 +63,14 @@ jobs:
         with:
           go-mod-path: services/backend/go.mod
           pants-target: 'services/backend::'
+      # Proves the docker_image target (#117) produces an image, using the exact command its
+      # acceptance criteria names. Advisory only, same as the step above: nothing publishes the
+      # result and nothing depends on it - backend-deploy/action.yml remains the deploy path.
+      - name: Package Docker Image
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: pants package 'services/backend::'
 
   infrastructure-root:
     needs: diff

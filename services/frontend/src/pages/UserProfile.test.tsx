@@ -1,6 +1,5 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
 import type { Api, Blog, BlogPage, CurrentUser, ListBlogsParams, User } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { UserProfile } from './UserProfile'
@@ -41,7 +40,7 @@ function listBlogsByOwner(...pages: Blog[][]): Api['listBlogs'] {
     const ownerId = blogs[0]?.ownerId ?? ''
     byOwner.set(ownerId, [...(byOwner.get(ownerId) ?? []), blogs])
   }
-  return vi.fn((params: ListBlogsParams = {}): Promise<BlogPage> => {
+  return jest.fn((params: ListBlogsParams = {}): Promise<BlogPage> => {
     const remaining = byOwner.get(params.ownerId ?? '') ?? []
     const posts = remaining.shift() ?? []
     return Promise.resolve({ posts, hasMore: remaining.length > 0 })
@@ -51,14 +50,14 @@ function listBlogsByOwner(...pages: Blog[][]): Api['listBlogs'] {
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
     listBlogs: listBlogsByOwner([mine], [theirs]),
-    getBlog: vi.fn(),
-    createBlog: vi.fn(),
-    updateBlog: vi.fn(),
-    deleteBlog: vi.fn(),
-    getUser: vi.fn().mockResolvedValue(user),
-    getCurrentUser: vi.fn(),
-    putUser: vi.fn(),
-    deleteUser: vi.fn(),
+    getBlog: jest.fn(),
+    createBlog: jest.fn(),
+    updateBlog: jest.fn(),
+    deleteBlog: jest.fn(),
+    getUser: jest.fn().mockResolvedValue(user),
+    getCurrentUser: jest.fn(),
+    putUser: jest.fn(),
+    deleteUser: jest.fn(),
     ...overrides,
   } as unknown as Api
 }
@@ -96,7 +95,7 @@ describe('UserProfile', () => {
   // that misses means the name is genuinely unclaimed, not that the author is nameless.
   it('reports an unclaimed username as no such user', async () => {
     const listBlogs = listBlogsByOwner([mine])
-    const api = fakeApi({ getUser: vi.fn().mockRejectedValue(new Error('not found')), listBlogs })
+    const api = fakeApi({ getUser: jest.fn().mockRejectedValue(new Error('not found')), listBlogs })
     renderWithApp(<UserProfile />, {
       context: { api },
       route: '/user/nobody-here-at-all',

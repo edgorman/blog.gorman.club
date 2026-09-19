@@ -1,5 +1,4 @@
-import { screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
 import { ApiError, type Api, type Blog } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { Post } from './Post'
@@ -17,20 +16,20 @@ const blog: Blog = {
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
-    listBlogs: vi.fn(),
-    getBlog: vi.fn().mockResolvedValue(blog),
-    createBlog: vi.fn(),
-    updateBlog: vi.fn(),
-    deleteBlog: vi.fn(),
-    getUser: vi.fn(),
-    putUser: vi.fn(),
-    deleteUser: vi.fn(),
-    listComments: vi.fn().mockResolvedValue([]),
-    getReactions: vi.fn().mockResolvedValue({ post: [], comments: {} }),
-    addReaction: vi.fn(),
-    removeReaction: vi.fn(),
-    createComment: vi.fn(),
-    deleteComment: vi.fn(),
+    listBlogs: jest.fn(),
+    getBlog: jest.fn().mockResolvedValue(blog),
+    createBlog: jest.fn(),
+    updateBlog: jest.fn(),
+    deleteBlog: jest.fn(),
+    getUser: jest.fn(),
+    putUser: jest.fn(),
+    deleteUser: jest.fn(),
+    listComments: jest.fn().mockResolvedValue([]),
+    getReactions: jest.fn().mockResolvedValue({ post: [], comments: {} }),
+    addReaction: jest.fn(),
+    removeReaction: jest.fn(),
+    createComment: jest.fn(),
+    deleteComment: jest.fn(),
     ...overrides,
   } as unknown as Api
 }
@@ -47,7 +46,7 @@ describe('Post', () => {
   // A tag on the post page is the way into the rest of what an author wrote on that topic, so it
   // is a link to the filtered feed rather than a label.
   it('links each of the post\'s tags to the feed filtered by it', async () => {
-    const api = fakeApi({ getBlog: vi.fn().mockResolvedValue({ ...blog, tags: ['go', 'web-dev'] }) })
+    const api = fakeApi({ getBlog: jest.fn().mockResolvedValue({ ...blog, tags: ['go', 'web-dev'] }) })
     renderWithApp(<Post />, { context: { api }, route: '/post/hello-world', path: '/post/:slug' })
 
     expect(await screen.findByRole('link', { name: 'go' })).toHaveAttribute('href', '/?tag=go')
@@ -62,7 +61,7 @@ describe('Post', () => {
   })
 
   it('shows a not-found message for a missing post', async () => {
-    const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(404, 'not found')) })
+    const api = fakeApi({ getBlog: jest.fn().mockRejectedValue(new ApiError(404, 'not found')) })
     renderWithApp(<Post />, { context: { api }, route: '/post/missing', path: '/post/:slug' })
 
     expect(await screen.findByText('Post not found.')).toBeInTheDocument()
@@ -72,7 +71,7 @@ describe('Post', () => {
   // is nothing here to distinguish from an outright missing post - this locks that in rather than
   // reintroducing a "this post is private" state the API never triggers.
   it('treats a masked private post the same as a missing one', async () => {
-    const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(404, 'blog not found')) })
+    const api = fakeApi({ getBlog: jest.fn().mockRejectedValue(new ApiError(404, 'blog not found')) })
     renderWithApp(<Post />, { context: { api }, route: '/post/hello-world', path: '/post/:slug' })
 
     expect(await screen.findByText('Post not found.')).toBeInTheDocument()
@@ -83,18 +82,18 @@ describe('Post', () => {
       ...blog,
       content: '# Hi\n\n<a name="section"></a>\n\n## Section\n\nBody.',
     }
-    const scrollIntoView = vi.fn()
+    const scrollIntoView = jest.fn()
     Element.prototype.scrollIntoView = scrollIntoView
     window.location.hash = '#section'
 
     renderWithApp(<Post />, {
-      context: { api: fakeApi({ getBlog: vi.fn().mockResolvedValue(namedAnchorBlog) }) },
+      context: { api: fakeApi({ getBlog: jest.fn().mockResolvedValue(namedAnchorBlog) }) },
       route: '/post/hello-world#section',
       path: '/post/:slug',
     })
 
     await screen.findByText('Body.')
-    await vi.waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
     window.location.hash = ''
   })
 
@@ -123,7 +122,7 @@ describe('Post', () => {
   // The thread is the readers' half of the page, and hangs off the post that was just loaded - so
   // it is fetched by the same slug, for whoever could read the post at all.
   it('shows the comment thread beneath the post', async () => {
-    const listComments = vi.fn().mockResolvedValue([
+    const listComments = jest.fn().mockResolvedValue([
       {
         id: 'cmt1',
         blogSlug: 'hello-world',

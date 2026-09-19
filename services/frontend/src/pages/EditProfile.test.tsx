@@ -1,6 +1,5 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
 import { ApiError, type Api, type User } from '../lib/api'
 import type { AppContextValue } from '../context/AppContext'
 import { renderWithApp } from '../testUtils'
@@ -18,15 +17,15 @@ const profile: User = {
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
-    listBlogs: vi.fn(),
-    getBlog: vi.fn(),
-    createBlog: vi.fn(),
-    updateBlog: vi.fn(),
-    deleteBlog: vi.fn(),
-    getUser: vi.fn(),
-    getCurrentUser: vi.fn().mockResolvedValue(profile),
-    putUser: vi.fn().mockResolvedValue(profile),
-    deleteUser: vi.fn(),
+    listBlogs: jest.fn(),
+    getBlog: jest.fn(),
+    createBlog: jest.fn(),
+    updateBlog: jest.fn(),
+    deleteBlog: jest.fn(),
+    getUser: jest.fn(),
+    getCurrentUser: jest.fn().mockResolvedValue(profile),
+    putUser: jest.fn().mockResolvedValue(profile),
+    deleteUser: jest.fn(),
     ...overrides,
   } as unknown as Api
 }
@@ -54,7 +53,7 @@ describe('EditProfile', () => {
   // Nothing is prefilled before a profile exists: the username is assigned server-side on save.
   it('leaves the form empty when no profile exists yet', async () => {
     const api = fakeApi({
-      getCurrentUser: vi.fn().mockRejectedValue(new ApiError(404, 'user not found')),
+      getCurrentUser: jest.fn().mockRejectedValue(new ApiError(404, 'user not found')),
     })
     renderEditor({ api, user: me })
 
@@ -65,7 +64,7 @@ describe('EditProfile', () => {
   // blank one would overwrite a real bio with an empty string.
   it('withholds the form when the profile cannot be loaded', async () => {
     const api = fakeApi({
-      getCurrentUser: vi.fn().mockRejectedValue(new ApiError(500, 'internal error')),
+      getCurrentUser: jest.fn().mockRejectedValue(new ApiError(500, 'internal error')),
     })
     renderEditor({ api, user: me })
 
@@ -94,7 +93,7 @@ describe('EditProfile', () => {
   // sending "" would ask for an empty name, which is rejected, rather than for a generated one.
   it('asks for a generated username when creating a profile', async () => {
     const api = fakeApi({
-      getCurrentUser: vi.fn().mockRejectedValue(new ApiError(404, 'user not found')),
+      getCurrentUser: jest.fn().mockRejectedValue(new ApiError(404, 'user not found')),
     })
     renderEditor({ api, user: me })
 

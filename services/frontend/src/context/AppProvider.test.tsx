@@ -1,13 +1,14 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, type User } from '../lib/api'
 import { useApp } from './AppContext'
 import { AppProvider } from './AppProvider'
 
-const getCurrentUser = vi.fn()
-const putUser = vi.fn()
+// Prefixed with "mock" so babel-plugin-jest-hoist hoists these declarations above the jest.mock()
+// calls below along with the calls themselves - otherwise the factories would see them as TDZ.
+const mockGetCurrentUser = jest.fn()
+const mockPutUser = jest.fn()
 
-vi.mock('../hooks/useGoogleAuth', () => ({
+jest.mock('../hooks/useGoogleAuth', () => ({
   useGoogleAuth: () => ({
     user: { id: 'uid-1', email: 'a@b.com', name: 'Ada' },
     authHeaders: {},
@@ -18,9 +19,9 @@ vi.mock('../hooks/useGoogleAuth', () => ({
   }),
 }))
 
-vi.mock('../lib/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../lib/api')>()),
-  createApi: () => ({ getCurrentUser, putUser }),
+jest.mock('../lib/api', () => ({
+  ...jest.requireActual('../lib/api'),
+  createApi: () => ({ getCurrentUser: mockGetCurrentUser, putUser: mockPutUser }),
 }))
 
 const profile: User = {
@@ -46,41 +47,41 @@ function renderProvider() {
 
 describe('AppProvider', () => {
   beforeEach(() => {
-    getCurrentUser.mockReset()
-    putUser.mockReset()
+    mockGetCurrentUser.mockReset()
+    mockPutUser.mockReset()
   })
 
   it('uses the profile the caller already holds', async () => {
-    getCurrentUser.mockResolvedValue(profile)
+    mockGetCurrentUser.mockResolvedValue(profile)
     renderProvider()
 
     await waitFor(() =>
       expect(screen.getByTestId('username')).toHaveTextContent('calm-smiling-kestrel'),
     )
-    expect(putUser).not.toHaveBeenCalled()
+    expect(mockPutUser).not.toHaveBeenCalled()
   })
 
   // Signing in is the only "sign-up" the backend sees, so a caller with no profile gets one here
   // rather than having to visit the editor first - otherwise their posts have no author to show.
   it('creates a profile when the caller has none', async () => {
-    getCurrentUser.mockRejectedValue(new ApiError(404, 'user not found'))
-    putUser.mockResolvedValue(profile)
+    mockGetCurrentUser.mockRejectedValue(new ApiError(404, 'user not found'))
+    mockPutUser.mockResolvedValue(profile)
     renderProvider()
 
     await waitFor(() =>
       expect(screen.getByTestId('username')).toHaveTextContent('calm-smiling-kestrel'),
     )
     // An empty body: the username is the backend's to assign.
-    expect(putUser).toHaveBeenCalledWith({})
+    expect(mockPutUser).toHaveBeenCalledWith({})
   })
 
   // A failure that is not "no profile yet" must not be answered by creating one over the top of a
   // profile that may exist and simply could not be read.
   it('does not create a profile when the lookup fails for another reason', async () => {
-    getCurrentUser.mockRejectedValue(new ApiError(500, 'internal error'))
+    mockGetCurrentUser.mockRejectedValue(new ApiError(500, 'internal error'))
     renderProvider()
 
     await waitFor(() => expect(screen.getByTestId('username')).toHaveTextContent('none'))
-    expect(putUser).not.toHaveBeenCalled()
+    expect(mockPutUser).not.toHaveBeenCalled()
   })
 })

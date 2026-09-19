@@ -1,5 +1,4 @@
 import { act, renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decodeCredential, useGoogleAuth } from './useGoogleAuth'
 
 /** Builds a JWT-shaped string whose payload is base64url-encoded, as Google issues. */
@@ -60,10 +59,10 @@ function credentialExpiringIn(seconds: number): string {
 
 function stubGoogle() {
   const id = {
-    initialize: vi.fn(),
-    renderButton: vi.fn(),
-    prompt: vi.fn(),
-    disableAutoSelect: vi.fn(),
+    initialize: jest.fn(),
+    renderButton: jest.fn(),
+    prompt: jest.fn(),
+    disableAutoSelect: jest.fn(),
   }
   window.google = { accounts: { id } }
   return id
@@ -71,7 +70,7 @@ function stubGoogle() {
 
 describe('useGoogleAuth', () => {
   afterEach(() => {
-    vi.unstubAllEnvs()
+    delete process.env.VITE_GOOGLE_CLIENT_ID
     sessionStorage.clear()
     delete window.google
   })
@@ -79,7 +78,7 @@ describe('useGoogleAuth', () => {
   // auto_select only applies to the One Tap flow, so initialising with it but never calling
   // prompt() leaves it inert - which is exactly the bug that made a refresh sign the user out.
   it('initialises with auto_select and prompts when there is nothing to restore', () => {
-    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    process.env.VITE_GOOGLE_CLIENT_ID = 'test-client-id'
     const id = stubGoogle()
 
     renderHook(() => useGoogleAuth())
@@ -91,7 +90,7 @@ describe('useGoogleAuth', () => {
   // The deterministic half of staying signed in: the cached credential is what survives a reload,
   // rather than depending on Google choosing to reissue one.
   it('restores an unexpired cached credential on mount', () => {
-    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    process.env.VITE_GOOGLE_CLIENT_ID = 'test-client-id'
     sessionStorage.setItem(STORAGE_KEY, credentialExpiringIn(3600))
     const id = stubGoogle()
 
@@ -105,7 +104,7 @@ describe('useGoogleAuth', () => {
 
   // Restoring an expired credential would render a signed-in UI whose every request 401s.
   it('discards an expired cached credential and prompts instead', () => {
-    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    process.env.VITE_GOOGLE_CLIENT_ID = 'test-client-id'
     sessionStorage.setItem(STORAGE_KEY, credentialExpiringIn(-60))
     const id = stubGoogle()
 
@@ -118,7 +117,7 @@ describe('useGoogleAuth', () => {
 
   // A credential with no exp can't be reasoned about, so it is treated as unusable.
   it('discards a cached credential with no expiry', () => {
-    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    process.env.VITE_GOOGLE_CLIENT_ID = 'test-client-id'
     sessionStorage.setItem(STORAGE_KEY, credential({ sub: '1', email: 'ed@example.com' }))
     stubGoogle()
 
@@ -129,7 +128,7 @@ describe('useGoogleAuth', () => {
 
   // Garbage in storage must not take the whole app down on load.
   it('survives a corrupt cached credential', () => {
-    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    process.env.VITE_GOOGLE_CLIENT_ID = 'test-client-id'
     sessionStorage.setItem(STORAGE_KEY, 'not-a-jwt')
     stubGoogle()
 
@@ -140,7 +139,7 @@ describe('useGoogleAuth', () => {
   })
 
   it('caches the credential Google hands back so the next load can restore it', () => {
-    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    process.env.VITE_GOOGLE_CLIENT_ID = 'test-client-id'
     const id = stubGoogle()
     const issued = credentialExpiringIn(3600)
 
@@ -156,7 +155,7 @@ describe('useGoogleAuth', () => {
 
   // Sign-out has to clear both halves, or the next load would restore what was just signed out of.
   it('clears the cache and disables auto-select on sign out', () => {
-    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    process.env.VITE_GOOGLE_CLIENT_ID = 'test-client-id'
     sessionStorage.setItem(STORAGE_KEY, credentialExpiringIn(3600))
     const id = stubGoogle()
 

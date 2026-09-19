@@ -1,15 +1,18 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, createApi } from './api'
 
 const authHeaders = { Authorization: 'Bearer test-token', 'Authorization-Provider': 'google' }
 
 function mockFetch(response: Partial<Response>) {
-  const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, ...response })
-  vi.stubGlobal('fetch', fetchMock)
+  const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200, ...response })
+  globalThis.fetch = fetchMock as unknown as typeof fetch
   return fetchMock
 }
 
-afterEach(() => vi.unstubAllGlobals())
+const originalFetch = globalThis.fetch
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+})
 
 describe('createApi', () => {
   it('sends the auth headers and trims a trailing slash from the base URL', async () => {

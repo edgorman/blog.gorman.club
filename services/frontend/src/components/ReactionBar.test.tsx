@@ -1,12 +1,11 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
 import type { ReactionCount } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { ReactionBar } from './ReactionBar'
 
 function renderBar(counts: ReactionCount[], canReact = true) {
-  const onToggle = vi.fn()
+  const onToggle = jest.fn()
   renderWithApp(<ReactionBar counts={counts} onToggle={onToggle} canReact={canReact} label="post" />)
   return onToggle
 }
@@ -64,7 +63,7 @@ describe('ReactionBar', () => {
   // Nothing to show and nothing to click is no bar at all, rather than a row of empty furniture.
   it('renders nothing for a signed-out reader when there are no reactions', () => {
     const { container } = renderWithApp(
-      <ReactionBar counts={[]} onToggle={vi.fn()} canReact={false} label="post" />,
+      <ReactionBar counts={[]} onToggle={jest.fn()} canReact={false} label="post" />,
     )
 
     expect(container.querySelector('.reactions')).toBeNull()

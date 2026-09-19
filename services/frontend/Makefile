@@ -11,7 +11,7 @@ lint: ## Runs the linter
 	npm run lint
 
 test: ## Runs the test suite
-	npm run test -- --run
+	npm run test
 
 build: ## Builds the production bundle
 	npm run build

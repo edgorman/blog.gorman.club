@@ -29,6 +29,12 @@ files(
 docker_image(
     name="image",
     dependencies=[":src", "services/backend/cmd/backend"],
+    # Without this, Pants' default build context root is the repo root, so dependency-sourced
+    # files land at e.g. `services/backend/go.mod` instead of `go.mod` - the Dockerfile's COPY
+    # instructions (unchanged, still relative to services/backend/ as a standalone `docker build
+    # services/backend` expects) then find nothing. `./` makes the context root this BUILD file's
+    # own directory instead, matching that standalone build exactly.
+    context_root="./",
     # Mirrors the `--build-arg COMMIT_SHA=...` backend-deploy/action.yml already passes: CI sets
     # COMMIT_SHA before invoking `pants package`, and the Dockerfile's own `ARG COMMIT_SHA=unknown`
     # covers a local `pants package` run where it isn't set.

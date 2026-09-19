@@ -1,6 +1,5 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
 import type { Api, Blog, ChatReply } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { AssistantPanel } from './AssistantPanel'
@@ -18,9 +17,9 @@ const blog: Blog = {
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
-    getChat: vi.fn().mockResolvedValue({ messages: [] }),
-    sendChatMessage: vi.fn(),
-    clearChat: vi.fn().mockResolvedValue(undefined),
+    getChat: jest.fn().mockResolvedValue({ messages: [] }),
+    sendChatMessage: jest.fn(),
+    clearChat: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   } as unknown as Api
 }
@@ -42,7 +41,7 @@ function reply(overrides: Partial<ChatReply> = {}): ChatReply {
   }
 }
 
-function renderPanel(api: Api, onEdited = vi.fn()) {
+function renderPanel(api: Api, onEdited = jest.fn()) {
   renderWithApp(
     <AssistantPanel slug="hello-world" title="Hello world" content="the cat sat" onEdited={onEdited} />,
     { context: { api } },
@@ -53,7 +52,7 @@ function renderPanel(api: Api, onEdited = vi.fn()) {
 describe('AssistantPanel', () => {
   it('shows the stored conversation when it opens', async () => {
     const api = fakeApi({
-      getChat: vi.fn().mockResolvedValue({
+      getChat: jest.fn().mockResolvedValue({
         messages: [
           { role: 'user', content: 'add an intro', createdAt: '2026-08-01T00:00:01Z' },
           {
@@ -76,7 +75,7 @@ describe('AssistantPanel', () => {
   // The editor is a form with unsaved changes in it, so a request has to carry the draft on screen
   // rather than leaving the assistant to work from what was last saved.
   it('sends the draft on screen with the message', async () => {
-    const sendChatMessage = vi.fn().mockResolvedValue(reply())
+    const sendChatMessage = jest.fn().mockResolvedValue(reply())
     renderPanel(fakeApi({ sendChatMessage }))
 
     await userEvent.type(screen.getByLabelText('Message the assistant'), 'say dog instead')
@@ -94,7 +93,7 @@ describe('AssistantPanel', () => {
   // The assistant edits the post server-side, so the editor has to adopt what was stored - or the
   // next save would write the pre-assistant text back over it.
   it('hands the edited post back to the editor', async () => {
-    const onEdited = renderPanel(fakeApi({ sendChatMessage: vi.fn().mockResolvedValue(reply()) }))
+    const onEdited = renderPanel(fakeApi({ sendChatMessage: jest.fn().mockResolvedValue(reply()) }))
 
     await userEvent.type(screen.getByLabelText('Message the assistant'), 'say dog instead')
     await userEvent.click(screen.getByRole('button', { name: 'Send' }))
@@ -115,7 +114,7 @@ describe('AssistantPanel', () => {
       blog,
       updated: false,
     })
-    const onEdited = renderPanel(fakeApi({ sendChatMessage: vi.fn().mockResolvedValue(answer) }))
+    const onEdited = renderPanel(fakeApi({ sendChatMessage: jest.fn().mockResolvedValue(answer) }))
 
     await userEvent.type(screen.getByLabelText('Message the assistant'), 'is it ok?')
     await userEvent.click(screen.getByRole('button', { name: 'Send' }))
@@ -126,7 +125,7 @@ describe('AssistantPanel', () => {
 
   // Nothing was stored for a failed turn, so the message is still the author's to send again.
   it('reports a failure and keeps the message in the box', async () => {
-    const sendChatMessage = vi.fn().mockRejectedValue(new Error('the assistant could not be reached'))
+    const sendChatMessage = jest.fn().mockRejectedValue(new Error('the assistant could not be reached'))
     renderPanel(fakeApi({ sendChatMessage }))
 
     const box = screen.getByLabelText('Message the assistant')
@@ -138,7 +137,7 @@ describe('AssistantPanel', () => {
   })
 
   it('will not send an empty message', async () => {
-    const sendChatMessage = vi.fn()
+    const sendChatMessage = jest.fn()
     renderPanel(fakeApi({ sendChatMessage }))
 
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
@@ -151,15 +150,15 @@ describe('AssistantPanel', () => {
 
   // Starting the assistant over must not start the post over.
   it('clears the conversation without touching the post', async () => {
-    const clearChat = vi.fn().mockResolvedValue(undefined)
+    const clearChat = jest.fn().mockResolvedValue(undefined)
     const api = fakeApi({
-      getChat: vi
+      getChat: jest
         .fn()
         .mockResolvedValue({ messages: [{ role: 'user', content: 'add an intro', createdAt: '2026-08-01T00:00:01Z' }] }),
       clearChat,
     })
     const onEdited = renderPanel(api)
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    jest.spyOn(window, 'confirm').mockReturnValue(true)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Clear' }))
 

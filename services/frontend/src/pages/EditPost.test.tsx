@@ -1,6 +1,5 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
 import { ApiError, type Api, type Blog, type CurrentUser } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { EditPost } from './EditPost'
@@ -29,17 +28,17 @@ const profile: CurrentUser = {
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
-    listBlogs: vi.fn(),
-    getBlog: vi.fn().mockResolvedValue(blog),
-    createBlog: vi.fn(),
-    updateBlog: vi.fn().mockResolvedValue(blog),
-    deleteBlog: vi.fn().mockResolvedValue(undefined),
-    getUser: vi.fn(),
-    putUser: vi.fn(),
-    deleteUser: vi.fn(),
-    getChat: vi.fn().mockResolvedValue({ messages: [] }),
-    sendChatMessage: vi.fn(),
-    clearChat: vi.fn(),
+    listBlogs: jest.fn(),
+    getBlog: jest.fn().mockResolvedValue(blog),
+    createBlog: jest.fn(),
+    updateBlog: jest.fn().mockResolvedValue(blog),
+    deleteBlog: jest.fn().mockResolvedValue(undefined),
+    getUser: jest.fn(),
+    putUser: jest.fn(),
+    deleteUser: jest.fn(),
+    getChat: jest.fn().mockResolvedValue({ messages: [] }),
+    sendChatMessage: jest.fn(),
+    clearChat: jest.fn(),
     ...overrides,
   } as unknown as Api
 }
@@ -76,7 +75,7 @@ describe('EditPost', () => {
 
   it('carries the visibility and allowed-user whitelist through on save', async () => {
     const privateBlog: Blog = { ...blog, visibility: 'private', allowedUserIds: ['u2', 'u3'] }
-    const api = fakeApi({ getBlog: vi.fn().mockResolvedValue(privateBlog) })
+    const api = fakeApi({ getBlog: jest.fn().mockResolvedValue(privateBlog) })
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
       route: '/post/hello-world/edit',
@@ -96,7 +95,7 @@ describe('EditPost', () => {
   // retyping the list to keep it.
   it('pre-fills and saves the tags field', async () => {
     const tagged: Blog = { ...blog, tags: ['go', 'web-dev'] }
-    const api = fakeApi({ getBlog: vi.fn().mockResolvedValue(tagged) })
+    const api = fakeApi({ getBlog: jest.fn().mockResolvedValue(tagged) })
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
       route: '/post/hello-world/edit',
@@ -119,7 +118,7 @@ describe('EditPost', () => {
   // A blog request is a full replace, so emptying the field is how a post is untagged.
   it('clears a post\'s tags when the field is emptied', async () => {
     const tagged: Blog = { ...blog, tags: ['go'] }
-    const api = fakeApi({ getBlog: vi.fn().mockResolvedValue(tagged) })
+    const api = fakeApi({ getBlog: jest.fn().mockResolvedValue(tagged) })
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
       route: '/post/hello-world/edit',
@@ -164,7 +163,7 @@ describe('EditPost', () => {
   // is nothing here to distinguish from an outright missing post - this locks that in rather than
   // reintroducing a "this post is private" state the API never triggers.
   it('treats a masked private post the same as a missing one', async () => {
-    const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(404, 'blog not found')) })
+    const api = fakeApi({ getBlog: jest.fn().mockRejectedValue(new ApiError(404, 'blog not found')) })
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
       route: '/post/hello-world/edit',
@@ -176,7 +175,7 @@ describe('EditPost', () => {
 
   it('deletes the post via deleteBlog once the owner confirms', async () => {
     const api = fakeApi()
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    jest.spyOn(window, 'confirm').mockReturnValue(true)
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
       route: '/post/hello-world/edit',
@@ -191,7 +190,7 @@ describe('EditPost', () => {
 
   it('does not delete the post when the owner declines the confirmation', async () => {
     const api = fakeApi()
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    jest.spyOn(window, 'confirm').mockReturnValue(false)
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
       route: '/post/hello-world/edit',
@@ -205,8 +204,8 @@ describe('EditPost', () => {
   })
 
   it('shows an error and leaves the editor in place when the delete request fails', async () => {
-    const api = fakeApi({ deleteBlog: vi.fn().mockRejectedValue(new Error('nope')) })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const api = fakeApi({ deleteBlog: jest.fn().mockRejectedValue(new Error('nope')) })
+    jest.spyOn(window, 'confirm').mockReturnValue(true)
     renderWithApp(<EditPost />, {
       context: { api, user: owner },
       route: '/post/hello-world/edit',

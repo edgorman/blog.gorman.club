@@ -1,6 +1,5 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
 import type { Reactions } from '../hooks/useReactions'
 import { ApiError, type Api, type Comment } from '../lib/api'
 import { renderWithApp } from '../testUtils'
@@ -23,16 +22,16 @@ function comment(overrides: Partial<Comment> = {}): Comment {
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
-    listComments: vi.fn().mockResolvedValue([]),
-    createComment: vi.fn(),
-    deleteComment: vi.fn().mockResolvedValue(undefined),
+    listComments: jest.fn().mockResolvedValue([]),
+    createComment: jest.fn(),
+    deleteComment: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   } as unknown as Api
 }
 
 /** The page's reactions, which the post above normally owns; these tests are about the thread. */
 function noReactions(overrides: Partial<Reactions> = {}): Reactions {
-  return { countsFor: () => [], toggle: vi.fn(), error: null, ...overrides }
+  return { countsFor: () => [], toggle: jest.fn(), error: null, ...overrides }
 }
 
 /** Renders the thread as the given signed-in reader, or signed out when uid is omitted. */
@@ -44,7 +43,7 @@ function renderComments(api: Api, uid?: string, reactions: Reactions = noReactio
 
 describe('Comments', () => {
   it('shows the stored thread, attributed and linked to its authors', async () => {
-    const api = fakeApi({ listComments: vi.fn().mockResolvedValue([comment()]) })
+    const api = fakeApi({ listComments: jest.fn().mockResolvedValue([comment()]) })
     renderComments(api, READER)
 
     expect(await screen.findByText('Nicely put.')).toBeInTheDocument()
@@ -64,7 +63,7 @@ describe('Comments', () => {
   // A comment is signed by whoever left it, so there is nothing to send without a credential - the
   // thread itself stays readable.
   it('offers a signed-out reader no way to comment', async () => {
-    const api = fakeApi({ listComments: vi.fn().mockResolvedValue([comment()]) })
+    const api = fakeApi({ listComments: jest.fn().mockResolvedValue([comment()]) })
     renderComments(api)
 
     expect(await screen.findByText('Nicely put.')).toBeInTheDocument()
@@ -74,7 +73,7 @@ describe('Comments', () => {
 
   it('posts a comment and appends it to the thread', async () => {
     const created = comment({ id: 'cmt2', body: 'Well said.' })
-    const api = fakeApi({ createComment: vi.fn().mockResolvedValue(created) })
+    const api = fakeApi({ createComment: jest.fn().mockResolvedValue(created) })
     renderComments(api, READER)
 
     await userEvent.type(await screen.findByLabelText('Leave a comment'), 'Well said.')
@@ -98,7 +97,7 @@ describe('Comments', () => {
 
   it('keeps the comment in the box when posting fails', async () => {
     const api = fakeApi({
-      createComment: vi.fn().mockRejectedValue(new ApiError(500, 'internal error')),
+      createComment: jest.fn().mockRejectedValue(new ApiError(500, 'internal error')),
     })
     renderComments(api, READER)
 
@@ -111,7 +110,7 @@ describe('Comments', () => {
 
   // Who may delete is the backend's decision either way; this is about which button is offered.
   it('offers Delete to a comment’s author and to the post’s owner, and to nobody else', async () => {
-    const api = () => fakeApi({ listComments: vi.fn().mockResolvedValue([comment()]) })
+    const api = () => fakeApi({ listComments: jest.fn().mockResolvedValue([comment()]) })
 
     const asAuthor = renderComments(api(), READER)
     expect(await screen.findByRole('button', { name: 'Delete' })).toBeInTheDocument()
@@ -132,34 +131,34 @@ describe('Comments', () => {
   })
 
   it('deletes a comment once it is confirmed, and drops it from the thread', async () => {
-    const api = fakeApi({ listComments: vi.fn().mockResolvedValue([comment()]) })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const api = fakeApi({ listComments: jest.fn().mockResolvedValue([comment()]) })
+    jest.spyOn(window, 'confirm').mockReturnValue(true)
     renderComments(api, OWNER)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(api.deleteComment).toHaveBeenCalledWith('hello-world', 'cmt1'))
     await waitFor(() => expect(screen.queryByText('Nicely put.')).not.toBeInTheDocument())
-    vi.restoreAllMocks()
+    jest.restoreAllMocks()
   })
 
   it('leaves the comment alone when the confirmation is dismissed', async () => {
-    const api = fakeApi({ listComments: vi.fn().mockResolvedValue([comment()]) })
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const api = fakeApi({ listComments: jest.fn().mockResolvedValue([comment()]) })
+    jest.spyOn(window, 'confirm').mockReturnValue(false)
     renderComments(api, OWNER)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
 
     expect(api.deleteComment).not.toHaveBeenCalled()
     expect(screen.getByText('Nicely put.')).toBeInTheDocument()
-    vi.restoreAllMocks()
+    jest.restoreAllMocks()
   })
 
   // A comment is written by whoever happened to read the post, so its body is rendered as text: no
   // markdown, and nothing that could be mistaken for markup.
   it('renders a comment body as text rather than as markup', async () => {
     const api = fakeApi({
-      listComments: vi
+      listComments: jest
         .fn()
         .mockResolvedValue([comment({ body: '# not a heading <img src=x onerror=alert(1)>' })]),
     })
@@ -173,7 +172,7 @@ describe('Comments', () => {
   // A thread that could not be loaded leaves the post readable and the box usable.
   it('reports a thread it could not load without hiding the compose box', async () => {
     const api = fakeApi({
-      listComments: vi.fn().mockRejectedValue(new ApiError(500, 'internal error')),
+      listComments: jest.fn().mockRejectedValue(new ApiError(500, 'internal error')),
     })
     renderComments(api, READER)
 

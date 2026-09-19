@@ -1,6 +1,5 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
 import type { Api, Blog } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { NewPost } from './NewPost'
@@ -9,16 +8,16 @@ const author = { id: 'uid-1', email: 'a@b.com', name: 'Ada' }
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
-    listBlogs: vi.fn(),
-    getBlog: vi.fn(),
-    createBlog: vi
+    listBlogs: jest.fn(),
+    getBlog: jest.fn(),
+    createBlog: jest
       .fn()
       .mockResolvedValue({ slug: 'my-post', authorUsername: 'calm-smiling-kestrel', title: 'My post' } as Blog),
-    updateBlog: vi.fn(),
-    deleteBlog: vi.fn(),
-    getUser: vi.fn(),
-    putUser: vi.fn(),
-    deleteUser: vi.fn(),
+    updateBlog: jest.fn(),
+    deleteBlog: jest.fn(),
+    getUser: jest.fn(),
+    putUser: jest.fn(),
+    deleteUser: jest.fn(),
     ...overrides,
   } as unknown as Api
 }

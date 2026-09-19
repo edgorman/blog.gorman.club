@@ -1,13 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolveBackendUrl } from './config'
 
 function mockFetch(impl: () => Promise<Partial<Response>>) {
-  const fetchMock = vi.fn(impl)
-  vi.stubGlobal('fetch', fetchMock)
+  const fetchMock = jest.fn(impl)
+  globalThis.fetch = fetchMock as unknown as typeof fetch
   return fetchMock
 }
 
-afterEach(() => vi.unstubAllGlobals())
+const originalFetch = globalThis.fetch
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+})
 
 describe('resolveBackendUrl', () => {
   it('uses backendUrl from config.json when present', async () => {

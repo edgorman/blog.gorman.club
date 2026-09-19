@@ -1,6 +1,5 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
 import type { Api, Blog, BlogPage } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { Landing } from './Landing'
@@ -25,14 +24,14 @@ function page(posts: Blog[], hasMore = false): BlogPage {
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
-    listBlogs: vi.fn().mockResolvedValue(page([])),
-    getBlog: vi.fn(),
-    createBlog: vi.fn(),
-    updateBlog: vi.fn(),
-    deleteBlog: vi.fn(),
-    getUser: vi.fn(),
-    putUser: vi.fn(),
-    deleteUser: vi.fn(),
+    listBlogs: jest.fn().mockResolvedValue(page([])),
+    getBlog: jest.fn(),
+    createBlog: jest.fn(),
+    updateBlog: jest.fn(),
+    deleteBlog: jest.fn(),
+    getUser: jest.fn(),
+    putUser: jest.fn(),
+    deleteUser: jest.fn(),
     ...overrides,
   } as unknown as Api
 }
@@ -50,7 +49,7 @@ describe('Landing', () => {
       post({ slug: 'new-post', title: 'New post', createdAt: '2026-08-20T00:00:00Z' }),
       post({ slug: 'old-post', title: 'Old post', createdAt: '2026-01-01T00:00:00Z' }),
     ]
-    const api = fakeApi({ listBlogs: vi.fn().mockResolvedValue(page(posts)) })
+    const api = fakeApi({ listBlogs: jest.fn().mockResolvedValue(page(posts)) })
     renderWithApp(<Landing />, { context: { api } })
 
     const titles = await screen.findAllByRole('heading', { level: 2 })
@@ -60,7 +59,7 @@ describe('Landing', () => {
   // A slug names one post across every author, so a row links to the slug alone.
   it('links each row to its slug', async () => {
     const posts = [post({ slug: 'hello-world', title: 'Hello world' })]
-    const api = fakeApi({ listBlogs: vi.fn().mockResolvedValue(page(posts)) })
+    const api = fakeApi({ listBlogs: jest.fn().mockResolvedValue(page(posts)) })
     renderWithApp(<Landing />, { context: { api } })
 
     const row = await screen.findByRole('link', { name: /Hello world/ })
@@ -71,7 +70,7 @@ describe('Landing', () => {
   // still reachable - it is only shown without an author beside it.
   it('links a row whose author has no username', async () => {
     const posts = [post({ slug: 'orphaned', title: 'Orphaned', authorUsername: '' })]
-    const api = fakeApi({ listBlogs: vi.fn().mockResolvedValue(page(posts)) })
+    const api = fakeApi({ listBlogs: jest.fn().mockResolvedValue(page(posts)) })
     renderWithApp(<Landing />, { context: { api } })
 
     expect(await screen.findByRole('link', { name: /Orphaned/ })).toHaveAttribute(
@@ -86,14 +85,14 @@ describe('Landing', () => {
   })
 
   it('surfaces a load failure instead of an empty feed', async () => {
-    const api = fakeApi({ listBlogs: vi.fn().mockRejectedValue(new Error('boom')) })
+    const api = fakeApi({ listBlogs: jest.fn().mockRejectedValue(new Error('boom')) })
     renderWithApp(<Landing />, { context: { api } })
     expect(await screen.findByText('boom')).toBeInTheDocument()
   })
 
   // The very point of pagination: the first call asks for one page, not the whole collection.
   it('requests only the first page on load', async () => {
-    const listBlogs = vi.fn().mockResolvedValue(page([post({})]))
+    const listBlogs = jest.fn().mockResolvedValue(page([post({})]))
     renderWithApp(<Landing />, { context: { api: fakeApi({ listBlogs }) } })
 
     await screen.findAllByRole('link')
@@ -101,7 +100,7 @@ describe('Landing', () => {
   })
 
   it('offers no "Load more" once the backend reports no further page', async () => {
-    const api = fakeApi({ listBlogs: vi.fn().mockResolvedValue(page([post({})], false)) })
+    const api = fakeApi({ listBlogs: jest.fn().mockResolvedValue(page([post({})], false)) })
     renderWithApp(<Landing />, { context: { api } })
 
     await screen.findAllByRole('link')
@@ -111,7 +110,7 @@ describe('Landing', () => {
   // A tag in the URL is what the feed is narrowed by, so a shared or reloaded link lands on the
   // same filtered feed rather than on the whole one.
   it('filters by the tag in the query string', async () => {
-    const listBlogs = vi.fn().mockResolvedValue(page([post({ title: 'Tagged' })]))
+    const listBlogs = jest.fn().mockResolvedValue(page([post({ title: 'Tagged' })]))
     renderWithApp(<Landing />, { context: { api: fakeApi({ listBlogs }) }, route: '/?tag=web-dev', path: '/' })
 
     await screen.findByText('Tagged')
@@ -120,7 +119,7 @@ describe('Landing', () => {
   })
 
   it('filters by the search term in the query string', async () => {
-    const listBlogs = vi.fn().mockResolvedValue(page([post({ title: 'Found' })]))
+    const listBlogs = jest.fn().mockResolvedValue(page([post({ title: 'Found' })]))
     renderWithApp(<Landing />, { context: { api: fakeApi({ listBlogs }) }, route: '/?q=firestore', path: '/' })
 
     await screen.findByText('Found')
@@ -131,7 +130,7 @@ describe('Landing', () => {
 
   // Submitting the box refetches through the URL, which is what keeps the filtered feed linkable.
   it('searches on submit, keeping the tag it was already narrowed by', async () => {
-    const listBlogs = vi.fn().mockResolvedValue(page([post({})]))
+    const listBlogs = jest.fn().mockResolvedValue(page([post({})]))
     renderWithApp(<Landing />, { context: { api: fakeApi({ listBlogs }) }, route: '/?tag=go', path: '/' })
 
     await screen.findAllByRole('link')
@@ -144,7 +143,7 @@ describe('Landing', () => {
   })
 
   it('drops both filters on Clear', async () => {
-    const listBlogs = vi.fn().mockResolvedValue(page([post({})]))
+    const listBlogs = jest.fn().mockResolvedValue(page([post({})]))
     renderWithApp(<Landing />, { context: { api: fakeApi({ listBlogs }) }, route: '/?tag=go&q=generics', path: '/' })
 
     await screen.findAllByRole('link')
@@ -166,7 +165,7 @@ describe('Landing', () => {
   // where a tag can be followed.
   it('shows a post\'s tags in its row without nesting a link inside one', async () => {
     const posts = [post({ title: 'Tagged', tags: ['go', 'web-dev'] })]
-    renderWithApp(<Landing />, { context: { api: fakeApi({ listBlogs: vi.fn().mockResolvedValue(page(posts)) }) } })
+    renderWithApp(<Landing />, { context: { api: fakeApi({ listBlogs: jest.fn().mockResolvedValue(page(posts)) }) } })
 
     await screen.findByText('Tagged')
     expect(screen.getByText('go')).toBeInTheDocument()
@@ -178,7 +177,7 @@ describe('Landing', () => {
   it('loads and appends the next page on "Load more"', async () => {
     const firstPost = post({ slug: 'first', title: 'First', createdAt: '2026-08-20T00:00:00Z' })
     const secondPost = post({ slug: 'second', title: 'Second', createdAt: '2026-01-01T00:00:00Z' })
-    const listBlogs = vi
+    const listBlogs = jest
       .fn()
       .mockResolvedValueOnce(page([firstPost], true))
       .mockResolvedValueOnce(page([secondPost], false))

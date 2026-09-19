@@ -1,6 +1,5 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
 import type { CurrentUser } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { NavBar } from './NavBar'
@@ -23,7 +22,7 @@ describe('NavBar', () => {
   })
 
   it('toggles the theme when the icon button is clicked', async () => {
-    const toggleTheme = vi.fn()
+    const toggleTheme = jest.fn()
     renderWithApp(<NavBar />, { context: { toggleTheme } })
 
     await userEvent.click(screen.getByRole('button', { name: 'Toggle dark mode' }))
@@ -31,7 +30,7 @@ describe('NavBar', () => {
   })
 
   it('opens the account panel with New post, View profile, and Sign out when signed in', async () => {
-    const signOut = vi.fn()
+    const signOut = jest.fn()
     renderWithApp(<NavBar />, { context: { user: author, profile, signOut } })
 
     await userEvent.click(screen.getByRole('button', { name: 'Account' }))
@@ -75,7 +74,7 @@ describe('NavBar', () => {
   })
 
   it('offers the Google sign-in button in the panel when signed out', async () => {
-    const renderSignInButton = vi.fn()
+    const renderSignInButton = jest.fn()
     renderWithApp(<NavBar />, { context: { renderSignInButton } })
 
     await userEvent.click(screen.getByRole('button', { name: 'Account' }))

@@ -16,8 +16,11 @@ typescript_sources(
 # build` in a `node_build_script`" scope item. `pants package` produces the identical bytes
 # `frontend-build`/`frontend-publish` upload today; the publish path itself is untouched (#119 is
 # explicitly out of scope for switching it over).
+#
+# No `name=` here - unlike package_json/typescript_sources above, NodeBuildScript doesn't accept
+# one; its address is derived from `entry_point` instead (CI caught this: "NodeBuildScript.create()
+# got an unexpected keyword argument 'name'").
 node_build_script(
-    name="build",
     entry_point="build",
     output_directories=["dist"],
 )

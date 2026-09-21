@@ -8,10 +8,22 @@ inputs:
   pants-target:
     description: 'Pants target spec to check/test (e.g. services/frontend::)'
     required: true
+  go-mod-path:
+    description: >-
+      Path to the Go module's version file (e.g. services/backend/go.mod), used to pick the Go
+      toolchain. Required because Pants' `check` goal enumerates every target in the repo
+      (find_all_targets()) regardless of the target spec passed to it, so even a TypeScript-only
+      `pants check` triggers Go module dependency analysis - without this, it runs against
+      whatever Go happens to be preinstalled on the runner rather than what go.mod requires.
+    required: true
 
 runs:
   using: "composite"
   steps:
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      with:
+        go-version-file: ${{ inputs.go-mod-path }}
+
     - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: '22'

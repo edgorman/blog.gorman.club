@@ -53,6 +53,7 @@ jobs:
         with:
           package-lock-path: services/frontend/package-lock.json
           pants-target: 'services/frontend::'
+          go-mod-path: services/backend/go.mod
       # Proves the node_build_script target (#119) produces a bundle, using the exact command the
       # acceptance criteria names. Advisory only, same as the step above: nothing publishes the
       # result and nothing depends on it - frontend-build/action.yml remains the publish path.

@@ -2,8 +2,37 @@
 # section of CLAUDE.md for why committed rather than Pants-ephemeral. The plugin version is pinned
 # here to the exact version of google.golang.org/protobuf services/backend/go.mod requires, so
 # `buf generate` never drifts from what the module actually builds against.
+#
+# The second plugin generates committed TypeScript bindings into services/frontend/src/gen, next
+# to the service that compiles them - generated code follows its consumer rather than the contract
+# it came from (see "Contract Layer" and "Repository Structure" in CLAUDE.md), the same rule the Go
+# plugin above follows. ts-proto is a devDependency of services/frontend/package.json (the only npm
+# project in this repo) rather than of packages/protos, which has no package.json of its own; the
+# local plugin path reaches into services/frontend's own node_modules for that reason. `strategy:
+# all` is required by ts-proto under buf - it fails in confusing ways under buf's default
+# per-directory invocation.
 version: v2
 plugins:
   - local: ["go", "run", "google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12"]
     out: ../../services/backend/internal/gen
     opt: paths=source_relative
+  - local: ["../../services/frontend/node_modules/.bin/protoc-gen-ts_proto"]
+    out: ../../services/frontend/src/gen
+    strategy: all
+    opt:
+      # Required by services/frontend/tsconfig.app.json's `verbatimModuleSyntax` - without it,
+      # ts-proto's default `import * as` star-import style is a type error under that flag.
+      - esModuleInterop=true
+      # Every field on a generated message becomes optional (`field?: string`) rather than
+      # ts-proto's default of also nullable (`field?: string | null`) - proto3's own "unset reads
+      # as the zero value" already means every field is effectively optional, so the plain
+      # optional form is the one that matches how the wire format actually behaves.
+      - useOptionals=messages
+      # int64/uint64 fields decode to `string` rather than the default `Long` class, so the
+      # frontend never takes on the `long` npm package as a runtime dependency just to hold a
+      # field type it doesn't otherwise need.
+      - forceLong=string
+      # No gRPC client here - the backend is reached over plain REST (see services/frontend/src/lib/api.ts),
+      # so there is no service definition in this repo's protos for ts-proto to generate a client
+      # for; this only silences the option's own warning about the absence.
+      - outputServices=false

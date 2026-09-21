@@ -1,12 +1,18 @@
+import type { AllowedEmojis } from '../gen/blog/v1/emoji'
 import type { ReactionCount } from '../lib/api'
 
 /**
  * The five reactions a post or comment may carry - kept in the same order the backend does
  * (`entity.AllowedEmojis`), so a bar reads the same whichever ones have been picked yet. There is
- * no custom emoji and no picker: widening this set is a change to both arrays, deliberately kept
- * in step rather than read from the API, since it is fixed either way.
+ * no custom emoji and no picker: widening this set is a change to the proto and a regenerate,
+ * deliberately kept in step rather than read from the API, since it is fixed either way.
+ *
+ * Typed off the generated blog.v1.AllowedEmojis message (packages/protos/blog/v1/emoji.proto)
+ * rather than a bare string[], the same way entity.AllowedEmojis reads off it on the backend - see
+ * CLAUDE.md's "Contract Layer" section. Renaming the message's `emoji` field is a type error here,
+ * not a silent runtime mismatch.
  */
-const REACTIONS = ['👍', '👎', '❤️', '😄', '🎉']
+const REACTIONS: AllowedEmojis['emoji'] = ['👍', '👎', '❤️', '😄', '🎉']
 
 interface Props {
   /** The counts to draw. An emoji nobody has chosen yet is absent, not zero. */

@@ -26,6 +26,14 @@ backend_packages = [
 root_patterns = [
   "/services/backend",
   "/services/frontend",
+  # Pants' TypeScript `check` walks a target's ancestor directories looking for the owning
+  # package_json/tsconfig (source_root.py's upward walk from `services/frontend/src/...`), and
+  # that walk bottoms out one level too early without this: overriding root_patterns (rather than
+  # extending it, as this file already did before this backend was added) drops the "/" default
+  # that would otherwise make every ancestor resolvable. The more specific /services/backend and
+  # /services/frontend patterns above still win for anything nested under them, so this is a no-op
+  # for the Go/Terraform builds - it only fills the one gap CI hit: NoSourceRootError("services").
+  "/services",
 ]
 
 # Registered so a `docker_image` target can reference them by `@stag`/`@prod`, not because anything

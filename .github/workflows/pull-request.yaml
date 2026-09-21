@@ -85,6 +85,36 @@ jobs:
         shell: bash
         run: pants --changed-since=origin/main --changed-dependents=transitive test
 
+  # #121: `buf generate` is deterministic, so re-running it and diffing is how drift between
+  # packages/protos/*.proto and the committed Go bindings it owns
+  # (services/backend/internal/gen) gets caught - editing one without regenerating the other fails
+  # here instead of silently shipping a stale contract. Always runs, unconditionally - unlike
+  # lint-check/test above there is no Pants target graph to ask "did this PR touch protos", since
+  # Pants never generates this code (see pants.toml), and the check is cheap enough not to need one.
+  protos-drift:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: services/backend/go.mod
+      - uses: bufbuild/buf-setup-action@9672cee01808979ea1249f81d6d321217b9a10f6 # v1.47.2
+        with:
+          version: '1.47.2'
+      - name: Generate
+        working-directory: packages/protos
+        shell: bash
+        run: buf generate
+      - name: Check for drift
+        shell: bash
+        run: |
+          if ! git diff --exit-code -- packages/protos services/backend/internal/gen; then
+            echo "::error::packages/protos and services/backend/internal/gen have drifted - run 'buf generate' from packages/protos and commit the result."
+            exit 1
+          fi
+
   infrastructure-root:
     needs: changed
     if: needs.changed.outputs.infrastructure-root == 'true'

@@ -20,12 +20,25 @@ backend_packages = [
   # with Pants" note and #119.
   "pants.backend.experimental.javascript",
   "pants.backend.experimental.typescript",
+  # `protobuf_sources`/`protobuf_source` (packages/protos/BUILD) are registered by a codegen
+  # backend's own `target_types()`, and lint.buf's register.py provides none itself - Pants has no
+  # bare, language-agnostic "just the target types" backend for protobuf. The Python one is the
+  # only codegen backend enabled here for it: the Go equivalent
+  # (pants.backend.experimental.codegen.protobuf.go) is deliberately left out, since it is exactly
+  # the ephemeral-codegen backend #121 rules out - it would have Pants generate its own Go bindings
+  # into the sandbox, fighting the ones `buf generate` commits into
+  # services/backend/internal/gen. Nothing in this repo declares a `python_sources` target that
+  # depends on the generated Python, so this backend's own codegen is never triggered - it
+  # contributes the BUILD symbols and buf's target machinery, nothing else.
+  "pants.backend.codegen.protobuf.python",
+  "pants.backend.codegen.protobuf.lint.buf",
 ]
 
 [source]
 root_patterns = [
   "/services/backend",
   "/services/frontend",
+  "/packages/protos",
   # Pants' TypeScript `check` walks a target's ancestor directories looking for the owning
   # package_json/tsconfig (source_root.py's upward walk from `services/frontend/src/...`), and
   # that walk bottoms out one level too early without this: overriding root_patterns (rather than

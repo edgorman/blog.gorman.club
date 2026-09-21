@@ -4,3 +4,11 @@
 [GLOBAL]
 dynamic_ui = false
 colors = true
+# Read+write remote caching over the GitHub Actions cache, now that #120's --changed-since cutover
+# makes cache hits the difference between a job that does nothing and one that still pays to
+# resolve the full target graph. init-pants provisions the underlying GHA cache entries this talks
+# to; this is the flag that turns local-only caching into a cache every job (and every subsequent
+# run against an unchanged tree) can read from and write to.
+remote_cache_read = true
+remote_cache_write = true
+backend_packages.add = ["pants.backend.experimental.remote_cache_via_gha"]

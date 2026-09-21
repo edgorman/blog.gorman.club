@@ -4,7 +4,7 @@ go_mod(name="mod")
 # standalone via a bare `docker build services/backend` - the command backend-deploy/action.yml
 # runs today and #117 explicitly leaves alone. Reducing it to a runtime-only stage that COPYs in a
 # packaged `go_binary` (option (b)) would make that COPY source only exist inside a Pants-assembled
-# build context, breaking the Makefile-driven build this target runs alongside. See the PR
+# build context, breaking that plain `docker build` this target runs alongside. See the PR
 # description for the full writeup, including why the (b) ldflags concern the issue called out
 # turned out to be solvable (`extra_build_args` + a `go_binary`'s `linker_flags`) but didn't change
 # this conclusion.

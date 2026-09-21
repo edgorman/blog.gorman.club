@@ -19,7 +19,7 @@ runs:
     - name: Install Dependencies
       shell: bash
       working-directory: services/frontend
-      run: make install
+      run: npm ci
 
     # No backend URL baked in here - the bundle is environment-neutral (see the Configuration
     # section of services/frontend/README.md) so the same dist/ is published to every environment
@@ -29,4 +29,4 @@ runs:
       working-directory: services/frontend
       env:
         VITE_GOOGLE_CLIENT_ID: ${{ inputs.google_client_id }}
-      run: make build
+      run: npm run build

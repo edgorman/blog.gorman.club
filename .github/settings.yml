@@ -68,9 +68,9 @@ branches:
       required_status_checks:
         strict: true
         contexts:
-          - diff
-          - services-frontend
-          - services-backend
+          - changed
+          - lint-check
+          - test
           - infrastructure-root
           - infrastructure-staging
           - infrastructure-prod

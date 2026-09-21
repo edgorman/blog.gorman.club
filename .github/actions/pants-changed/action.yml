@@ -1,0 +1,50 @@
+name: 'Pants Changed'
+description: 'Lists which Terraform deployments (infrastructure/config/{root,staging,prod}) are affected by a diff, via the Pants dependency graph rather than a hand-maintained glob'
+
+inputs:
+  since:
+    description: 'Git ref/SHA to diff against (e.g. origin/main for a PR, or the pre-push SHA for a merge to main)'
+    required: true
+
+outputs:
+  infrastructure-root:
+    description: 'Whether infrastructure/config/root:deployment is affected'
+    value: ${{ steps.filter.outputs.infrastructure-root }}
+  infrastructure-staging:
+    description: 'Whether infrastructure/config/staging:deployment is affected'
+    value: ${{ steps.filter.outputs.infrastructure-staging }}
+  infrastructure-prod:
+    description: 'Whether infrastructure/config/prod:deployment is affected'
+    value: ${{ steps.filter.outputs.infrastructure-prod }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: pantsbuild/actions/init-pants@0aaef864bd133c4055feb6adad0bfdce0de1c2e4 # v11
+      with:
+        gha-cache-key: v0-list
+        # `list` walks the target graph rather than any language's own build/test tooling, so there
+        # are no named caches (npm store, Go build cache, ...) to key on here.
+        named-caches-hash: ''
+        cache-lmdb-store: 'true'
+
+    # infrastructure/env:mod is depended on by both infrastructure/config/staging:deployment and
+    # infrastructure/config/prod:deployment (see infrastructure/config/*/BUILD), so
+    # --changed-dependents=transitive is what makes a change to infrastructure/env/** resolve to
+    # both without either being named in a glob.
+    - id: list
+      shell: bash
+      run: |
+        pants list --changed-since="${{ inputs.since }}" --changed-dependents=transitive \
+          > /tmp/pants-changed-targets.txt
+        cat /tmp/pants-changed-targets.txt
+
+    - id: filter
+      shell: bash
+      run: |
+        affected() {
+          grep -qxF "$1" /tmp/pants-changed-targets.txt && echo true || echo false
+        }
+        echo "infrastructure-root=$(affected 'infrastructure/config/root:deployment')" >> "$GITHUB_OUTPUT"
+        echo "infrastructure-staging=$(affected 'infrastructure/config/staging:deployment')" >> "$GITHUB_OUTPUT"
+        echo "infrastructure-prod=$(affected 'infrastructure/config/prod:deployment')" >> "$GITHUB_OUTPUT"

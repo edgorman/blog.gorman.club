@@ -1,5 +1,5 @@
 name: 'GitHub File Diff'
-description: 'Determines which parts of the infrastructure and services have changed'
+description: 'Determines whether CI configuration itself changed'
 
 inputs:
   branch_ref:
@@ -7,60 +7,22 @@ inputs:
     required: true
 
 outputs:
-  infrastructure-root:
-    description: 'Whether infrastructure root files changed'
-    value: ${{ steps.filter.outputs.infrastructure-root }}
-  services-frontend:
-    description: 'Whether frontend service files changed'
-    value: ${{ steps.filter.outputs.services-frontend }}
-  services-backend:
-    description: 'Whether backend service files changed'
-    value: ${{ steps.filter.outputs.services-backend }}
-  infrastructure-staging:
-    description: 'Whether staging environment infrastructure files changed'
-    value: ${{ steps.filter.outputs.infrastructure-staging }}
-  infrastructure-prod:
-    description: 'Whether prod environment infrastructure files changed'
-    value: ${{ steps.filter.outputs.infrastructure-prod }}
+  github-actions:
+    description: 'Whether .github/** changed'
+    value: ${{ steps.filter.outputs.github-actions }}
 
 runs:
   using: "composite"
   steps:
+    # Pants has no target type for composite actions, so it can't tell whether a change to e.g.
+    # .github/actions/terraform-pull-request affects an environment's plan/apply the way it can
+    # trace a Terraform module through infrastructure/*/BUILD. This is the one glob left standing
+    # after #120 - deliberately repo-wide rather than per-action, since modelling each composite
+    # action's blast radius by hand is exactly the hand-maintained map this issue retires.
     - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
       id: filter
       with:
         base: ${{ inputs.branch_ref }}
         filters: |
-          infrastructure-root:
-            - 'infrastructure/config/root/**'
-            - 'infrastructure/root/**'
-            - '.github/actions/terraform-pull-request/**'
-            - '.github/actions/terraform-push-commit/**'
-            - '.github/actions/gcp-secret-manager/**'
-
-          services-frontend:
-            - 'services/frontend/**'
-            - '.github/actions/frontend-test/**'
-            - '.github/actions/frontend-deploy/**'
-            - '.github/actions/frontend-build/**'
-            - '.github/actions/frontend-publish/**'
-
-          services-backend:
-            - 'services/backend/**'
-            - '.github/actions/backend-test/**'
-            - '.github/actions/backend-deploy/**'
-
-          # infrastructure/env/** is shared, so it appears in both filters below.
-          infrastructure-staging:
-            - 'infrastructure/env/**'
-            - 'infrastructure/config/staging/**'
-            - '.github/actions/backend-deploy/**'
-            - '.github/actions/backend-cloudrun-deploy/**'
-
-          infrastructure-prod:
-            - 'infrastructure/env/**'
-            - 'infrastructure/config/prod/**'
-            - '.github/actions/backend-deploy/**'
-            - '.github/actions/backend-cloudrun-deploy/**'
-            - '.github/actions/frontend-fetch/**'
-            - '.github/actions/frontend-deploy/**'
+          github-actions:
+            - '.github/**'

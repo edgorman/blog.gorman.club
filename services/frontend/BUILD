@@ -1,8 +1,11 @@
 # The anchor target, same role go_mod(name="mod") plays for the backend: everything else in this
 # tree resolves against it (npm's lockfile, the node_modules install, the `test`/`build` scripts).
-package_json(
-    name="pkg",
-)
+#
+# No `name=` here, unlike go_mod(name="mod") - Pants' own internals (e.g. resolve_for_package)
+# address a project's package_json by Address(root_dir), which defaults the target name to the
+# directory's basename ("frontend"). Naming it "pkg" made that default address resolve to nothing
+# (CI caught this: "The address services/frontend:frontend ... does not exist").
+package_json()
 
 # vite.config.ts lives outside src/ (it configures the bundler itself, not the app), so it gets its
 # own source target here rather than being picked up by src/BUILD.

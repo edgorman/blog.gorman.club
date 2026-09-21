@@ -71,6 +71,7 @@ branches:
           - changed
           - lint-check
           - test
+          - protos-drift
           - infrastructure-root
           - infrastructure-staging
           - infrastructure-prod

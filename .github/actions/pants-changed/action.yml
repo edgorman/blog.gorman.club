@@ -20,17 +20,12 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - uses: pantsbuild/actions/init-pants@0aaef864bd133c4055feb6adad0bfdce0de1c2e4 # v11
-      with:
-        gha-cache-key: v0-list
-        # `list` walks the target graph rather than any language's own build/test tooling, so there
-        # are no named caches (npm store, Go build cache, ...) to key on here.
-        named-caches-hash: ''
-        cache-lmdb-store: 'true'
-        # pants.ci.toml turns on remote_cache_read/write repo-wide, which needs this on every
-        # init-pants call (not just pants-setup's) or Pants has no remote store address to talk to
-        # and refuses to bootstrap - see the comment on those options in pants.ci.toml.
-        experimental-remote-cache-via-gha: 'true'
+    # --changed-dependents=transitive forces Pants to resolve the whole target graph (`list`'s own
+    # "Find all targets in the project" step), not just the changed files' owning targets - which
+    # in this repo reaches Go module analysis even for an infrastructure-only diff. That needs the
+    # exact Go toolchain services/backend/go.mod pins (GOTOOLCHAIN=local doesn't auto-fetch it), so
+    # this reuses pants-setup rather than bootstrapping Pants on its own.
+    - uses: ./.github/actions/pants-setup
 
     # infrastructure/env:mod is depended on by both infrastructure/config/staging:deployment and
     # infrastructure/config/prod:deployment (see infrastructure/config/*/BUILD), so

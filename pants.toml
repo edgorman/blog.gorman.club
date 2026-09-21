@@ -13,11 +13,19 @@ backend_packages = [
   # Unlike Go and Terraform above, the Docker backend has graduated out of `experimental` - it
   # lives at `pants.backend.docker`, and `pants.backend.experimental.docker` doesn't exist.
   "pants.backend.docker",
+  # The TypeScript backend registers typescript_source(s)/tsx_source(s)/typescript_test/tsx_test
+  # target types and a `check` implementation (tsc); it's layered on top of the javascript backend
+  # (package_json, node_build_script, the Jest-based test runner), so both are enabled together.
+  # oxlint has no Pants integration and stays an npm script for now - see CLAUDE.md's "Building
+  # with Pants" note and #119.
+  "pants.backend.experimental.javascript",
+  "pants.backend.experimental.typescript",
 ]
 
 [source]
 root_patterns = [
   "/services/backend",
+  "/services/frontend",
 ]
 
 # Registered so a `docker_image` target can reference them by `@stag`/`@prod`, not because anything

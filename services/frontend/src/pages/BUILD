@@ -1,0 +1,22 @@
+tsx_sources(
+    sources=[
+        "EditPost.tsx",
+        "EditProfile.tsx",
+        "Landing.tsx",
+        "NewPost.tsx",
+        "Post.tsx",
+        "UserProfile.tsx",
+    ],
+)
+
+tsx_tests(
+    name="tests",
+    sources=[
+        "EditPost.test.tsx",
+        "EditProfile.test.tsx",
+        "Landing.test.tsx",
+        "NewPost.test.tsx",
+        "Post.test.tsx",
+        "UserProfile.test.tsx",
+    ],
+)

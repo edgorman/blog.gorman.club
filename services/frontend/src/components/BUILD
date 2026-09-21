@@ -1,0 +1,22 @@
+tsx_sources(
+    sources=[
+        "AccountPanel.tsx",
+        "AssistantPanel.tsx",
+        "Comments.tsx",
+        "FeedList.tsx",
+        "GoogleSignInButton.tsx",
+        "NavBar.tsx",
+        "ReactionBar.tsx",
+        "TagList.tsx",
+    ],
+)
+
+tsx_tests(
+    name="tests",
+    sources=[
+        "AssistantPanel.test.tsx",
+        "Comments.test.tsx",
+        "NavBar.test.tsx",
+        "ReactionBar.test.tsx",
+    ],
+)

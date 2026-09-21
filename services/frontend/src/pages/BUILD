@@ -9,6 +9,7 @@ tsx_sources(
     ],
 )
 
+# See src/components/BUILD - setupTests.ts needs an explicit dependency on every test target.
 tsx_tests(
     name="tests",
     sources=[
@@ -19,4 +20,5 @@ tsx_tests(
         "Post.test.tsx",
         "UserProfile.test.tsx",
     ],
+    dependencies=["//services/frontend/src:ts"],
 )

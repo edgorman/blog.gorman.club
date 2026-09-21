@@ -25,3 +25,6 @@ runs:
         gha-cache-key: v0-repo
         named-caches-hash: ${{ hashFiles('services/backend/go.sum', 'services/frontend/package-lock.json') }}
         cache-lmdb-store: 'true'
+        # Wires pants.ci.toml's remote_cache_read/write to the runner's own GHA cache credentials -
+        # see the comment on those options in pants.ci.toml.
+        experimental-remote-cache-via-gha: 'true'

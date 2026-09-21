@@ -27,6 +27,10 @@ runs:
         # are no named caches (npm store, Go build cache, ...) to key on here.
         named-caches-hash: ''
         cache-lmdb-store: 'true'
+        # pants.ci.toml turns on remote_cache_read/write repo-wide, which needs this on every
+        # init-pants call (not just pants-setup's) or Pants has no remote store address to talk to
+        # and refuses to bootstrap - see the comment on those options in pants.ci.toml.
+        experimental-remote-cache-via-gha: 'true'
 
     # infrastructure/env:mod is depended on by both infrastructure/config/staging:deployment and
     # infrastructure/config/prod:deployment (see infrastructure/config/*/BUILD), so

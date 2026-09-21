@@ -20,12 +20,43 @@ backend_packages = [
   # with Pants" note and #119.
   "pants.backend.experimental.javascript",
   "pants.backend.experimental.typescript",
+  # `protobuf_sources`/`protobuf_source` (packages/protos/BUILD) are registered by a codegen
+  # backend's own `target_types()`, and lint.buf's register.py provides none itself - Pants has no
+  # bare, language-agnostic "just the target types" backend for protobuf. The Python one is the
+  # only codegen backend enabled here for it: the Go equivalent
+  # (pants.backend.experimental.codegen.protobuf.go) is deliberately left out, since it is exactly
+  # the ephemeral-codegen backend #121 rules out - it would have Pants generate its own Go bindings
+  # into the sandbox, fighting the ones `buf generate` commits into
+  # services/backend/internal/gen. Nothing in this repo declares a `python_sources` target that
+  # depends on the generated Python, so this backend's own codegen is never triggered - it
+  # contributes the BUILD symbols and buf's target machinery, nothing else.
+  #
+  # pants.backend.python has to come with it, even though this repo has no Python code of its own
+  # (see Repository Structure in CLAUDE.md): protobuf.python's additional_fields.py plugs a
+  # `python_resolve` field onto protobuf_source/protobuf_sources, and resolving that field's value
+  # is a UnionRule only pants.backend.python itself provides. Without it enabled, `pants lint`
+  # fails rule-graph construction outright - "IntrinsicError: ... was not detected in your @rule
+  # body at rule compile time" - rather than merely leaving the field unused. With no python_sources
+  # target anywhere in the repo, this backend's own goals simply have nothing to act on.
+  "pants.backend.python",
+  "pants.backend.codegen.protobuf.python",
+  "pants.backend.codegen.protobuf.lint.buf",
 ]
+
+# protobuf.python defaults to requiring a `python_requirement` for the `protobuf` PyPI package
+# wherever a proto is used, on the assumption that whatever consumes its generated Python needs
+# that package at runtime - and checks for it at `lint` time, not just when codegen actually runs.
+# This repo never generates or consumes Python bindings from packages/protos (see CLAUDE.md's
+# "Contract Layer" section - the Python backend above is enabled only for the BUILD target types),
+# so there is no such requirement to add and none of the risk this check exists for.
+[python-protobuf]
+infer_runtime_dependency = false
 
 [source]
 root_patterns = [
   "/services/backend",
   "/services/frontend",
+  "/packages/protos",
   # Pants' TypeScript `check` walks a target's ancestor directories looking for the owning
   # package_json/tsconfig (source_root.py's upward walk from `services/frontend/src/...`), and
   # that walk bottoms out one level too early without this: overriding root_patterns (rather than

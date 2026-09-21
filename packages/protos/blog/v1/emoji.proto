@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package blog.v1;
+
+option go_package = "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1;blogv1";
+
+// AllowedEmojis is the whole set a reaction may be - the shared contract behind
+// entity.AllowedEmojis (services/backend/internal/entity/emoji.go). It is proto's first message in
+// this repository, kept deliberately small: proving the generate-and-verify pipeline end to end,
+// not migrating the entity model.
+message AllowedEmojis {
+  repeated string emoji = 1;
+}

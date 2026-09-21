@@ -14,89 +14,80 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  diff:
+  # Replaces the old dorny/paths-filter-only `diff` job. Terraform's own graph
+  # (infrastructure/*/BUILD, wired up in #143) now decides which environment(s) a change reaches -
+  # infrastructure/env:mod is depended on by both infrastructure/config/{staging,prod}:deployment,
+  # so a change to infrastructure/env/** affects both without either being named here. The one thing
+  # Pants can't see is a composite action (see github-file-diff), so that stays a small glob layered
+  # on top with OR.
+  changed:
     runs-on: ubuntu-latest
     outputs:
-      infrastructure-root: ${{ steps.diff.outputs.infrastructure-root }}
-      services-frontend: ${{ steps.diff.outputs.services-frontend }}
-      services-backend: ${{ steps.diff.outputs.services-backend }}
-      infrastructure-staging: ${{ steps.diff.outputs.infrastructure-staging }}
-      infrastructure-prod: ${{ steps.diff.outputs.infrastructure-prod }}
+      infrastructure-root: ${{ steps.combine.outputs.infrastructure-root }}
+      infrastructure-staging: ${{ steps.combine.outputs.infrastructure-staging }}
+      infrastructure-prod: ${{ steps.combine.outputs.infrastructure-prod }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - id: diff
+        with:
+          # --changed-since=origin/main needs origin/main to actually be present locally.
+          fetch-depth: 0
+      - id: github-diff
         uses: ./.github/actions/github-file-diff
         with:
           branch_ref: ${{ github.base_ref }}
-
-  services-frontend:
-    needs: diff
-    if: needs.diff.outputs.services-frontend == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/frontend-test
-
-  # Runs alongside services-frontend rather than replacing it - advisory only, nothing depends on
-  # it passing yet. See CLAUDE.md's "Building with Pants" note and #110.
-  services-frontend-pants:
-    needs: diff
-    if: needs.diff.outputs.services-frontend == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/typescript-pants
+      - id: pants
+        uses: ./.github/actions/pants-changed
         with:
-          package-lock-path: services/frontend/package-lock.json
-          pants-target: 'services/frontend::'
-          go-mod-path: services/backend/go.mod
-      # Proves the node_build_script target (#119) produces a bundle, using the exact command the
-      # acceptance criteria names. Advisory only, same as the step above: nothing publishes the
-      # result and nothing depends on it - frontend-build/action.yml remains the publish path.
-      - name: Package
+          since: origin/main
+      - id: combine
         shell: bash
-        run: pants package 'services/frontend::'
+        run: |
+          combine() {
+            if [ "$1" = 'true' ] || [ "${{ steps.github-diff.outputs.github-actions }}" = 'true' ]; then
+              echo true
+            else
+              echo false
+            fi
+          }
+          echo "infrastructure-root=$(combine '${{ steps.pants.outputs.infrastructure-root }}')" >> "$GITHUB_OUTPUT"
+          echo "infrastructure-staging=$(combine '${{ steps.pants.outputs.infrastructure-staging }}')" >> "$GITHUB_OUTPUT"
+          echo "infrastructure-prod=$(combine '${{ steps.pants.outputs.infrastructure-prod }}')" >> "$GITHUB_OUTPUT"
 
-  services-backend:
-    needs: diff
-    if: needs.diff.outputs.services-backend == 'true'
+  # Replaces services-frontend, services-frontend-pants, services-backend, services-backend-pants,
+  # and infrastructure-pants: one lint/check invocation over whatever the diff touches, rather than
+  # a job per service gated on a hand-maintained glob. Per Pants' CI guidance, linters don't care
+  # about dependents - a change to a leaf file doesn't need its callers re-linted.
+  lint-check:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/backend-test
-
-  # Runs alongside services-backend rather than replacing it - advisory only, nothing depends on
-  # it passing yet. See CLAUDE.md's "Building with Pants" note and #110.
-  services-backend-pants:
-    needs: diff
-    if: needs.diff.outputs.services-backend == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/golang-pants
         with:
-          go-mod-path: services/backend/go.mod
-          pants-target: 'services/backend::'
-      # Proves the docker_image target (#117) produces an image, using the exact command its
-      # acceptance criteria names. Advisory only, same as the step above: nothing publishes the
-      # result and nothing depends on it - backend-deploy/action.yml remains the deploy path.
-      - name: Package Docker Image
+          fetch-depth: 0
+      - uses: ./.github/actions/pants-setup
+      - name: Lint, Check
         shell: bash
-        env:
-          COMMIT_SHA: ${{ github.sha }}
-        run: pants package 'services/backend::'
+        run: pants --changed-since=origin/main lint check
+
+  # Unlike lint-check, tests need transitive dependents: a change to a shared package must re-run
+  # every test that exercises it, not just tests that touch the changed file directly.
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/pants-setup
+      - name: Test
+        shell: bash
+        run: pants --changed-since=origin/main --changed-dependents=transitive test
 
   infrastructure-root:
-    needs: diff
-    if: needs.diff.outputs.infrastructure-root == 'true'
+    needs: changed
+    if: needs.changed.outputs.infrastructure-root == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -121,37 +112,11 @@ jobs:
           secrets: ${{ steps.secrets.outputs.secrets }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-  # Runs alongside the infrastructure-{root,staging,prod} plan jobs below rather than replacing
-  # them - advisory only, nothing depends on it passing yet. See CLAUDE.md's "Building with Pants"
-  # note and #110. Unlike those jobs, `pants check` (`terraform validate`) needs no cloud auth: it
-  # doesn't touch state or a real backend, so it runs once for the whole infrastructure/ tree
-  # rather than once per environment.
-  infrastructure-pants:
-    needs: diff
-    if: |
-      needs.diff.outputs.infrastructure-root == 'true' ||
-      needs.diff.outputs.infrastructure-staging == 'true' ||
-      needs.diff.outputs.infrastructure-prod == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: pantsbuild/actions/init-pants@0aaef864bd133c4055feb6adad0bfdce0de1c2e4 # v11
-        with:
-          gha-cache-key: v0-terraform
-          # The Terraform backend has no named caches to key on.
-          named-caches-hash: ''
-          cache-lmdb-store: 'true'
-      - name: Check
-        shell: bash
-        run: |
-          pants check infrastructure::
-
-  # infrastructure/env/** is shared, so a change to it plans against both environments.
+  # infrastructure/env/** is shared, so a change to it plans against both environments - see the
+  # `changed` job above.
   infrastructure-staging:
-    needs: diff
-    if: needs.diff.outputs.infrastructure-staging == 'true'
+    needs: changed
+    if: needs.changed.outputs.infrastructure-staging == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -174,8 +139,8 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
   infrastructure-prod:
-    needs: diff
-    if: needs.diff.outputs.infrastructure-prod == 'true'
+    needs: changed
+    if: needs.changed.outputs.infrastructure-prod == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

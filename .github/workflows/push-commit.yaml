@@ -13,28 +13,52 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  diff:
+  # Decides which Terraform deployment(s) an apply reaches, the same way pull-request.yaml's
+  # `changed` job decides which to plan: Pants' own dependency graph
+  # (infrastructure/config/*/BUILD) rather than a hand-maintained glob, with a small `.github/**`
+  # filter layered on top for the one thing Pants can't see - a composite action. There is no
+  # services-frontend/services-backend output here: those jobs below publish artifacts on every
+  # merge unconditionally (see the comment on services-frontend), so nothing gates them.
+  changed:
     runs-on: ubuntu-latest
     outputs:
-      infrastructure-root: ${{ steps.diff.outputs.infrastructure-root }}
-      services-frontend: ${{ steps.diff.outputs.services-frontend }}
-      services-backend: ${{ steps.diff.outputs.services-backend }}
-      infrastructure-staging: ${{ steps.diff.outputs.infrastructure-staging }}
+      infrastructure-root: ${{ steps.combine.outputs.infrastructure-root }}
+      infrastructure-staging: ${{ steps.combine.outputs.infrastructure-staging }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - id: diff
+        with:
+          # --changed-since=${{ github.event.before }} needs that commit to actually be present
+          # locally.
+          fetch-depth: 0
+      - id: github-diff
         uses: ./.github/actions/github-file-diff
         with:
           branch_ref: ${{ github.ref_name }}
+      - id: pants
+        uses: ./.github/actions/pants-changed
+        with:
+          since: ${{ github.event.before }}
+      - id: combine
+        shell: bash
+        run: |
+          combine() {
+            if [ "$1" = 'true' ] || [ "${{ steps.github-diff.outputs.github-actions }}" = 'true' ]; then
+              echo true
+            else
+              echo false
+            fi
+          }
+          echo "infrastructure-root=$(combine '${{ steps.pants.outputs.infrastructure-root }}')" >> "$GITHUB_OUTPUT"
+          echo "infrastructure-staging=$(combine '${{ steps.pants.outputs.infrastructure-staging }}')" >> "$GITHUB_OUTPUT"
 
   # Runs on every merge - not gated on the services-frontend diff - so every commit on `main`, and
   # therefore every release tag, has a folder in both buckets. One build feeds both buckets and
   # Cloudflare Pages, so the live staging site is never rebuilt separately from what's stored.
   services-frontend:
-    needs: [diff, infrastructure-root, infrastructure-staging, services-backend]
+    needs: [changed, infrastructure-root, infrastructure-staging, services-backend]
     if: |
       always() &&
-      needs.diff.result == 'success' &&
+      needs.changed.result == 'success' &&
       (needs.infrastructure-root.result == 'success' || needs.infrastructure-root.result == 'skipped') &&
       (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped') &&
       (needs.services-backend.result == 'success' || needs.services-backend.result == 'skipped')
@@ -81,8 +105,8 @@ jobs:
           backend_url: ${{ steps.backend.outputs.backend_url }}
 
   infrastructure-root:
-    needs: diff
-    if: needs.diff.outputs.infrastructure-root == 'true'
+    needs: changed
+    if: needs.changed.outputs.infrastructure-root == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -107,11 +131,11 @@ jobs:
 
   # Waits on infrastructure-root so any IAM grants or API enablement it applies land first.
   infrastructure-staging:
-    needs: [diff, infrastructure-root]
+    needs: [changed, infrastructure-root]
     if: |
       always() &&
-      needs.diff.outputs.infrastructure-staging == 'true' &&
-      needs.diff.result == 'success' &&
+      needs.changed.outputs.infrastructure-staging == 'true' &&
+      needs.changed.result == 'success' &&
       (needs.infrastructure-root.result == 'success' || needs.infrastructure-root.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
@@ -136,10 +160,10 @@ jobs:
   # therefore every release tag, has a commit-SHA image in both registries. Must still follow
   # infrastructure-staging so the staging deploy target exists.
   services-backend:
-    needs: [diff, infrastructure-staging]
+    needs: [changed, infrastructure-staging]
     if: |
       always() &&
-      needs.diff.result == 'success' &&
+      needs.changed.result == 'success' &&
       (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:

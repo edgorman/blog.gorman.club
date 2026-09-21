@@ -138,15 +138,16 @@ instead of a button, and the backend answers any authenticated request with a
 ## Development
 
 ```sh
-make install   # npm ci
-make lint      # oxlint
-make test      # vitest --run
-make build     # tsc -b && vite build
+npm ci            # install
+npm run lint      # oxlint
+npm test          # jest
+npm run build     # tsc -b && vite build
 ```
 
-`npm run dev` starts the Vite dev server directly.
+`npm run dev` starts the Vite dev server directly. CI runs the same checks via Pants
+(`pants --changed-since=origin/main lint check test`, see CLAUDE.md's "Building with Pants").
 
-CI runs `make build` once on merge to `main` (`frontend-build`), then uploads the same `dist/` to
+CI runs `npm run build` once on merge to `main` (`frontend-build`), then uploads the same `dist/` to
 both environments' buckets under a commit-SHA folder (`frontend-publish`) - so what's live always
 matches a folder already sitting in the bucket, and a rollback can redeploy that folder's files
 without a rebuild. The bundle carries nothing environment-specific, so identical bytes serve every

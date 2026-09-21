@@ -563,13 +563,13 @@ said.
 ## Development
 
 ```sh
-make install   # go mod download
-make lint      # gofmt -l + go vet
-make test      # go test ./... -cover
-make build     # builds bin/backend
+go mod download                        # install
+gofmt -l . && go vet ./...             # lint
+go test ./... -cover                   # test
+go build -o bin/backend ./cmd/backend  # build
 ```
 
-`go run ./cmd/backend` starts the server directly on `:8080`.
+`go run ./cmd/backend` starts the server directly on `:8080`. CI runs the same checks via Pants (`pants --changed-since=origin/main lint check test`, see CLAUDE.md's "Building with Pants").
 
 ## Configuration
 

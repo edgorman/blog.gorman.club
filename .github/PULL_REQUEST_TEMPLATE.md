@@ -13,4 +13,4 @@
 
 ## Testing
 
-<!-- How was this verified? e.g. `terraform plan` output, `make test`, manual QA. -->
+<!-- How was this verified? e.g. `terraform plan` output, `pants test`, manual QA. -->

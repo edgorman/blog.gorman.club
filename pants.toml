@@ -43,6 +43,15 @@ backend_packages = [
   "pants.backend.codegen.protobuf.lint.buf",
 ]
 
+# protobuf.python defaults to requiring a `python_requirement` for the `protobuf` PyPI package
+# wherever a proto is used, on the assumption that whatever consumes its generated Python needs
+# that package at runtime - and checks for it at `lint` time, not just when codegen actually runs.
+# This repo never generates or consumes Python bindings from packages/protos (see CLAUDE.md's
+# "Contract Layer" section - the Python backend above is enabled only for the BUILD target types),
+# so there is no such requirement to add and none of the risk this check exists for.
+[python-protobuf]
+infer_runtime_dependency = false
+
 [source]
 root_patterns = [
   "/services/backend",

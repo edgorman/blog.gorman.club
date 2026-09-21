@@ -57,6 +57,11 @@ jobs:
   # and infrastructure-pants: one lint/check invocation over whatever the diff touches, rather than
   # a job per service gated on a hand-maintained glob. Per Pants' CI guidance, linters don't care
   # about dependents - a change to a leaf file doesn't need its callers re-linted.
+  #
+  # `go vet` and oxlint run here too, unconditionally rather than gated on --changed-since: neither
+  # has a Pants integration (go vet's is disabled for the upstream working-directory bug documented
+  # in pants.toml; oxlint has no Pants backend at all), so there is no Pants-derived affected-target
+  # set to scope them to, and both are cheap enough not to need one.
   lint-check:
     runs-on: ubuntu-latest
     permissions:
@@ -69,6 +74,24 @@ jobs:
       - name: Lint, Check
         shell: bash
         run: pants --changed-since=origin/main lint check
+      # go.mod deliberately doesn't sit at the Pants build root (#114), so `go vet` needs to run
+      # from services/backend itself to find it - same reason pants.backend.experimental.go.lint.vet
+      # stays disabled (see pants.toml).
+      - name: Vet backend
+        working-directory: services/backend
+        shell: bash
+        run: go vet ./...
+      # oxlint isn't a Pants-managed dependency, so the checkout's own node_modules has to exist
+      # before `npm run lint` can find it - same install protos-drift already does for the same
+      # reason.
+      - name: Install frontend dependencies
+        working-directory: services/frontend
+        shell: bash
+        run: npm ci
+      - name: Lint frontend
+        working-directory: services/frontend
+        shell: bash
+        run: npm run lint
 
   # Unlike lint-check, tests need transitive dependents: a change to a shared package must re-run
   # every test that exercises it, not just tests that touch the changed file directly.
@@ -123,7 +146,10 @@ jobs:
       - name: Check for drift
         shell: bash
         run: |
-          if ! git diff --exit-code -- packages/protos services/backend/internal/gen services/frontend/src/gen; then
+          # `git diff` alone ignores untracked files, so a new .proto whose generated output is
+          # never committed would pass silently - staging first makes a new file count as drift too.
+          git add -A -- packages/protos services/backend/internal/gen services/frontend/src/gen
+          if ! git diff --cached --exit-code -- packages/protos services/backend/internal/gen services/frontend/src/gen; then
             echo "::error::packages/protos and its generated bindings (services/backend/internal/gen, services/frontend/src/gen) have drifted - run 'buf generate' from packages/protos and commit the result."
             exit 1
           fi

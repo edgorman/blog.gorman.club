@@ -30,6 +30,15 @@ backend_packages = [
   # services/backend/internal/gen. Nothing in this repo declares a `python_sources` target that
   # depends on the generated Python, so this backend's own codegen is never triggered - it
   # contributes the BUILD symbols and buf's target machinery, nothing else.
+  #
+  # pants.backend.python has to come with it, even though this repo has no Python code of its own
+  # (see Repository Structure in CLAUDE.md): protobuf.python's additional_fields.py plugs a
+  # `python_resolve` field onto protobuf_source/protobuf_sources, and resolving that field's value
+  # is a UnionRule only pants.backend.python itself provides. Without it enabled, `pants lint`
+  # fails rule-graph construction outright - "IntrinsicError: ... was not detected in your @rule
+  # body at rule compile time" - rather than merely leaving the field unused. With no python_sources
+  # target anywhere in the repo, this backend's own goals simply have nothing to act on.
+  "pants.backend.python",
   "pants.backend.codegen.protobuf.python",
   "pants.backend.codegen.protobuf.lint.buf",
 ]

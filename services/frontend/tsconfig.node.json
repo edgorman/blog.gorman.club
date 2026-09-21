@@ -1,6 +1,11 @@
 {
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "composite": true,
+    "declaration": true,
+    // See tsconfig.app.json - required by Pants' TypeScript check, not by tsc -b; noEmit below
+    // still suppresses all emission.
+    "outDir": "./dist",
     "target": "es2023",
     "lib": ["ES2023"],
     "types": ["node"],

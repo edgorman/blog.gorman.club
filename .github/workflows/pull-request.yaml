@@ -39,6 +39,28 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/frontend-test
 
+  # Runs alongside services-frontend rather than replacing it - advisory only, nothing depends on
+  # it passing yet. See CLAUDE.md's "Building with Pants" note and #110.
+  services-frontend-pants:
+    needs: diff
+    if: needs.diff.outputs.services-frontend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/typescript-pants
+        with:
+          package-lock-path: services/frontend/package-lock.json
+          pants-target: 'services/frontend::'
+          go-mod-path: services/backend/go.mod
+      # Proves the node_build_script target (#119) produces a bundle, using the exact command the
+      # acceptance criteria names. Advisory only, same as the step above: nothing publishes the
+      # result and nothing depends on it - frontend-build/action.yml remains the publish path.
+      - name: Package
+        shell: bash
+        run: pants package 'services/frontend::'
+
   services-backend:
     needs: diff
     if: needs.diff.outputs.services-backend == 'true'

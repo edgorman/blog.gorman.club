@@ -1,5 +1,10 @@
 {
   "files": [],
+  // Pants' TypeScript check validates outDir on every tsconfig.json under the project, this
+  // solution file included, even though it compiles nothing itself (see tsconfig.app.json).
+  "compilerOptions": {
+    "outDir": "./dist"
+  },
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }

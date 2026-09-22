@@ -74,6 +74,12 @@ jobs:
       - name: Lint, Check
         shell: bash
         run: pants --changed-since=origin/main lint check
+      # Repo-wide rather than --changed-since: a target missing from a diff's own files isn't what
+      # this catches, a source file with no covering target *anywhere* is - and that can only be
+      # seen by looking at the whole tree, same as `pants tailor --check` always does (#155).
+      - name: Tailor Check
+        shell: bash
+        run: 'pants tailor --check ::'
       # go.mod deliberately doesn't sit at the Pants build root (#114), so `go vet` needs to run
       # from services/backend itself to find it - same reason pants.backend.experimental.go.lint.vet
       # stays disabled (see pants.toml).

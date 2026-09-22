@@ -1,54 +1,23 @@
 [GLOBAL]
 pants_version = "2.33.0"
-# pants.backend.experimental.go.lint.vet is left disabled: its `run_go_vet` rule invokes
-# `go vet ./<pkg-dir>` without ever setting the process's working directory, so `go` only finds
-# go.mod when it sits at the Pants build root - still true on pantsbuild/pants@main today, not
-# just 2.33.0. services/backend/go.mod deliberately doesn't (#114), so vet fails every package
-# with "go.mod file not found in current directory or any parent directory". `check` and `test`
-# aren't affected - they run pre-built binaries/the compiler directly rather than shelling out to
-# a `go` subcommand that needs module discovery. Re-enable once that's fixed upstream.
+# go vet needs go.mod at the Pants build root, which services/backend/go.mod deliberately isn't
+# (#114) - see CLAUDE.md's "Building with Pants" section. Re-enable once the upstream bug is fixed.
 backend_packages = [
   "pants.backend.experimental.go",
   "pants.backend.experimental.terraform",
-  # Unlike Go and Terraform above, the Docker backend has graduated out of `experimental` - it
-  # lives at `pants.backend.docker`, and `pants.backend.experimental.docker` doesn't exist.
   "pants.backend.docker",
-  # The TypeScript backend registers typescript_source(s)/tsx_source(s)/typescript_test/tsx_test
-  # target types and a `check` implementation (tsc); it's layered on top of the javascript backend
-  # (package_json, node_build_script, the Jest-based test runner), so both are enabled together.
-  # oxlint has no Pants integration and stays an npm script for now - see CLAUDE.md's "Building
-  # with Pants" note and #119.
   "pants.backend.experimental.javascript",
   "pants.backend.experimental.typescript",
-  # `protobuf_sources`/`protobuf_source` (packages/protos/BUILD) are registered by a codegen
-  # backend's own `target_types()`, and lint.buf's register.py provides none itself - Pants has no
-  # bare, language-agnostic "just the target types" backend for protobuf. The Python one is the
-  # only codegen backend enabled here for it: the Go equivalent
-  # (pants.backend.experimental.codegen.protobuf.go) is deliberately left out, since it is exactly
-  # the ephemeral-codegen backend #121 rules out - it would have Pants generate its own Go bindings
-  # into the sandbox, fighting the ones `buf generate` commits into
-  # services/backend/internal/gen. Nothing in this repo declares a `python_sources` target that
-  # depends on the generated Python, so this backend's own codegen is never triggered - it
-  # contributes the BUILD symbols and buf's target machinery, nothing else.
-  #
-  # pants.backend.python has to come with it, even though this repo has no Python code of its own
-  # (see Repository Structure in CLAUDE.md): protobuf.python's additional_fields.py plugs a
-  # `python_resolve` field onto protobuf_source/protobuf_sources, and resolving that field's value
-  # is a UnionRule only pants.backend.python itself provides. Without it enabled, `pants lint`
-  # fails rule-graph construction outright - "IntrinsicError: ... was not detected in your @rule
-  # body at rule compile time" - rather than merely leaving the field unused. With no python_sources
-  # target anywhere in the repo, this backend's own goals simply have nothing to act on.
+  # Enabled only for the protobuf_sources/protobuf_source BUILD target types and buf lint/format;
+  # pants.backend.python comes with it since protobuf.python's python_resolve field needs a rule
+  # only that backend provides. See CLAUDE.md's "Contract Layer" section for the rest.
   "pants.backend.python",
   "pants.backend.codegen.protobuf.python",
   "pants.backend.codegen.protobuf.lint.buf",
 ]
 
-# protobuf.python defaults to requiring a `python_requirement` for the `protobuf` PyPI package
-# wherever a proto is used, on the assumption that whatever consumes its generated Python needs
-# that package at runtime - and checks for it at `lint` time, not just when codegen actually runs.
-# This repo never generates or consumes Python bindings from packages/protos (see CLAUDE.md's
-# "Contract Layer" section - the Python backend above is enabled only for the BUILD target types),
-# so there is no such requirement to add and none of the risk this check exists for.
+# See CLAUDE.md's "Contract Layer" section: this repo never generates or consumes Python bindings,
+# so there's no `protobuf` runtime requirement to add.
 [python-protobuf]
 infer_runtime_dependency = false
 
@@ -57,40 +26,23 @@ root_patterns = [
   "/services/backend",
   "/services/frontend",
   "/packages/protos",
-  # Pants' TypeScript `check` walks a target's ancestor directories looking for the owning
-  # package_json/tsconfig (source_root.py's upward walk from `services/frontend/src/...`), and
-  # that walk bottoms out one level too early without this: overriding root_patterns (rather than
-  # extending it, as this file already did before this backend was added) drops the "/" default
-  # that would otherwise make every ancestor resolvable. The more specific /services/backend and
-  # /services/frontend patterns above still win for anything nested under them, so this is a no-op
-  # for the Go/Terraform builds - it only fills the one gap CI hit: NoSourceRootError("services").
+  # Restores the "/" root_patterns default this list's override otherwise drops - without it,
+  # TypeScript's `check` can't walk up from services/frontend/src to find package_json/tsconfig.
   "/services",
 ]
 
-# Registered so a `docker_image` target can reference them by `@stag`/`@prod`, not because anything
-# publishes through them yet - both are `skip_push` and neither is `default`, so a stray `pants
-# publish` can't push to either before the deploy path is ever switched onto Pants-built images,
-# which #117 explicitly leaves for later. See the Artifact Stores section of CLAUDE.md for the real
-# (Makefile-driven) paths these mirror.
+# Registered so `docker_image` can reference them by `@stag`/`@prod`; both stay `skip_push` and
+# neither `default`. See CLAUDE.md's "Artifact Stores" and "Building with Pants" sections.
 [docker.registries]
 stag = {address = "europe-west1-docker.pkg.dev/blog-gorman-club-stag", default = false, skip_push = true}
 prod = {address = "europe-west1-docker.pkg.dev/blog-gorman-club-prod", default = false, skip_push = true}
 
-# The repo has no Python code of its own - this is required because the Terraform backend's
-# dependency inference parses .tf files with a Python-implemented HCL2 parser
-# (pants.backend.terraform.hcl2_parser), which Pants runs as a PEX and therefore needs an
-# interpreter to build one for, regardless of what this repo's own code is written in. A range
-# rather than a single pinned minor version, since this only has to match whatever CPython
-# happens to already be on a given machine (e.g. 3.12 on GitHub's ubuntu-latest runners) rather
-# than a version this repo actually depends on.
+# No Python code lives here - required only because the Terraform backend's dependency inference
+# parses .tf files with a Python-implemented HCL2 parser that Pants runs as a PEX.
 [python]
 interpreter_constraints = [">=3.9,<3.13"]
 
-# Pinned to match the terraform_version the terraform-pull-request/terraform-push-commit actions
-# already install via hashicorp/setup-terraform, so `pants check` validates against the same CLI
-# version plan/apply run with - required_version in infrastructure/*/providers.tf is an exact pin,
-# so any other version fails `terraform validate` outright. Checksums are for the platforms CI
-# (linux_x86_64) and local development (macos) run on; add a platform's entry if that changes.
+# Matches infrastructure/*/providers.tf's exact required_version pin.
 [download-terraform]
 version = "1.15.8"
 known_versions.add = [
@@ -99,8 +51,6 @@ known_versions.add = [
   "1.15.8|macos_x86_64|e2e812e783771159bf758fd4e55d6dc9bb08f63e2af2c63d212721807a02c5dc|36512579",
   "1.15.8|macos_arm64|f210110c5698b94d803a7a63cdb0251b5455c150841478808e2bbb343f95ed68|32885003",
 ]
-# pants.backend.terraform.tool.setup_terraform_process only ever builds the sandboxed process's
-# PATH from a "PATH" entry in this list - with none listed, PATH was "", so the provider installer
-# failed every download with `exec: "getent": executable file not found in $PATH` (needed for DNS
-# resolution) before it ever reached the network. Pulling the host's PATH through fixes that.
+# See CLAUDE.md's "Building with Pants" section: an empty sandbox PATH makes `getent` unfindable,
+# which fails terraform's DNS resolution before it ever reaches the network.
 extra_env_vars = ["PATH"]

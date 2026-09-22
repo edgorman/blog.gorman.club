@@ -1,26 +1,12 @@
 go_mod(name="mod")
 
-# (a) from #117's two options, not (b): the Dockerfile's `COPY . .` is what lets it still build
-# standalone via a bare `docker build services/backend` - the command backend-deploy/action.yml
-# runs today and #117 explicitly leaves alone. Reducing it to a runtime-only stage that COPYs in a
-# packaged `go_binary` (option (b)) would make that COPY source only exist inside a Pants-assembled
-# build context, breaking that plain `docker build` this target runs alongside. See the PR
-# description for the full writeup, including why the (b) ldflags concern the issue called out
-# turned out to be solvable (`extra_build_args` + a `go_binary`'s `linker_flags`) but didn't change
-# this conclusion.
-#
-# `COPY . .` also means Pants can't infer this target's dependencies from the Dockerfile itself
-# (dependency inference only resolves literal COPY sources, not "."). Two separate things need to
-# come from that by hand:
-#
-# - The actual file bytes the build context needs (go.mod, go.sum, every .go file): a go_package's
-#   `sources` aren't picked up transitively by the Docker build-context assembler the way a plain
-#   `files` target's are (confirmed by CI - depending on cmd/backend's go_package alone left the
-#   context without even go.mod/go.sum), so `:src` below globs them directly.
-# - The graph edge `pants dependents` needs to reach this target from any internal/ package: `:src`
-#   doesn't provide that (a `files` target has no import-graph relationship to `internal/`), so
-#   cmd/backend's go_package - which already depends, through ordinary Go import inference, on
-#   every internal/ package it transitively imports - is depended on separately for it.
+# The Dockerfile's `COPY . .` is unchanged so a standalone `docker build services/backend` (what
+# backend-deploy/action.yml still runs) keeps working - see CLAUDE.md's "Building with Pants"
+# section. That also means Pants can't infer this target's dependencies from the Dockerfile, so
+# they're declared by hand: `:src` supplies the file bytes the build context needs (a go_package's
+# sources aren't picked up transitively by the Docker context assembler), and cmd/backend below
+# supplies the import-graph edge `:src` alone can't - the one `pants dependents` needs to reach this
+# target from an internal/ change.
 files(
     name="src",
     sources=["**/*.go", "go.mod", "go.sum"],
@@ -29,14 +15,9 @@ files(
 docker_image(
     name="image",
     dependencies=[":src", "services/backend/cmd/backend"],
-    # Without this, Pants' default build context root is the repo root, so dependency-sourced
-    # files land at e.g. `services/backend/go.mod` instead of `go.mod` - the Dockerfile's COPY
-    # instructions (unchanged, still relative to services/backend/ as a standalone `docker build
-    # services/backend` expects) then find nothing. `./` makes the context root this BUILD file's
-    # own directory instead, matching that standalone build exactly.
+    # Matches the Dockerfile's COPY paths, which stay relative to services/backend/ for that
+    # standalone `docker build` to keep working.
     context_root="./",
-    # Mirrors the `--build-arg COMMIT_SHA=...` backend-deploy/action.yml already passes: CI sets
-    # COMMIT_SHA before invoking `pants package`, and the Dockerfile's own `ARG COMMIT_SHA=unknown`
-    # covers a local `pants package` run where it isn't set.
+    # Mirrors the --build-arg COMMIT_SHA backend-deploy/action.yml already passes.
     extra_build_args=["COMMIT_SHA"],
 )

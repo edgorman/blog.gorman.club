@@ -1,21 +1,12 @@
-# CI-only settings, layered on top of pants.toml via PANTS_CONFIG_FILES
-# (set by the pantsbuild/actions/init-pants composite action).
+# CI-only settings, layered on top of pants.toml via PANTS_CONFIG_FILES (set by the
+# pantsbuild/actions/init-pants composite action). See CLAUDE.md's "Building with Pants" section
+# for how init-pants wires remote_cache_* below to the GitHub Actions cache - every composite
+# action that runs `pants` under this config must pass its `experimental-remote-cache-via-gha`
+# input, or these options have nowhere to point and Pants refuses to bootstrap.
 
 [GLOBAL]
 dynamic_ui = false
 colors = true
-# Read+write remote caching over the GitHub Actions cache, now that #120's --changed-since cutover
-# makes cache hits the difference between a job that does nothing and one that still pays to
-# resolve the full target graph. These are real Pants options, not a backend - what actually wires
-# them to the GHA cache is every init-pants call passing `experimental-remote-cache-via-gha: 'true'`,
-# which sets PANTS_REMOTE_STORE_ADDRESS/PANTS_REMOTE_OAUTH_BEARER_TOKEN from the runner's own GHA
-# cache credentials (see pants-setup and pants-changed). Without that input on every call, these
-# options have an address to talk to from nowhere and Pants refuses to bootstrap at all - so every
-# composite action that runs `pants` under this config must pass it, not just the ones this issue
-# is actually trying to speed up. `remote_provider` must also change from the default `reapi`
-# (speaks gRPC to a remote-execution service) to `experimental-github-actions-cache`, since the
-# store address init-pants exports is a plain https:// URL to GitHub's cache service, a scheme
-# `reapi` rejects outright.
 remote_cache_read = true
 remote_cache_write = true
 remote_provider = "experimental-github-actions-cache"

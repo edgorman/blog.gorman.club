@@ -11,7 +11,12 @@ interface ProfileInfo {
   /** Taken from the fetched profile rather than the URL, so it carries the casing as stored. */
   username: string
   bio: string
-  memberSince: string
+  /**
+   * Optional because the wire says so: `createdAt` is a `google.protobuf.Timestamp`, and protojson
+   * may leave a message field out of the body, so the generated `User` types it as possibly
+   * absent. The render below already guards on it.
+   */
+  memberSince?: string
 }
 
 type PostsState =
@@ -45,7 +50,7 @@ export function UserProfile() {
     // them - a lookup that misses means the name really is unclaimed.
     api.getUser(username).then(
       (u) => {
-        if (!cancelled) setProfile({ id: u.id, username: u.username, bio: u.bio ?? '', memberSince: u.createdAt })
+        if (!cancelled) setProfile({ id: u.id, username: u.username, bio: u.bio, memberSince: u.createdAt })
       },
       () => {
         if (!cancelled) setMissing(true)

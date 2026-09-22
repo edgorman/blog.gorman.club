@@ -23,15 +23,21 @@ plugins:
       # Required by services/frontend/tsconfig.app.json's `verbatimModuleSyntax` - without it,
       # ts-proto's default `import * as` star-import style is a type error under that flag.
       - esModuleInterop=true
-      # Every field on a generated message becomes optional (`field?: string`) rather than
-      # ts-proto's default of also nullable (`field?: string | null`) - proto3's own "unset reads
-      # as the zero value" already means every field is effectively optional, so the plain
-      # optional form is the one that matches how the wire format actually behaves.
+      # Only message-typed fields become optional (`field?: Submessage`); scalars and repeated
+      # fields stay required (`emoji: string[]`, `id: string`), which is what proto3 semantics and
+      # protojson's EmitDefaultValues together actually guarantee - a scalar is always present on
+      # the wire, a message may be absent. `all` would make every field optional and force the
+      # frontend to optional-chain fields that cannot be missing.
       - useOptionals=messages
       # int64/uint64 fields decode to `string` rather than the default `Long` class, so the
       # frontend never takes on the `long` npm package as a runtime dependency just to hold a
       # field type it doesn't otherwise need.
       - forceLong=string
+      # Timestamps decode to RFC3339 strings rather than ts-proto's default Date objects, so the
+      # generated type matches what protojson actually puts on the wire and what the frontend
+      # already handled - no conversion at the fetch boundary, and no Date in a type that is a
+      # string in the response body.
+      - useDate=string
       # No gRPC client here - the backend is reached over plain REST (see services/frontend/src/lib/api.ts),
       # so there is no service definition in this repo's protos for ts-proto to generate a client
       # for; this only silences the option's own warning about the absence.

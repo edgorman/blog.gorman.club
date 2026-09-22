@@ -8,6 +8,7 @@ const author = { id: 'uid-1', email: 'a@b.com', name: 'Ada Lovelace' }
 const profile: CurrentUser = {
   id: 'uid-1',
   username: 'calm-smiling-kestrel',
+  bio: '',
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   assistantEnabled: false,

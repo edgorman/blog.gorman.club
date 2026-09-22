@@ -2,13 +2,14 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
@@ -17,27 +18,18 @@ import (
 // all of them is not something a real sign-up will reach.
 const usernameAttempts = 5
 
-// userRequest is the client-settable half of a profile; the id comes from the path and the
-// timestamps from the server.
-type userRequest struct {
-	// A pointer so an omitted username is distinguishable from one explicitly set to "": the first
-	// keeps the name the profile holds, the second is a name SetUsername rejects. A plain string
-	// would conflate them and answer a cleared field with a silent success.
-	Username *string `json:"username"`
-	Bio      string  `json:"bio"`
-}
-
-// applyTo validates every field through the entity's setters before touching user. An omitted
-// username leaves whatever the profile already holds in place, so a client editing only its bio
-// keeps the name it was given at sign-up without having to echo it back.
-func (u userRequest) applyTo(user *entity.User) error {
+// applyUpdate validates every field of an update through the entity's setters before touching
+// user. An omitted username leaves whatever the profile already holds in place, so a client
+// editing only its bio keeps the name it was given at sign-up without having to echo it back -
+// which is what the request message's `optional username` buys and a bare string could not.
+func applyUpdate(req *blogv1.UpdateCurrentUserRequest, user *entity.User) error {
 	candidate := *user
-	if u.Username != nil {
-		if err := candidate.SetUsername(*u.Username); err != nil {
+	if req.Username != nil {
+		if err := candidate.SetUsername(req.GetUsername()); err != nil {
 			return err
 		}
 	}
-	if err := candidate.SetBio(u.Bio); err != nil {
+	if err := candidate.SetBio(req.GetBio()); err != nil {
 		return err
 	}
 
@@ -45,34 +37,43 @@ func (u userRequest) applyTo(user *entity.User) error {
 	return nil
 }
 
-// currentUserResponse is the caller's own profile, plus what this deployment lets that account do.
-//
-// The capability rides on /users/me rather than on a route of its own because it is a property of
-// the caller a client has just identified, and because it belongs nowhere else: a public profile
-// must not disclose who has the assistant, so it cannot go on entity.User itself. A client uses it
-// to decide whether to offer the assistant at all - the routes enforce it either way, this only
-// keeps a button off the screen for somebody who would be told no.
-//
-// SubscribedUntil is here for the same reason and travels the same way: an account may see when
-// its own paid access runs out, and nobody else's lookup ever carries it (entity.User keeps no
-// json tag for it at all). It is null for an account that has never subscribed - which is every
-// account until a checkout writes one.
-type currentUserResponse struct {
-	entity.User
-	AssistantEnabled bool       `json:"assistantEnabled"`
-	SubscribedUntil  *time.Time `json:"subscribedUntil,omitempty"`
+// userMessage is the public profile as anybody may read it. SubscribedUntil is absent from
+// blogv1.User entirely rather than skipped here, so a lookup cannot disclose it by oversight.
+func userMessage(user entity.User) *blogv1.User {
+	return &blogv1.User{
+		Id:        user.ID,
+		Username:  user.Username,
+		Bio:       user.Bio,
+		CreatedAt: timestamppb.New(user.CreatedAt),
+		UpdatedAt: timestamppb.New(user.UpdatedAt),
+	}
 }
 
 // currentUser pairs a profile with what the account behind it may do. The capability is asked of
 // the entitlement rather than computed here, so a client is told exactly what the chat routes
 // would enforce (see entity.AssistantEntitlement). It needs nothing but the profile: the
 // subscription is on it, and the account it belongs to is its own id.
-func (s *Service) currentUser(user entity.User) currentUserResponse {
-	return currentUserResponse{
-		User:             user,
+//
+// The capability rides on /users/me rather than on a route of its own because it is a property of
+// the caller a client has just identified, and because it belongs nowhere else: a public profile
+// must not disclose who has the assistant. SubscribedUntil travels the same way - an account may
+// see when its own paid access runs out, and nobody else's lookup ever carries it.
+func (s *Service) currentUser(user entity.User) *blogv1.CurrentUser {
+	message := &blogv1.CurrentUser{
+		Id:               user.ID,
+		Username:         user.Username,
+		Bio:              user.Bio,
+		CreatedAt:        timestamppb.New(user.CreatedAt),
+		UpdatedAt:        timestamppb.New(user.UpdatedAt),
 		AssistantEnabled: s.cfg.AssistantEntitlement.Permission(entity.ActionUpdate, user).Allows(user.ID),
-		SubscribedUntil:  user.SubscribedUntil,
 	}
+	// Left nil for an account that has never subscribed, so the field stays absent from the body
+	// rather than arriving as null - which is what it does today and what EmitDefaultValues
+	// preserves (see writeProto).
+	if user.SubscribedUntil != nil {
+		message.SubscribedUntil = timestamppb.New(*user.SubscribedUntil)
+	}
+	return message
 }
 
 // GetCurrentUser returns the caller's own profile. It exists because a client holds a credential,
@@ -89,7 +90,7 @@ func (s *Service) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, s.currentUser(user))
+	writeProto(w, http.StatusOK, s.currentUser(user))
 }
 
 // GetUser returns the profile holding a username. Any caller, signed in or not, may read any
@@ -117,7 +118,7 @@ func (s *Service) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, user)
+	writeProto(w, http.StatusOK, userMessage(user))
 }
 
 // saveUser writes the profile, naming it first when it has none - which is every profile at
@@ -151,8 +152,8 @@ func (s *Service) saveUser(ctx context.Context, user entity.User) (entity.User, 
 func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 	id := uidFromContext(r.Context())
 
-	var body userRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	var body blogv1.UpdateCurrentUserRequest
+	if err := readProto(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -165,7 +166,7 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 	}
 	user.ID = id
 
-	if err := body.applyTo(&user); err != nil {
+	if err := applyUpdate(&body, &user); err != nil {
 		writeValidationError(w, err)
 		return
 	}
@@ -186,7 +187,7 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 	}
 	// The same shape GetCurrentUser answers with, so a client that has just created its profile
 	// learns what it may do without a second request.
-	writeJSON(w, status, s.currentUser(saved))
+	writeProto(w, status, s.currentUser(saved))
 }
 
 // DeleteUser removes the caller's own profile, addressed as /users/me for the same reason PutUser

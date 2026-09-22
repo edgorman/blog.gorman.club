@@ -27,8 +27,8 @@ function App({
   environment?: string
 }) {
   return (
-    <AppProvider backendUrl={backendUrl}>
-      <NavBar version={version} environment={environment} />
+    <AppProvider backendUrl={backendUrl} version={version} environment={environment}>
+      <NavBar />
       <Routes>
         <Route path="/" element={<Landing />} />
         {/* A post is addressed by its slug alone: slugs are unique across every author, so the

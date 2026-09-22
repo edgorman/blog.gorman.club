@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { userPath } from '../lib/api'
+import { releaseUrl } from '../lib/format'
 import { GoogleSignInButton } from './GoogleSignInButton'
 
 const CloseIcon = () => (
@@ -15,9 +16,10 @@ interface Props {
   onClose: () => void
 }
 
-/** The account overlay opened from NavBar's account button: sign in/out and a New post shortcut. */
+/** The account overlay opened from NavBar's account button: sign in/out, a New post shortcut, and
+ * (pinned to the bottom, see .panel-deploy-info) this build's release tag and staging badge. */
 export function AccountPanel({ onClose }: Props) {
-  const { user, profile, authError, authReady, renderSignInButton, signOut } = useApp()
+  const { user, profile, authError, authReady, renderSignInButton, signOut, version, environment } = useApp()
   // The profile page and its editor are both addressed by the username, and the editor sits under
   // the profile it edits - so neither has a path until the profile has loaded.
   const profileHref = profile ? userPath(profile.username) : null
@@ -73,6 +75,24 @@ export function AccountPanel({ onClose }: Props) {
             <p className="text-muted">Sign in to publish and manage your posts.</p>
             {authError ? <p role="alert">{authError}</p> : <GoogleSignInButton ready={authReady} onRender={renderSignInButton} />}
           </>
+        )}
+
+        {(version || environment === 'staging') && (
+          <div className="panel-deploy-info">
+            {/* Only staging says so - a production reader has no reason to be told they're on
+                production (see issue #152). */}
+            {environment === 'staging' && <span className="tag tag-outline">staging</span>}
+            {version && (
+              <a
+                className="panel-version text-muted"
+                href={releaseUrl(version)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {version}
+              </a>
+            )}
+          </div>
         )}
       </div>
     </div>

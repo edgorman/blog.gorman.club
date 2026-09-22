@@ -174,12 +174,13 @@ above is only the fallback for when `config.json` is absent or malformed -
 local dev, and a rollback to a build that predates this file; `version` and
 `environment` have no such fallback and are simply absent in those cases.
 
-`version` and `environment` drive NavBar's small version/staging display
-(issue #152): `version` is the commit SHA on staging (the release tag isn't
-calculated until after that deploy - see Pre-Release Generation in
-CLAUDE.md) and the release tag on production, shown shortened by
-`formatVersion` (`src/lib/format.ts`) when it's a full SHA. `environment` is
-`'staging'` or `'production'`, but only `'staging'` renders a badge - a
+`version` and `environment` drive the footer pinned to the bottom of
+AccountPanel's drawer (issue #152): `version` is always a release tag (e.g.
+`v1.2.3`) - on staging this is the tag `push-commit.yaml`'s `version` job
+computes early and pre-release later cuts for the same commit, not a raw
+commit SHA - shown as a link to that tag's GitHub Releases page
+(`releaseUrl`, `src/lib/format.ts`). `environment` is `'staging'` or
+`'production'`, but only `'staging'` renders a badge next to it - a
 production reader has no reason to be told they're on production.
 
 `VITE_GOOGLE_CLIENT_ID` stays build-time only: one client ID serves every

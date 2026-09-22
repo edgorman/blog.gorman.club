@@ -17,7 +17,7 @@ inputs:
     required: false
     default: ''
   version:
-    description: 'Version identifier written into config.json for the app to display (see CLAUDE.md and issue #152) - the commit SHA on staging, the release tag on production. Omit to leave it out of config.json.'
+    description: 'Release tag written into config.json for the app to display and link to its GitHub release (see CLAUDE.md and issue #152) - on staging, the tag this commit is about to become (see push-commit.yaml''s "version" job), on production the tag actually promoted. Omit to leave it out of config.json.'
     required: false
     default: ''
   environment:

@@ -26,6 +26,10 @@ export interface AppContextValue {
   profile: CurrentUser | null
   /** Re-reads `profile`, for after an edit that may have changed the username. */
   refreshProfile: () => void
+  /** This build's release tag and 'staging'/'production' (see lib/config.ts), shown in
+   * AccountPanel's footer. Undefined in local dev, which has no config.json. */
+  version?: string
+  environment?: string
 }
 
 // Exported so tests can render `<AppContext.Provider value={...}>` with a fake value instead of

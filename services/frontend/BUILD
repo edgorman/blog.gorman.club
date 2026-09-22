@@ -25,6 +25,15 @@ typescript_sources(
     sources=["vite.config.ts"],
 )
 
+# public/theme.js is a classic script tag in index.html, not a module, so nothing imports it and
+# `pants tailor --check` wants an owning target for it. Declared from here, reaching down into
+# public/, rather than from a public/BUILD: Vite copies that directory into dist/ verbatim, so a
+# BUILD file placed inside it ships to the bucket and gets served at the site root.
+javascript_sources(
+    name="public",
+    sources=["public/*.js"],
+)
+
 # Wraps `npm run build` (`tsc -b && vite build`) as a packaged artifact, producing the identical
 # bytes frontend-build/frontend-publish upload today. No `name=` here - unlike package_json/
 # typescript_sources above, NodeBuildScript derives its address from `entry_point` instead.

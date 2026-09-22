@@ -100,11 +100,10 @@ jobs:
         run: npm run lint
 
   # Unlike lint-check, tests need transitive dependents: a change to a shared package must re-run
-  # every test that exercises it, not just tests that touch the changed file directly. `package` runs
-  # alongside `test` in the same invocation (#120 retired the advisory step that used to run it on its
-  # own) so services/backend:image and services/frontend's node_build_script - the docker_image and
-  # vite build parity targets from #117/#119 - are actually exercised on every relevant PR instead of
-  # first breaking on merge to main, inside the job that publishes the artifact.
+  # every test that exercises it, not just tests that touch the changed file directly. `package`
+  # rides the same invocation so services/backend:image (the docker_image parity target from #117)
+  # is built on any PR that reaches it, rather than first breaking on merge to main inside the job
+  # that publishes the artifact.
   test:
     runs-on: ubuntu-latest
     permissions:
@@ -117,6 +116,16 @@ jobs:
       - name: Test, Package
         shell: bash
         run: pants --changed-since=origin/main --changed-dependents=transitive test package
+      # Addressed explicitly rather than left to --changed-since above, which never reaches it:
+      # observed on #161, a PR that edited services/frontend/BUILD itself and still packaged only
+      # the backend image and go_binary, with no vite build in the log. Neither package_json nor
+      # node_build_script declares a dependency on src/**, so there is no edge for
+      # --changed-dependents to walk - the backend's docker_image only resolves because #117
+      # hand-declared one. Until that edge exists this is what actually keeps `vite build` (and the
+      # `tsc -b` before it) from first running on merge to main.
+      - name: Package Frontend
+        shell: bash
+        run: 'pants package services/frontend::'
 
   # #121/#122: `buf generate` is deterministic, so re-running it and diffing is how drift between
   # packages/protos/*.proto and the committed bindings it owns (services/backend/internal/gen and,

@@ -21,6 +21,7 @@ const blog: Blog = {
 const profile: CurrentUser = {
   id: 'uid-1',
   username: 'edgorman',
+  bio: '',
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   assistantEnabled: true,

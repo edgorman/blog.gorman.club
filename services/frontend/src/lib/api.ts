@@ -1,7 +1,11 @@
 /**
  * Client for the backend API (see /services/backend). Callers pass the header map from
  * useGoogleAuth, so this module knows nothing about any auth provider.
+ *
+ * Wire types come from `src/gen` rather than being declared here - see CLAUDE.md's "Contract
+ * Layer". `User`/`CurrentUser` moved in #169; the rest follow.
  */
+import type { CurrentUser, User } from '../gen/blog/v1/user'
 
 export interface Blog {
   /**
@@ -62,27 +66,7 @@ export interface ListBlogsParams {
   q?: string
 }
 
-export interface User {
-  id: string
-  /** The whole of a profile's public identity: both its address and the name readers see. */
-  username: string
-  bio?: string
-  createdAt: string
-  updatedAt: string
-}
-
-/**
- * The signed-in caller's own profile, which carries what this deployment lets that account do as
- * well as who they are. It is not what `getUser` returns: a public profile must not disclose who
- * has the assistant.
- */
-export interface CurrentUser extends User {
-  /**
-   * Whether this account may use the AI writing assistant. The backend enforces it either way -
-   * this only keeps the panel off the screen for somebody who would be told no.
-   */
-  assistantEnabled: boolean
-}
+export type { User, CurrentUser } from '../gen/blog/v1/user'
 
 /** One change the assistant made to the post, shown beneath the message that made it. */
 export interface ChatEdit {

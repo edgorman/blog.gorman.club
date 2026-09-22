@@ -27,6 +27,7 @@ jest.mock('../lib/api', () => ({
 const profile: User = {
   id: 'uid-1',
   username: 'calm-smiling-kestrel',
+  bio: '',
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 }

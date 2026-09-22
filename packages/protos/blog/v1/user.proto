@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package blog.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1;blogv1";
+
+// User is a profile as anybody may read it - what `GET /users/{username}` answers with.
+//
+// It is the wire shape, not entity.User: the entity also carries SubscribedUntil, which a public
+// lookup must never disclose and which therefore has no field here at all. See CLAUDE.md's
+// "Contract Layer" for why protos model the wire rather than the domain.
+message User {
+  string id = 1;
+  // The whole of a profile's public identity: both the handle it is looked up by and the name
+  // readers see. There is deliberately no separate display name.
+  string username = 2;
+  string bio = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+// CurrentUser is the caller's own profile - what `GET /users/me` and `PUT /users/me` answer with.
+// It carries what this deployment lets the account do, and when its paid access runs out, neither
+// of which a lookup of somebody else's name ever discloses.
+//
+// The five profile fields are repeated here rather than nested under a `User` field, because the
+// wire is flat: Go reaches it by embedding entity.User and TypeScript by `extends User`, and proto3
+// can express neither. Nesting would be tidier to write and a breaking change to ship, so the
+// duplication is deliberate - renaming a profile field means editing both messages, and the
+// drift check is what catches forgetting to.
+message CurrentUser {
+  string id = 1;
+  string username = 2;
+  string bio = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+  // Whether this account may use the AI writing assistant. The routes enforce it either way; this
+  // only keeps a button off the screen for somebody who would be told no.
+  bool assistant_enabled = 6;
+  // When this account's paid access runs out, absent for an account that has never subscribed -
+  // which is every account until a checkout writes one. A message field, so proto3 gives it
+  // presence without the `optional` keyword.
+  google.protobuf.Timestamp subscribed_until = 7;
+}
+
+// UpdateCurrentUserRequest is the body of `PUT /users/me` - the client-settable half of a profile.
+// The id comes from the verified token and the timestamps from the server, so neither is here.
+message UpdateCurrentUserRequest {
+  // Optional so an omitted username is distinguishable from one explicitly set to "": the first
+  // keeps the name the profile holds, the second is a name SetUsername rejects. Without presence
+  // the two would be one value, and a cleared field would get a silent success.
+  optional string username = 1;
+  string bio = 2;
+}

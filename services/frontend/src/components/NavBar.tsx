@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { formatVersion } from '../lib/format'
 import { AccountPanel } from './AccountPanel'
 
 const SunIcon = () => (
@@ -31,33 +30,17 @@ const UserIcon = () => (
   </svg>
 )
 
-interface Props {
-  /** The deployed build's version tag or commit SHA (see lib/config.ts), shown in both environments. */
-  version?: string
-  /** 'staging' or 'production' (see lib/config.ts). Only 'staging' gets a visible badge - a
-   * production reader has no reason to be told they're on production (see issue #152). */
-  environment?: string
-}
-
 /** Sticky top bar: brand, theme toggle, and an account button that opens AccountPanel. */
-export function NavBar({ version, environment }: Props) {
+export function NavBar() {
   const { user, profile, theme, toggleTheme } = useApp()
   const [accountOpen, setAccountOpen] = useState(false)
 
   return (
     <nav className="nav">
-      <div className="nav-identity">
-        <Link to="/" className="nav-brand" aria-label="blog, gorman club">
-          <span className="nav-brand-main" aria-hidden="true">blog</span>
-          <span className="nav-brand-sub" aria-hidden="true">gorman club</span>
-        </Link>
-        {environment === 'staging' && <span className="tag tag-outline">staging</span>}
-      </div>
-      {version && (
-        <span className="nav-version text-muted" title={`Version ${version}`}>
-          {formatVersion(version)}
-        </span>
-      )}
+      <Link to="/" className="nav-brand" aria-label="blog, gorman club">
+        <span className="nav-brand-main" aria-hidden="true">blog</span>
+        <span className="nav-brand-sub" aria-hidden="true">gorman club</span>
+      </Link>
       <button
         type="button"
         className="btn btn-icon btn-secondary"

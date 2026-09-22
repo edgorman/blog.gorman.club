@@ -1,8 +1,9 @@
 /**
  * Runtime configuration written by the deploy pipeline (see the Staging Deployments section of
  * CLAUDE.md) into `config.json`, served alongside the static build. `version` and `environment`
- * are the deploy's own identifiers - a release tag or commit SHA, and 'staging'/'production' -
- * present on every deployed build and absent only in local dev, which has no `config.json`.
+ * are the deploy's own identifiers - the release tag this commit becomes (see push-commit.yaml's
+ * `version` job) and 'staging'/'production' - present on every deployed build and absent only in
+ * local dev, which has no `config.json`.
  */
 export interface RuntimeConfig {
   backendUrl?: string

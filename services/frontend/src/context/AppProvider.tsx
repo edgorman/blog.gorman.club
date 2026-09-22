@@ -10,9 +10,13 @@ export function AppProvider({
   // default is only for a caller that skips that bootstrap - tests, and vite.config.ts's test env
   // stands in for it there.
   backendUrl = import.meta.env.VITE_BACKEND_URL,
+  version,
+  environment,
 }: {
   children: ReactNode
   backendUrl?: string
+  version?: string
+  environment?: string
 }) {
   const { user, authHeaders, error, ready, renderButton, signOut } = useGoogleAuth()
   const { theme, toggleTheme } = useTheme()
@@ -68,6 +72,8 @@ export function AppProvider({
     toggleTheme,
     profile,
     refreshProfile,
+    version,
+    environment,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

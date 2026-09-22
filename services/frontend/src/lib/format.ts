@@ -25,15 +25,14 @@ export function snippetFrom(content: string): string {
   return `${plain.slice(0, SNIPPET_LENGTH).trimEnd()}…`
 }
 
-const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/
+const GITHUB_REPO = 'edgorman/blog.gorman.club'
 
 /**
- * A release tag (e.g. "v1.2.3", written into staging and production's config.json alike once a
- * commit has one - see the Versioning section of CLAUDE.md) displays as-is; a raw commit SHA -
- * what staging's config.json carries ahead of its own release tag being cut, since the version is
- * only calculated after staging's deploy (see Pre-Release Generation in CLAUDE.md) - shortens to
- * 7 characters, matching how the release notes job already truncates a commit SHA for display.
+ * Links a release tag (e.g. "v1.2.3", written into config.json by the deploy pipeline - see
+ * CLAUDE.md's Versioning and Staging Deployments sections) to its GitHub Releases page. Works for
+ * a still-accumulating pre-release on staging and a promoted one on production alike, since both
+ * live at this same URL shape.
  */
-export function formatVersion(version: string): string {
-  return FULL_COMMIT_SHA.test(version) ? version.slice(0, 7) : version
+export function releaseUrl(tag: string): string {
+  return `https://github.com/${GITHUB_REPO}/releases/tag/${tag}`
 }

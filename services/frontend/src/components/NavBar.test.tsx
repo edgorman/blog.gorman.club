@@ -93,25 +93,4 @@ describe('NavBar', () => {
     await userEvent.click(backdrop)
     expect(screen.queryByRole('dialog', { name: 'Account' })).not.toBeInTheDocument()
   })
-
-  it('renders neither a version nor a staging badge when neither prop is given', () => {
-    renderWithApp(<NavBar />)
-    expect(screen.queryByText('staging')).not.toBeInTheDocument()
-  })
-
-  // A raw commit SHA (what staging carries ahead of its own release tag - see CLAUDE.md) shortens
-  // for display; a release tag doesn't need it.
-  it('shows a shortened version and a staging badge on staging', () => {
-    renderWithApp(<NavBar version="a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" environment="staging" />)
-    expect(screen.getByText('staging')).toBeInTheDocument()
-    expect(screen.getByText('a1b2c3d')).toBeInTheDocument()
-  })
-
-  // Production shows the release tag, but never says "production" - see issue #152.
-  it('shows the version but no environment badge on production', () => {
-    renderWithApp(<NavBar version="v1.2.3" environment="production" />)
-    expect(screen.getByText('v1.2.3')).toBeInTheDocument()
-    expect(screen.queryByText('production')).not.toBeInTheDocument()
-    expect(screen.queryByText('staging')).not.toBeInTheDocument()
-  })
 })

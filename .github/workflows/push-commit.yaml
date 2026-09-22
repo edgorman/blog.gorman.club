@@ -103,6 +103,11 @@ jobs:
           secrets: ${{ steps.secrets.outputs.secrets }}
           cloudflare_project_name: 'frontend-stag'
           backend_url: ${{ steps.backend.outputs.backend_url }}
+          # The commit SHA, not a release tag: the version bump is only calculated afterwards, by
+          # the pre-release job below, once this deploy has already succeeded (see Pre-Release
+          # Generation in CLAUDE.md). src/lib/format.ts shortens it for display.
+          version: ${{ github.sha }}
+          environment: 'staging'
 
   infrastructure-root:
     needs: changed

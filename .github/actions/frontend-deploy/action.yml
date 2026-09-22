@@ -16,6 +16,14 @@ inputs:
     description: 'Base URL of the backend service, written into config.json for the app to read at runtime (see CLAUDE.md). Omit to deploy the build unmodified.'
     required: false
     default: ''
+  version:
+    description: 'Version identifier written into config.json for the app to display (see CLAUDE.md and issue #152) - the commit SHA on staging, the release tag on production. Omit to leave it out of config.json.'
+    required: false
+    default: ''
+  environment:
+    description: 'Environment name written into config.json - "staging" or "production" (see CLAUDE.md and issue #152). Omit to leave it out of config.json.'
+    required: false
+    default: ''
 
 runs:
   using: "composite"
@@ -28,15 +36,24 @@ runs:
       run: printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
 
     # Written next to the static files rather than baked into the image, so one build can serve
-    # any environment - see the Read the backend URL at runtime issue and src/lib/config.ts.
+    # any environment - see the Read the backend URL at runtime issue and src/lib/config.ts. Empty
+    # inputs are dropped (with_entries(select)) rather than written as "", matching how
+    # src/lib/config.ts already treats a missing field and an empty one the same way.
     - name: Write Runtime Config
-      if: inputs.backend_url != ''
+      if: inputs.backend_url != '' || inputs.version != '' || inputs.environment != ''
       shell: bash
       env:
         BACKEND_URL: ${{ inputs.backend_url }}
+        VERSION: ${{ inputs.version }}
+        ENVIRONMENT: ${{ inputs.environment }}
         CONFIG_PATH: services/frontend/${{ inputs.dist_directory }}/config.json
       run: |
-        jq -n --arg backendUrl "$BACKEND_URL" '{backendUrl: $backendUrl}' > "$CONFIG_PATH"
+        jq -n \
+          --arg backendUrl "$BACKEND_URL" \
+          --arg version "$VERSION" \
+          --arg environment "$ENVIRONMENT" \
+          '{backendUrl: $backendUrl, version: $version, environment: $environment} | with_entries(select(.value != ""))' \
+          > "$CONFIG_PATH"
 
     # --branch=main is required: wrangler infers production vs. preview from GITHUB_REF_NAME, which
     # is the release tag on a `release` event, and would silently deploy as Preview.

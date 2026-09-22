@@ -100,7 +100,11 @@ jobs:
         run: npm run lint
 
   # Unlike lint-check, tests need transitive dependents: a change to a shared package must re-run
-  # every test that exercises it, not just tests that touch the changed file directly.
+  # every test that exercises it, not just tests that touch the changed file directly. `package` runs
+  # alongside `test` in the same invocation (#120 retired the advisory step that used to run it on its
+  # own) so services/backend:image and services/frontend's node_build_script - the docker_image and
+  # vite build parity targets from #117/#119 - are actually exercised on every relevant PR instead of
+  # first breaking on merge to main, inside the job that publishes the artifact.
   test:
     runs-on: ubuntu-latest
     permissions:
@@ -110,9 +114,9 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/pants-setup
-      - name: Test
+      - name: Test, Package
         shell: bash
-        run: pants --changed-since=origin/main --changed-dependents=transitive test
+        run: pants --changed-since=origin/main --changed-dependents=transitive test package
 
   # #121/#122: `buf generate` is deterministic, so re-running it and diffing is how drift between
   # packages/protos/*.proto and the committed bindings it owns (services/backend/internal/gen and,

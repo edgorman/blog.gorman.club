@@ -98,13 +98,20 @@ jobs:
         working-directory: services/frontend
         shell: bash
         run: npm run lint
+      # The same `npm run build` (`tsc -b && vite build`) frontend-build runs on merge, so a broken
+      # bundle fails the PR rather than the job that publishes it. Run directly rather than through
+      # Pants for the same reason go vet and oxlint above are: see CLAUDE.md's "Building with
+      # Pants" for why the node_build_script route was dropped.
+      - name: Build frontend
+        working-directory: services/frontend
+        shell: bash
+        run: npm run build
 
   # Unlike lint-check, tests need transitive dependents: a change to a shared package must re-run
-  # every test that exercises it, not just tests that touch the changed file directly. `package` runs
-  # alongside `test` in the same invocation (#120 retired the advisory step that used to run it on its
-  # own) so services/backend:image and services/frontend's node_build_script - the docker_image and
-  # vite build parity targets from #117/#119 - are actually exercised on every relevant PR instead of
-  # first breaking on merge to main, inside the job that publishes the artifact.
+  # every test that exercises it, not just tests that touch the changed file directly. `package`
+  # rides the same invocation so services/backend:image (the docker_image parity target from #117)
+  # is built on any PR that reaches it, rather than first breaking on merge to main inside the job
+  # that publishes the artifact.
   test:
     runs-on: ubuntu-latest
     permissions:

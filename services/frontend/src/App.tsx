@@ -17,10 +17,18 @@ function NotFound() {
   )
 }
 
-function App({ backendUrl }: { backendUrl?: string }) {
+function App({
+  backendUrl,
+  version,
+  environment,
+}: {
+  backendUrl?: string
+  version?: string
+  environment?: string
+}) {
   return (
     <AppProvider backendUrl={backendUrl}>
-      <NavBar />
+      <NavBar version={version} environment={environment} />
       <Routes>
         <Route path="/" element={<Landing />} />
         {/* A post is addressed by its slug alone: slugs are unique across every author, so the

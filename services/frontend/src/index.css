@@ -312,11 +312,16 @@ a.tag-topic:hover {
   z-index: 20;
   box-sizing: border-box;
 }
+.nav-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-right: auto;
+}
 .nav-brand {
   display: flex;
   flex-direction: column;
   line-height: 1.1;
-  margin-right: auto;
   color: inherit;
   text-decoration: none;
 }
@@ -330,6 +335,12 @@ a.tag-topic:hover {
   font-size: 10px;
   letter-spacing: 0.02em;
   color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+/* The build's version tag/commit SHA (see NavBar) - quiet like nav-brand-sub, monospaced since
+   it's an identifier rather than prose. */
+.nav-version {
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 .gc-avatar {
   appearance: none;

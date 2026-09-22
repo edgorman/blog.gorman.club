@@ -163,15 +163,24 @@ environment.
 | `VITE_GOOGLE_CLIENT_ID`      | Google OAuth 2.0 client ID. Not a secret; baked in at build time; see above. |
 
 The backend URL is otherwise **runtime** configuration: `src/lib/config.ts`
-fetches `/config.json` (`{ "backendUrl": "..." }`) once at bootstrap, before
-the app's first render, so the same published folder can serve any
-environment just by which `config.json` sits next to its static files.
-`frontend-deploy` writes that file from the just-deployed backend URL as
-part of both the staging and promotion pipelines - it is written after the
-folder is fetched and never uploaded, so the stored folder stays
-environment-neutral. `VITE_BACKEND_URL` above is only the fallback for when
-`config.json` is absent or malformed - local dev, and a rollback to a build
-that predates this file.
+fetches `/config.json` (`{ "backendUrl": "...", "version": "...", "environment": "..." }`)
+once at bootstrap, before the app's first render, so the same published
+folder can serve any environment just by which `config.json` sits next to
+its static files. `frontend-deploy` writes that file from the just-deployed
+backend URL, version, and environment as part of both the staging and
+promotion pipelines - it is written after the folder is fetched and never
+uploaded, so the stored folder stays environment-neutral. `VITE_BACKEND_URL`
+above is only the fallback for when `config.json` is absent or malformed -
+local dev, and a rollback to a build that predates this file; `version` and
+`environment` have no such fallback and are simply absent in those cases.
+
+`version` and `environment` drive NavBar's small version/staging display
+(issue #152): `version` is the commit SHA on staging (the release tag isn't
+calculated until after that deploy - see Pre-Release Generation in
+CLAUDE.md) and the release tag on production, shown shortened by
+`formatVersion` (`src/lib/format.ts`) when it's a full SHA. `environment` is
+`'staging'` or `'production'`, but only `'staging'` renders a badge - a
+production reader has no reason to be told they're on production.
 
 `VITE_GOOGLE_CLIENT_ID` stays build-time only: one client ID serves every
 environment (see above), so there is nothing for a runtime config to vary.

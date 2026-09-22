@@ -181,9 +181,22 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
-  # Runs on every merge, since the pre-release isn't gated on what changed. Drafts the body from
-  # commits since the last tag, plus a read-only prod plan showing the infra impact.
+  # Runs on every merge, since the pre-release isn't gated on what changed - it waits on the publish
+  # jobs' outcomes instead. Without this, a `pre-release` with no `needs:` at all could tag a commit
+  # whose services-backend/services-frontend run skipped after an upstream failure (e.g. the `changed`
+  # job's Pants resolution erroring), leaving a release tag with no commit-SHA image or frontend folder
+  # in either environment - the one failure promotion can't recover from, since there is nothing to
+  # deploy and nothing to roll back to. `success || skipped` (with `always()` so a skip doesn't cascade
+  # into skipping this job too, the same shape services-frontend already uses for its own `needs`)
+  # keeps a legitimately skipped publish job from blocking the tag while still blocking on an actual
+  # failure. Drafts the body from commits since the last tag, plus a read-only prod plan showing the
+  # infra impact.
   pre-release:
+    needs: [services-backend, services-frontend]
+    if: |
+      always() &&
+      (needs.services-backend.result == 'success' || needs.services-backend.result == 'skipped') &&
+      (needs.services-frontend.result == 'success' || needs.services-frontend.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write

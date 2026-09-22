@@ -116,13 +116,11 @@ jobs:
       - name: Test, Package
         shell: bash
         run: pants --changed-since=origin/main --changed-dependents=transitive test package
-      # Addressed explicitly rather than left to --changed-since above, which never reaches it:
-      # observed on #161, a PR that edited services/frontend/BUILD itself and still packaged only
-      # the backend image and go_binary, with no vite build in the log. Neither package_json nor
-      # node_build_script declares a dependency on src/**, so there is no edge for
-      # --changed-dependents to walk - the backend's docker_image only resolves because #117
-      # hand-declared one. Until that edge exists this is what actually keeps `vite build` (and the
-      # `tsc -b` before it) from first running on merge to main.
+      # Addressed explicitly rather than left to --changed-since above: the frontend bundle has no
+      # dependency edge from the app's sources back to the build script, so a src/** change doesn't
+      # select it the way an internal/ change selects the backend image (#117 hand-declared that
+      # edge). Observed on #161, which edited services/frontend/BUILD itself and still packaged only
+      # the backend image and go_binary. Explicit until that edge exists.
       - name: Package Frontend
         shell: bash
         run: 'pants package services/frontend::'

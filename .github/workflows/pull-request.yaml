@@ -98,6 +98,14 @@ jobs:
         working-directory: services/frontend
         shell: bash
         run: npm run lint
+      # The same `npm run build` (`tsc -b && vite build`) frontend-build runs on merge, so a broken
+      # bundle fails the PR rather than the job that publishes it. Run directly rather than through
+      # Pants for the same reason go vet and oxlint above are: see CLAUDE.md's "Building with
+      # Pants" for why the node_build_script route was dropped.
+      - name: Build frontend
+        working-directory: services/frontend
+        shell: bash
+        run: npm run build
 
   # Unlike lint-check, tests need transitive dependents: a change to a shared package must re-run
   # every test that exercises it, not just tests that touch the changed file directly. `package`
@@ -116,14 +124,6 @@ jobs:
       - name: Test, Package
         shell: bash
         run: pants --changed-since=origin/main --changed-dependents=transitive test package
-      # Addressed explicitly rather than left to --changed-since above: the frontend bundle has no
-      # dependency edge from the app's sources back to the build script, so a src/** change doesn't
-      # select it the way an internal/ change selects the backend image (#117 hand-declared that
-      # edge). Observed on #161, which edited services/frontend/BUILD itself and still packaged only
-      # the backend image and go_binary. Explicit until that edge exists.
-      - name: Package Frontend
-        shell: bash
-        run: 'pants package services/frontend::'
 
   # #121/#122: `buf generate` is deterministic, so re-running it and diffing is how drift between
   # packages/protos/*.proto and the committed bindings it owns (services/backend/internal/gen and,

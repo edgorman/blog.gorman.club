@@ -15,20 +15,10 @@ files(
 # the target name to the directory's basename ("frontend") - naming it anything else breaks that
 # default address.
 #
-# `scripts=` is where node_build_script belongs. It is a field value, not a target - which is why
-# it rejects `name=` - so calling it at top level, as this file did from #119 until now, built the
-# object and dropped it: the vite build was never in the graph, and `pants package
-# services/frontend::` exited in 190ms having matched nothing.
+# Deliberately carries no `scripts=[node_build_script(...)]`, so `pants package` builds nothing
+# here and CI runs `npm run build` directly instead - see CLAUDE.md's "Building with Pants".
 package_json(
     dependencies=[":babel-jest-config"],
-    scripts=[
-        # Wraps `npm run build` (`tsc -b && vite build`), producing the identical bytes
-        # frontend-build/frontend-publish upload today.
-        node_build_script(
-            entry_point="build",
-            output_directories=["dist"],
-        ),
-    ],
 )
 
 # vite.config.ts lives outside src/ (it configures the bundler, not the app), so it gets its own

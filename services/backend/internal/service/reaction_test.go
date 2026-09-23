@@ -92,20 +92,40 @@ func (f *reactionFixture) list(uid string) *httptest.ResponseRecorder {
 	return rec
 }
 
-func decodeCounts(t *testing.T, rec *httptest.ResponseRecorder) []reactionCount {
-	t.Helper()
-
-	var counts []reactionCount
-	if err := json.NewDecoder(rec.Body).Decode(&counts); err != nil {
-		t.Fatalf("decode reaction counts: %v", err)
-	}
-	return counts
+// wireReactionCount, wireTargetReactions, and wirePageReactions are what a response body actually
+// carries, spelled out here rather than decoded into reactionCount/reactionsResponse - see
+// wireBlog (blog_test.go) for why: reusing the production type would hide the wire, since both
+// sides would move together and a field leaving the body would assert nothing. Declared
+// separately, a rename fails here.
+type wireReactionCount struct {
+	Emoji   string `json:"emoji"`
+	Count   int    `json:"count"`
+	Reacted bool   `json:"reacted"`
 }
 
-func decodeReactions(t *testing.T, rec *httptest.ResponseRecorder) reactionsResponse {
+type wireTargetReactions struct {
+	Reactions []wireReactionCount `json:"reactions"`
+}
+
+type wirePageReactions struct {
+	Post     []wireReactionCount            `json:"post"`
+	Comments map[string]wireTargetReactions `json:"comments"`
+}
+
+func decodeCounts(t *testing.T, rec *httptest.ResponseRecorder) []wireReactionCount {
 	t.Helper()
 
-	var body reactionsResponse
+	var body wireTargetReactions
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode reaction counts: %v", err)
+	}
+	return body.Reactions
+}
+
+func decodeReactions(t *testing.T, rec *httptest.ResponseRecorder) wirePageReactions {
+	t.Helper()
+
+	var body wirePageReactions
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode reactions: %v", err)
 	}
@@ -291,7 +311,7 @@ func TestGetReactions(t *testing.T) {
 	if body.Post[0].Reacted {
 		t.Error("Reacted = true for a signed-out reader, want false")
 	}
-	if counts := body.Comments[reactionCommentID]; len(counts) != 1 || counts[0].Emoji != "👎" {
+	if counts := body.Comments[reactionCommentID].Reactions; len(counts) != 1 || counts[0].Emoji != "👎" {
 		t.Errorf("comment reactions = %+v, want one 🔥", counts)
 	}
 }

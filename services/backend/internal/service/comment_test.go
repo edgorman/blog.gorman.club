@@ -6,9 +6,13 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 )
 
 // commentFixture is a post, its owner's profile, and the thread beneath it, wired the way a real
@@ -53,9 +57,16 @@ func newCommentFixture(t *testing.T) *commentFixture {
 	}
 }
 
+// commentRequestBody marshals a create request the way a real client would, through protojson
+// rather than encoding/json - see blogRequestBody (blog_test.go) for why.
+func commentRequestBody(body *blogv1.CreateCommentRequest) []byte {
+	encoded, _ := protojson.Marshal(body)
+	return encoded
+}
+
 // post sends a comment as uid, or anonymously when uid is empty.
 func (f *commentFixture) post(uid, body string) *httptest.ResponseRecorder {
-	encoded, _ := json.Marshal(commentRequest{Body: body})
+	encoded := commentRequestBody(&blogv1.CreateCommentRequest{Body: body})
 	req := httptest.NewRequest(http.MethodPost, "/blogs/"+commentSlug+"/comments", bytes.NewReader(encoded))
 	req.SetPathValue("slug", commentSlug)
 	if uid != "" {
@@ -92,24 +103,42 @@ func (f *commentFixture) delete(uid, id string) *httptest.ResponseRecorder {
 	return rec
 }
 
-func decodeComment(t *testing.T, rec *httptest.ResponseRecorder) commentResponse {
+// wireComment and wireCommentThread are what a response body actually carries, spelled out here
+// rather than decoded into commentResponse - see wireUser (user_test.go) and wireBlog
+// (blog_test.go) for why: reusing the production type would hide the wire, since both sides would
+// move together and a field leaving the body would assert nothing. Declared separately, a rename
+// fails here.
+type wireComment struct {
+	ID             string `json:"id"`
+	BlogSlug       string `json:"blogSlug"`
+	AuthorID       string `json:"authorId"`
+	AuthorUsername string `json:"authorUsername"`
+	Body           string `json:"body"`
+	CreatedAt      string `json:"createdAt"`
+}
+
+type wireCommentThread struct {
+	Comments []wireComment `json:"comments"`
+}
+
+func decodeComment(t *testing.T, rec *httptest.ResponseRecorder) wireComment {
 	t.Helper()
 
-	var body commentResponse
+	var body wireComment
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode comment: %v", err)
 	}
 	return body
 }
 
-func decodeComments(t *testing.T, rec *httptest.ResponseRecorder) []commentResponse {
+func decodeComments(t *testing.T, rec *httptest.ResponseRecorder) []wireComment {
 	t.Helper()
 
-	var body []commentResponse
+	var body wireCommentThread
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode comments: %v", err)
 	}
-	return body
+	return body.Comments
 }
 
 func assertStatus(t *testing.T, rec *httptest.ResponseRecorder, want int) {
@@ -258,16 +287,17 @@ func TestListComments(t *testing.T) {
 	}
 }
 
-// A post nobody has commented on has an empty thread, not a missing one - and it is an empty JSON
-// array rather than null, so a client renders it without a special case.
+// A post nobody has commented on has an empty thread, not a missing one - and `comments` is an
+// empty JSON array rather than null or absent, so a client renders it without a special case.
 func TestListComments_Empty(t *testing.T) {
 	f := newCommentFixture(t)
 
 	rec := f.list("")
 	assertStatus(t, rec, http.StatusOK)
 
-	if body := rec.Body.String(); body != "[]\n" {
-		t.Errorf("body = %q, want an empty JSON array", body)
+	want := `{"comments":[]}`
+	if got := strings.TrimSpace(rec.Body.String()); got != want {
+		t.Errorf("body = %q, want %q", got, want)
 	}
 }
 
@@ -371,7 +401,7 @@ func TestComments_OnAMissingPost(t *testing.T) {
 			return rec
 		}},
 		{"create", func() *httptest.ResponseRecorder {
-			encoded, _ := json.Marshal(commentRequest{Body: "nicely put"})
+			encoded := commentRequestBody(&blogv1.CreateCommentRequest{Body: "nicely put"})
 			req := httptest.NewRequest(http.MethodPost, "/blogs/missing/comments", bytes.NewReader(encoded))
 			req.SetPathValue("slug", "missing")
 			rec := httptest.NewRecorder()

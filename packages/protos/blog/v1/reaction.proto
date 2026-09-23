@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package blog.v1;
+
+option go_package = "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1;blogv1";
+
+// ReactionCount is one emoji as a bar renders it: the glyph, how many readers chose it, and
+// whether the caller is one of them.
+//
+// It has no entity counterpart at all, deliberately - it is not entity.Reaction with its fields
+// renamed. What crosses the wire is an aggregate folded from every reader's stored row
+// (internal/service/reaction.go's countReactions), not a stored row itself: entity.Reaction is one
+// reader's choices, keyed by reader, while this is one emoji's count across every reader. Who
+// reacted is deliberately not reported here either - a count and a "you are in it" is the whole of
+// what a bar draws, and naming the readers would turn a one-click gesture into a public record of
+// who liked what.
+message ReactionCount {
+  string emoji = 1;
+  int32 count = 2;
+  bool reacted = 3;
+}
+
+// TargetReactions is every count on one target - the post, or one of its comments - in the bar's
+// own order (most chosen first). It is what `PUT`/`DELETE .../reactions/{emoji}` answer with, and
+// what each entry of PageReactions.comments below holds; a bare `repeated ReactionCount` cannot be
+// a map value or a top-level protojson body on its own, so this is the message that lets it be
+// both. Like ReactionCount it has no entity counterpart - a target's counts are folded fresh from
+// every reaction on it, never stored this way.
+//
+// There is deliberately no PutReactionRequest/DeleteReactionRequest beside it: a reaction is
+// addressed, not toggled - the target and the emoji are both in the URL
+// (`.../reactions/{emoji}`), and the reader is the credential - so PutReaction and DeleteReaction
+// read no request body at all.
+message TargetReactions {
+  repeated ReactionCount reactions = 1;
+}
+
+// PageReactions is every reaction on a post page, in one response: the post's own, and each
+// reacted-to comment's by id. It is one message because it answers one query - a comment's
+// reactions are stored beneath the post alongside the post's own (see CLAUDE.md's "Reader
+// Engagement" section), so splitting them across the responses that carry a post and its comments
+// would mean reading them twice to say the same thing. Like ReactionCount and TargetReactions, it
+// has no entity counterpart - it exists only as a wire shape.
+//
+// A comment with no reactions is absent from `comments` rather than present and empty, so the map
+// holds only what there is something to draw for.
+message PageReactions {
+  repeated ReactionCount post = 1;
+  map<string, TargetReactions> comments = 2;
+}

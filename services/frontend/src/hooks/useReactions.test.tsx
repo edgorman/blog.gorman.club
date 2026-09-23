@@ -8,7 +8,7 @@ import { useReactions } from './useReactions'
 
 const page: PageReactions = {
   post: [{ emoji: '👍', count: 2, reacted: false }],
-  comments: { cmt1: [{ emoji: '👎', count: 1, reacted: true }] },
+  comments: { cmt1: { reactions: [{ emoji: '👎', count: 1, reacted: true }] } },
 }
 
 function fakeApi(overrides: Partial<Api> = {}): Api {

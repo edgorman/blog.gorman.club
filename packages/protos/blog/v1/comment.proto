@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package blog.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1;blogv1";
+
+// Comment is one reader's reply to a post, as clients see it - what `GET /blogs/{slug}/comments`
+// and `POST /blogs/{slug}/comments` answer with.
+//
+// It is the wire shape, not entity.Comment: author_username is resolved server-side
+// (internal/service/comment.go's withCommentAuthors) and has no counterpart on the entity, the
+// same pattern blog.proto's Blog follows for author_username there. entity.Comment's ownership and
+// moderation rules stay hand-written policy - see CLAUDE.md's "Contract Layer" - so this message
+// carries no method of its own, only the fields a client reads.
+//
+// A comment is never edited, only written and removed, so there is no updated_at field and no
+// update route to answer with one.
+message Comment {
+  // Assigned by the repository that stores it, and meaningful only beneath the post it hangs off -
+  // see entity.Comment's own comment on why it has no name of its own to be addressed by.
+  string id = 1;
+  string blog_slug = 2;
+  // The uid of whoever wrote it, which a client needs to know whether to offer a delete button -
+  // never a public identifier on its own, unlike author_username below.
+  string author_id = 3;
+  // The commenter's username, resolved server-side rather than stored on the comment: it records
+  // its author by uid, which is never public, so this is the only handle a client holds for the
+  // profile behind it. Empty for a commenter who holds no profile.
+  string author_username = 4;
+  string body = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// CreateCommentRequest is the body of `POST /blogs/{slug}/comments` - the client-settable half of a
+// comment. The post it is on comes from the URL, its author from the credential, and its id and
+// timestamp from the server, so none of them are here.
+message CreateCommentRequest {
+  string body = 1;
+}
+
+// CommentThread is the whole thread beneath a post, oldest first - what `GET
+// /blogs/{slug}/comments` answers with. It exists purely because protojson can only marshal a
+// message at the top level, never a bare array (the same reason reaction.proto's TargetReactions
+// wraps a `repeated ReactionCount`); the wire shape a client actually reads is still a plain list,
+// now carried in `comments` instead of being the whole body.
+message CommentThread {
+  repeated Comment comments = 1;
+}

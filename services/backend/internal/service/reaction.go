@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 )
 
 // reactionCount is one emoji as a bar renders it: the glyph, how many readers chose it, and
@@ -16,17 +17,47 @@ import (
 // liked what - a heavier thing than the button suggests, and not one a reader opts into by
 // clicking.
 type reactionCount struct {
-	Emoji   string `json:"emoji"`
-	Count   int    `json:"count"`
-	Reacted bool   `json:"reacted"`
+	Emoji   string
+	Count   int
+	Reacted bool
+}
+
+// reactionCountMessage is the wire shape of a single count.
+func reactionCountMessage(count reactionCount) *blogv1.ReactionCount {
+	return &blogv1.ReactionCount{Emoji: count.Emoji, Count: int32(count.Count), Reacted: count.Reacted}
+}
+
+// targetReactionsMessage is every count on one target - what PutReaction/DeleteReaction answer
+// with, and what each entry of PageReactions.comments holds.
+func targetReactionsMessage(counts []reactionCount) *blogv1.TargetReactions {
+	reactions := make([]*blogv1.ReactionCount, 0, len(counts))
+	for _, count := range counts {
+		reactions = append(reactions, reactionCountMessage(count))
+	}
+	return &blogv1.TargetReactions{Reactions: reactions}
 }
 
 // reactionsResponse is every reaction on a page: the post's, and each commented-on comment's by
 // id. Comments with no reactions are absent rather than present and empty, so the map holds only
 // what there is something to draw for.
 type reactionsResponse struct {
-	Post     []reactionCount            `json:"post"`
-	Comments map[string][]reactionCount `json:"comments"`
+	Post     []reactionCount
+	Comments map[string][]reactionCount
+}
+
+// pageReactionsMessage is the wire shape GetReactions answers with.
+func pageReactionsMessage(response reactionsResponse) *blogv1.PageReactions {
+	post := make([]*blogv1.ReactionCount, 0, len(response.Post))
+	for _, count := range response.Post {
+		post = append(post, reactionCountMessage(count))
+	}
+
+	comments := make(map[string]*blogv1.TargetReactions, len(response.Comments))
+	for commentID, counts := range response.Comments {
+		comments[commentID] = targetReactionsMessage(counts)
+	}
+
+	return &blogv1.PageReactions{Post: post, Comments: comments}
 }
 
 // countReactions folds the readers' rows into the counts a bar is drawn from. Ordering is by count
@@ -108,7 +139,7 @@ func (s *Service) GetReactions(w http.ResponseWriter, r *http.Request) {
 		response.Comments[reaction.Target.CommentID] = countReactions(forTarget(reactions, reaction.Target), uid)
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeProto(w, http.StatusOK, pageReactionsMessage(response))
 }
 
 // reactionTargetFromPath resolves what a reaction route addresses, along with the emoji it names.
@@ -144,7 +175,7 @@ func (s *Service) writeTargetReactions(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 
-	writeJSON(w, http.StatusOK, countReactions(forTarget(reactions, target), uidFromContext(r.Context())))
+	writeProto(w, http.StatusOK, targetReactionsMessage(countReactions(forTarget(reactions, target), uidFromContext(r.Context()))))
 }
 
 // PutReaction adds the caller's reaction to a post or to one of its comments. It is a PUT rather

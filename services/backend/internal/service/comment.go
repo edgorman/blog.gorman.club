@@ -1,12 +1,14 @@
 package service
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
@@ -15,14 +17,30 @@ import (
 // is never public, so the username is the only handle a client holds for the profile behind it.
 type commentResponse struct {
 	entity.Comment
-	AuthorUsername string `json:"authorUsername"`
+	AuthorUsername string
 }
 
-// commentRequest is the client-settable half of a comment: what it says, and nothing else. The
-// post it is on comes from the URL, its author from the credential, and its id and timestamp from
-// the server, so none of them are decoded here and then overwritten.
-type commentRequest struct {
-	Body string `json:"body"`
+// commentMessage is the wire shape of a single comment: what CreateComment answers with, and what
+// each entry of a CommentThread carries.
+func commentMessage(response commentResponse) *blogv1.Comment {
+	return &blogv1.Comment{
+		Id:             response.ID,
+		BlogSlug:       response.BlogSlug,
+		AuthorId:       response.AuthorID,
+		AuthorUsername: response.AuthorUsername,
+		Body:           response.Body,
+		CreatedAt:      timestamppb.New(response.CreatedAt),
+	}
+}
+
+// commentThreadMessage is the whole thread ListComments answers with, converting each comment the
+// same way commentMessage does.
+func commentThreadMessage(responses []commentResponse) *blogv1.CommentThread {
+	comments := make([]*blogv1.Comment, 0, len(responses))
+	for _, response := range responses {
+		comments = append(comments, commentMessage(response))
+	}
+	return &blogv1.CommentThread{Comments: comments}
 }
 
 // withCommentAuthors pairs every comment with its author's username, resolving each distinct
@@ -86,15 +104,15 @@ func (s *Service) ListComments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// withCommentAuthors always builds its slice, so a post nobody has commented on answers with an
-	// empty JSON array rather than null.
+	// withCommentAuthors always builds its slice, and commentThreadMessage does the same with
+	// Comments, so a post nobody has commented on answers with an empty JSON array rather than null.
 	responses, err := s.withCommentAuthors(r, comments)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, responses)
+	writeProto(w, http.StatusOK, commentThreadMessage(responses))
 }
 
 // CreateComment adds a comment to a post, authored by the caller.
@@ -109,15 +127,15 @@ func (s *Service) CreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body commentRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	var body blogv1.CreateCommentRequest
+	if err := readProto(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	// Validated before the profile below is created, so an empty or oversized comment does not
 	// leave a profile behind for a caller who never successfully said anything.
-	comment, err := entity.NewComment(blog.Slug, uidFromContext(r.Context()), body.Body)
+	comment, err := entity.NewComment(blog.Slug, uidFromContext(r.Context()), body.GetBody())
 	if err != nil {
 		writeValidationError(w, err)
 		return
@@ -149,7 +167,7 @@ func (s *Service) CreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, responses[0])
+	writeProto(w, http.StatusCreated, commentMessage(responses[0]))
 }
 
 // DeleteComment removes a comment. Who may is decided by the comment's own delete permission: its

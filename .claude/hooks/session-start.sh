@@ -83,6 +83,9 @@ fi
 (cd services/backend && go mod download)
 
 # --- npm dependencies --------------------------------------------------------------------------
+# `npm ci` rather than `npm install`, matching CI (frontend-build, pull-request.yaml): it installs
+# exactly what package-lock.json records and never rewrites it, so a session can't start with an
+# unrelated lockfile diff that then rides along into its PR.
 # Installs ts-proto (services/frontend/package.json devDependency), which packages/protos/buf.gen.yaml
 # invokes from services/frontend/node_modules/.bin, plus everything `tsc`/`vite`/`jest` need.
-(cd services/frontend && npm install)
+(cd services/frontend && npm ci)

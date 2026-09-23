@@ -1,12 +1,14 @@
 package service
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
@@ -15,35 +17,54 @@ import (
 // assistant having crashed rather than having failed to understand.
 const assistantSilentReply = "I wasn't sure what to change there. Could you say it another way?"
 
-// chatRequest is one message from the author, optionally carrying the draft they are looking at.
-//
-// Title and Content are pointers because omitting them and clearing them are different requests:
-// omitted means "use the post as it was saved", while an explicit "" is an author who has emptied
-// the field in the editor and wants the assistant to see that. They exist at all because the
-// editor is a form with unsaved changes in it - asking the assistant to "tighten this paragraph"
-// has to mean the paragraph on screen, not the one last written to Firestore.
-type chatRequest struct {
-	Message string  `json:"message"`
-	Title   *string `json:"title"`
-	Content *string `json:"content"`
+// chatEditMessage is the wire shape of one change the assistant made.
+func chatEditMessage(edit entity.ChatEdit) *blogv1.ChatEdit {
+	return &blogv1.ChatEdit{Tool: edit.Tool, Summary: edit.Summary}
 }
 
-// chatResponse is a whole conversation, for a client opening the panel on a post.
-type chatResponse struct {
-	Messages []entity.ChatMessage `json:"messages"`
+// chatMessageMessage is the wire shape of one turn - what GetChat's history and SendChatMessage's
+// reply both carry.
+func chatMessageMessage(message entity.ChatMessage) *blogv1.ChatMessage {
+	edits := make([]*blogv1.ChatEdit, 0, len(message.Edits))
+	for _, edit := range message.Edits {
+		edits = append(edits, chatEditMessage(edit))
+	}
+	return &blogv1.ChatMessage{
+		Role:      string(message.Role),
+		Content:   message.Content,
+		Edits:     edits,
+		CreatedAt: timestamppb.New(message.CreatedAt),
+	}
 }
 
-// chatReplyResponse is one exchange: what was said on both sides, and the post as it now stands.
+// chatMessagesMessage converts a run of turns the same way chatMessageMessage does, for the two
+// responses - ChatHistory and ChatReply - that each carry a list of them.
+func chatMessagesMessage(messages []entity.ChatMessage) []*blogv1.ChatMessage {
+	converted := make([]*blogv1.ChatMessage, 0, len(messages))
+	for _, message := range messages {
+		converted = append(converted, chatMessageMessage(message))
+	}
+	return converted
+}
+
+// chatHistoryMessage is the whole conversation GetChat answers with.
+func chatHistoryMessage(messages []entity.ChatMessage) *blogv1.ChatHistory {
+	return &blogv1.ChatHistory{Messages: chatMessagesMessage(messages)}
+}
+
+// chatReplyMessage is one exchange: what was said on both sides, and the post as it now stands.
 //
 // The post comes back whole rather than as a diff because the assistant edits the author's live
 // draft: the editor has to replace what is in its fields with what was actually stored, or the
 // next save would write the pre-assistant text back over it. Updated says whether that happened,
 // so an editor whose author is still typing is only interrupted when there is really something to
 // show them.
-type chatReplyResponse struct {
-	Messages []entity.ChatMessage `json:"messages"`
-	Blog     blogResponse         `json:"blog"`
-	Updated  bool                 `json:"updated"`
+func chatReplyMessage(messages []entity.ChatMessage, blog blogResponse, updated bool) *blogv1.ChatReply {
+	return &blogv1.ChatReply{
+		Messages: chatMessagesMessage(messages),
+		Blog:     blogMessage(blog),
+		Updated:  updated,
+	}
 }
 
 // requireAssistantAccess checks the caller's account is entitled to the assistant, writing the
@@ -115,11 +136,7 @@ func (s *Service) GetChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	messages := chat.Messages
-	if messages == nil {
-		messages = []entity.ChatMessage{}
-	}
-	writeJSON(w, http.StatusOK, chatResponse{Messages: messages})
+	writeProto(w, http.StatusOK, chatHistoryMessage(chat.Messages))
 }
 
 // DeleteChat throws the conversation away, so the author can start the assistant over without
@@ -141,7 +158,7 @@ func (s *Service) DeleteChat(w http.ResponseWriter, r *http.Request) {
 // draftFromRequest builds the draft the assistant works on: the stored post, with whatever the
 // author has unsaved in front of them applied over it. Both fields go through the draft's setters,
 // so a body the post itself would reject is refused here rather than reaching the model.
-func draftFromRequest(blog entity.Blog, body chatRequest) (entity.Draft, error) {
+func draftFromRequest(blog entity.Blog, body *blogv1.ChatRequest) (entity.Draft, error) {
 	draft := entity.DraftOf(blog)
 	if body.Title != nil {
 		if err := draft.SetTitle(*body.Title); err != nil {
@@ -168,21 +185,21 @@ func (s *Service) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body chatRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	var body blogv1.ChatRequest
+	if err := readProto(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	// Validated before anything is spent on it: an empty or oversized message is the author's
 	// mistake, and it would be stored as a turn if the model answered it.
-	asked, err := entity.NewChatMessage(entity.ChatRoleUser, body.Message)
+	asked, err := entity.NewChatMessage(entity.ChatRoleUser, body.GetMessage())
 	if err != nil {
 		writeValidationError(w, err)
 		return
 	}
 
-	draft, err := draftFromRequest(blog, body)
+	draft, err := draftFromRequest(blog, &body)
 	if err != nil {
 		writeValidationError(w, err)
 		return
@@ -246,9 +263,5 @@ func (s *Service) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, chatReplyResponse{
-		Messages: []entity.ChatMessage{asked, answered},
-		Blog:     response,
-		Updated:  updated,
-	})
+	writeProto(w, http.StatusOK, chatReplyMessage([]entity.ChatMessage{asked, answered}, response, updated))
 }

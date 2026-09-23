@@ -67,7 +67,10 @@ export function AssistantPanel({ slug, title, content, onEdited }: Props) {
       .then((reply) => {
         setMessages((previous) => [...previous, ...reply.messages])
         setMessage('')
-        if (reply.updated) onEdited({ title: reply.blog.title, content: reply.blog.content })
+        // reply.blog is optional because the wire says so (see CLAUDE.md's "Contract Layer") - the
+        // backend always sends one, but `updated` is the field that actually says whether it
+        // changed, so both are checked before adopting it.
+        if (reply.updated && reply.blog) onEdited({ title: reply.blog.title, content: reply.blog.content })
       })
       // The message is left in the box on failure: nothing was stored, so it is still theirs to send.
       .catch((e: unknown) => setError(errorMessage(e, 'The assistant could not be reached')))
@@ -112,9 +115,9 @@ export function AssistantPanel({ slug, title, content, onEdited }: Props) {
         )}
 
         {messages.map((turn, index) => (
-          <div key={`${turn.createdAt}-${index}`} className={`assistant-turn assistant-turn-${turn.role}`}>
+          <div key={`${turn.createdAt ?? index}-${index}`} className={`assistant-turn assistant-turn-${turn.role}`}>
             {turn.content && <p className="assistant-text">{turn.content}</p>}
-            {turn.edits?.map((edit, editIndex) => (
+            {turn.edits.map((edit, editIndex) => (
               <p key={editIndex} className="assistant-edit">
                 {edit.summary}
               </p>

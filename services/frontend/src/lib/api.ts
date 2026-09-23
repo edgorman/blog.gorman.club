@@ -4,17 +4,20 @@
  *
  * Wire types come from `src/gen` rather than being declared here - see CLAUDE.md's "Contract
  * Layer". `User`/`CurrentUser` moved in #169, `Blog`/`BlogPage`/`ListBlogsParams` in #170,
- * `Comment`/`ReactionCount`/`PageReactions` in #171.
+ * `Comment`/`ReactionCount`/`PageReactions` in #171, `ChatMessage`/`ChatEdit`/`ChatRequest`/
+ * `ChatReply` in #172.
  */
 import type { CurrentUser, User } from '../gen/blog/v1/user'
 import type { Blog, BlogPage, ListBlogsParams } from '../gen/blog/v1/blog'
 import type { Comment, CommentThread, CreateCommentRequest } from '../gen/blog/v1/comment'
 import type { PageReactions, TargetReactions } from '../gen/blog/v1/reaction'
+import type { ChatHistory, ChatReply, ChatRequest } from '../gen/blog/v1/chat'
 
 export type { User, CurrentUser } from '../gen/blog/v1/user'
 export type { Blog, BlogPage, ListBlogsParams } from '../gen/blog/v1/blog'
 export type { Comment } from '../gen/blog/v1/comment'
 export type { ReactionCount, PageReactions, TargetReactions } from '../gen/blog/v1/reaction'
+export type { ChatMessage, ChatEdit, ChatRequest, ChatReply } from '../gen/blog/v1/chat'
 
 /**
  * "public" or "private" - what a post's `visibility` actually holds, kept as a union here rather
@@ -22,46 +25,6 @@ export type { ReactionCount, PageReactions, TargetReactions } from '../gen/blog/
  * "Contract Layer" for why), so the generated `Blog` type carries no such constraint of its own.
  */
 export type Visibility = 'public' | 'private'
-
-/** One change the assistant made to the post, shown beneath the message that made it. */
-export interface ChatEdit {
-  tool: string
-  summary: string
-}
-
-/** One turn of the conversation with the assistant. */
-export interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-  /** Absent for a user turn and for an assistant turn that only answered a question. */
-  edits?: ChatEdit[]
-  createdAt: string
-}
-
-/**
- * One exchange with the assistant: what was said on both sides, and the post as it now stands.
- *
- * The post comes back whole because the assistant edits the live draft server-side. When `updated`
- * is true the editor has to replace what is in its fields with `blog`, or the next save would
- * write the pre-assistant text back over it.
- */
-export interface ChatReply {
-  messages: ChatMessage[]
-  blog: Blog
-  updated: boolean
-}
-
-/** What the author is sending the assistant, along with the draft they are looking at. */
-export interface ChatRequest {
-  message: string
-  /**
-   * The unsaved draft on screen. Omitting these means "use the post as it was saved", which is why
-   * they are sent even when unchanged: asking to tighten a paragraph has to mean the paragraph the
-   * author can see.
-   */
-  title?: string
-  content?: string
-}
 
 /** Thrown for any non-2xx response, carrying the status so callers can treat 404 as "absent". */
 export class ApiError extends Error {
@@ -234,8 +197,11 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
     // The assistant conversation hangs off the post it is about, since that is all a chat is: it
     // has no identity apart from its post. Every one of these requires the caller to own the post
     // and to have the assistant enabled.
-    getChat: (slug: string) =>
-      request<{ messages: ChatMessage[] }>(baseUrl, authHeaders, 'GET', chatPath(slug)),
+    //
+    // `GET .../chat` answers with a `ChatHistory` for the same top-level-message reason
+    // `CommentThread` wraps a list above; unlike those, its `messages` field is what every caller
+    // already wants, so it is returned as-is rather than unwrapped.
+    getChat: (slug: string) => request<ChatHistory>(baseUrl, authHeaders, 'GET', chatPath(slug)),
     sendChatMessage: (slug: string, body: ChatRequest) =>
       request<ChatReply>(baseUrl, authHeaders, 'POST', chatPath(slug), body),
     clearChat: (slug: string) => request<void>(baseUrl, authHeaders, 'DELETE', chatPath(slug)),

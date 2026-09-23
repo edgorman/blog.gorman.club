@@ -106,6 +106,26 @@ jobs:
         working-directory: services/frontend
         shell: bash
         run: npm run build
+      # #173: the sweep that removed the last hand-written wire types also has to keep them from
+      # coming back, cheaper than re-litigating it in review each time. api.ts's whole job is
+      # declaring API types (see its own header comment), so any `export interface` there is
+      # exactly the kind of duplicate the Contract Layer (CLAUDE.md) exists to prevent - every wire
+      # type has to come from src/gen instead. internal/service is checked the same way: a
+      # `json:"..."` struct tag outside a test file means something is being hand-marshaled again,
+      # with debug.go's own health-check envelope (see its own comment for why) the one accepted
+      # exception. This rides lint-check, an already-required context, rather than adding a new one
+      # - see #154 for what happens when a new check is left out of required_status_checks.
+      - name: Wire Types
+        shell: bash
+        run: |
+          if grep -n '^export interface' services/frontend/src/lib/api.ts; then
+            echo "::error file=services/frontend/src/lib/api.ts::api.ts declares a hand-written interface - wire types must come from src/gen (see CLAUDE.md's Contract Layer)."
+            exit 1
+          fi
+          if grep -rn 'json:"' services/backend/internal/service --include='*.go' | grep -v '_test.go' | grep -v '/debug.go:'; then
+            echo "::error::internal/service declares a hand-written json-tagged struct outside debug.go - wire types must come from packages/protos (see CLAUDE.md's Contract Layer)."
+            exit 1
+          fi
 
   # Unlike lint-check, tests need transitive dependents: a change to a shared package must re-run
   # every test that exercises it, not just tests that touch the changed file directly. `package`

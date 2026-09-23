@@ -17,7 +17,7 @@ export const protobufPackage = "blog.v1";
  * It is the wire shape, not entity.Blog: author_username is resolved server-side
  * (internal/service/blog.go's blogResponse) and has no counterpart on the entity, while the
  * entity's DeletedAt - a soft-delete marker no response has ever included - has no field here at
- * all. See CLAUDE.md's "Contract Layer" for why protos model the wire rather than the domain.
+ * all. See `packages/protos/CLAUDE.md`'s "Contract Layer" for why protos model the wire rather than the domain.
  */
 export interface Blog {
   /**
@@ -42,7 +42,7 @@ export interface Blog {
    */
   tags: string[];
   /**
-   * "public" or "private" - see the "Contract Layer" section of CLAUDE.md for why this is a plain
+   * "public" or "private" - see the "Contract Layer" section of `packages/protos/CLAUDE.md` for why this is a plain
    * string rather than a proto enum.
    */
   visibility: string;
@@ -115,7 +115,7 @@ export interface BlogRequest {
   content: string;
   tags: string[];
   /**
-   * "public" or "private" - see the "Contract Layer" section of CLAUDE.md for why this is a plain
+   * "public" or "private" - see the "Contract Layer" section of `packages/protos/CLAUDE.md` for why this is a plain
    * string rather than a proto enum.
    */
   visibility: string;

@@ -28,7 +28,7 @@ const (
 // It is the wire shape, not entity.Comment: author_username is resolved server-side
 // (internal/service/comment.go's withCommentAuthors) and has no counterpart on the entity, the
 // same pattern blog.proto's Blog follows for author_username there. entity.Comment's ownership and
-// moderation rules stay hand-written policy - see CLAUDE.md's "Contract Layer" - so this message
+// moderation rules stay hand-written policy - see `packages/protos/CLAUDE.md`'s "Contract Layer" - so this message
 // carries no method of its own, only the fields a client reads.
 //
 // A comment is never edited, only written and removed, so there is no updated_at field and no

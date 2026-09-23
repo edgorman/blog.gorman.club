@@ -9,7 +9,7 @@ option go_package = "github.com/edgorman/blog.gorman.club/services/backend/inter
 // User is a profile as anybody may read it - what `GET /users/{username}` answers with.
 //
 // It is the wire shape, not entity.User: the entity also carries SubscribedUntil, which a public
-// lookup must never disclose and which therefore has no field here at all. See CLAUDE.md's
+// lookup must never disclose and which therefore has no field here at all. See `packages/protos/CLAUDE.md`'s
 // "Contract Layer" for why protos model the wire rather than the domain.
 message User {
   string id = 1;

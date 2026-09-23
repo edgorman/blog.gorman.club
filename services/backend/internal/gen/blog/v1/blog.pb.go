@@ -28,7 +28,7 @@ const (
 // It is the wire shape, not entity.Blog: author_username is resolved server-side
 // (internal/service/blog.go's blogResponse) and has no counterpart on the entity, while the
 // entity's DeletedAt - a soft-delete marker no response has ever included - has no field here at
-// all. See CLAUDE.md's "Contract Layer" for why protos model the wire rather than the domain.
+// all. See `packages/protos/CLAUDE.md`'s "Contract Layer" for why protos model the wire rather than the domain.
 type Blog struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The whole of the post's address, assigned once at creation and never revised - a retitle
@@ -46,7 +46,7 @@ type Blog struct {
 	// words). They narrow a feed and say nothing about who may read it, which is `visibility`'s
 	// alone.
 	Tags []string `protobuf:"bytes,6,rep,name=tags,proto3" json:"tags,omitempty"`
-	// "public" or "private" - see the "Contract Layer" section of CLAUDE.md for why this is a plain
+	// "public" or "private" - see the "Contract Layer" section of `packages/protos/CLAUDE.md` for why this is a plain
 	// string rather than a proto enum.
 	Visibility     string                 `protobuf:"bytes,7,opt,name=visibility,proto3" json:"visibility,omitempty"`
 	AllowedUserIds []string               `protobuf:"bytes,8,rep,name=allowed_user_ids,json=allowedUserIds,proto3" json:"allowed_user_ids,omitempty"`
@@ -315,7 +315,7 @@ type BlogRequest struct {
 	Title   string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
 	Content string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
 	Tags    []string               `protobuf:"bytes,3,rep,name=tags,proto3" json:"tags,omitempty"`
-	// "public" or "private" - see the "Contract Layer" section of CLAUDE.md for why this is a plain
+	// "public" or "private" - see the "Contract Layer" section of `packages/protos/CLAUDE.md` for why this is a plain
 	// string rather than a proto enum.
 	Visibility     string   `protobuf:"bytes,4,opt,name=visibility,proto3" json:"visibility,omitempty"`
 	AllowedUserIds []string `protobuf:"bytes,5,rep,name=allowed_user_ids,json=allowedUserIds,proto3" json:"allowed_user_ids,omitempty"`

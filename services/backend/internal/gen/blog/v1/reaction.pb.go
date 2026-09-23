@@ -148,7 +148,7 @@ func (x *TargetReactions) GetReactions() []*ReactionCount {
 
 // PageReactions is every reaction on a post page, in one response: the post's own, and each
 // reacted-to comment's by id. It is one message because it answers one query - a comment's
-// reactions are stored beneath the post alongside the post's own (see CLAUDE.md's "Reader
+// reactions are stored beneath the post alongside the post's own (see `services/backend/CLAUDE.md`'s "Reader
 // Engagement" section), so splitting them across the responses that carry a post and its comments
 // would mean reading them twice to say the same thing. Like ReactionCount and TargetReactions, it
 // has no entity counterpart - it exists only as a wire shape.

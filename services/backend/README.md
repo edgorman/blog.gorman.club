@@ -569,7 +569,7 @@ go test ./... -cover                   # test
 go build -o bin/backend ./cmd/backend  # build
 ```
 
-`go run ./cmd/backend` starts the server directly on `:8080`. CI runs the same checks via Pants (`pants --changed-since=origin/main lint check test`, see CLAUDE.md's "Building with Pants").
+`go run ./cmd/backend` starts the server directly on `:8080`. CI runs the same checks via Pants (`pants --changed-since=origin/main lint check test`, see .github/CLAUDE.md's "Building with Pants").
 
 ## Configuration
 

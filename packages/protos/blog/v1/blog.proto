@@ -12,7 +12,7 @@ option go_package = "github.com/edgorman/blog.gorman.club/services/backend/inter
 // It is the wire shape, not entity.Blog: author_username is resolved server-side
 // (internal/service/blog.go's blogResponse) and has no counterpart on the entity, while the
 // entity's DeletedAt - a soft-delete marker no response has ever included - has no field here at
-// all. See CLAUDE.md's "Contract Layer" for why protos model the wire rather than the domain.
+// all. See `packages/protos/CLAUDE.md`'s "Contract Layer" for why protos model the wire rather than the domain.
 message Blog {
   // The whole of the post's address, assigned once at creation and never revised - a retitle
   // changes `title` beneath a fixed slug rather than moving the URL. Slugs are unique across every
@@ -29,7 +29,7 @@ message Blog {
   // words). They narrow a feed and say nothing about who may read it, which is `visibility`'s
   // alone.
   repeated string tags = 6;
-  // "public" or "private" - see the "Contract Layer" section of CLAUDE.md for why this is a plain
+  // "public" or "private" - see the "Contract Layer" section of `packages/protos/CLAUDE.md` for why this is a plain
   // string rather than a proto enum.
   string visibility = 7;
   repeated string allowed_user_ids = 8;
@@ -80,7 +80,7 @@ message BlogRequest {
   string title = 1;
   string content = 2;
   repeated string tags = 3;
-  // "public" or "private" - see the "Contract Layer" section of CLAUDE.md for why this is a plain
+  // "public" or "private" - see the "Contract Layer" section of `packages/protos/CLAUDE.md` for why this is a plain
   // string rather than a proto enum.
   string visibility = 4;
   repeated string allowed_user_ids = 5;

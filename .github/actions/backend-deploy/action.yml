@@ -15,7 +15,7 @@ inputs:
     description: 'Cloud Run service name (e.g. backend-stag)'
     required: true
   image_tag:
-    description: 'Tag to push the image under - the commit SHA, per the Staging Deployments section of CLAUDE.md'
+    description: 'Tag to push the image under - the commit SHA, per the Staging Deployments section of `.github/CLAUDE.md`'
     required: true
   workload_identity_provider:
     description: 'The Workload Identity Provider resource name'

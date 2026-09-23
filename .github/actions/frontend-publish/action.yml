@@ -13,7 +13,7 @@ inputs:
     required: false
     default: 'dist'
   sha:
-    description: 'Commit SHA to publish the build under - see the Staging Deployments section of CLAUDE.md'
+    description: 'Commit SHA to publish the build under - see the Staging Deployments section of `.github/CLAUDE.md`'
     required: true
   workload_identity_provider:
     description: 'The Workload Identity Provider resource name'

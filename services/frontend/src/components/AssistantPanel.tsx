@@ -67,7 +67,7 @@ export function AssistantPanel({ slug, title, content, onEdited }: Props) {
       .then((reply) => {
         setMessages((previous) => [...previous, ...reply.messages])
         setMessage('')
-        // reply.blog is optional because the wire says so (see CLAUDE.md's "Contract Layer") - the
+        // reply.blog is optional because the wire says so (see `packages/protos/CLAUDE.md`'s "Contract Layer") - the
         // backend always sends one, but `updated` is the field that actually says whether it
         // changed, so both are checked before adopting it.
         if (reply.updated && reply.blog) onEdited({ title: reply.blog.title, content: reply.blog.content })

@@ -16,7 +16,7 @@ files(
 # default address.
 #
 # Deliberately carries no `scripts=[node_build_script(...)]`, so `pants package` builds nothing
-# here and CI runs `npm run build` directly instead - see CLAUDE.md's "Building with Pants".
+# here and CI runs `npm run build` directly instead - see .github/CLAUDE.md's "Building with Pants".
 package_json(
     dependencies=[":babel-jest-config"],
 )

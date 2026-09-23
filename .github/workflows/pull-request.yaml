@@ -100,7 +100,7 @@ jobs:
         run: npm run lint
       # The same `npm run build` (`tsc -b && vite build`) frontend-build runs on merge, so a broken
       # bundle fails the PR rather than the job that publishes it. Run directly rather than through
-      # Pants for the same reason go vet and oxlint above are: see CLAUDE.md's "Building with
+      # Pants for the same reason go vet and oxlint above are: see .github/CLAUDE.md's "Building with
       # Pants" for why the node_build_script route was dropped.
       - name: Build frontend
         working-directory: services/frontend
@@ -109,7 +109,7 @@ jobs:
       # #173: the sweep that removed the last hand-written wire types also has to keep them from
       # coming back, cheaper than re-litigating it in review each time. api.ts's whole job is
       # declaring API types (see its own header comment), so any `export interface` there is
-      # exactly the kind of duplicate the Contract Layer (CLAUDE.md) exists to prevent - every wire
+      # exactly the kind of duplicate the Contract Layer (`packages/protos/CLAUDE.md`) exists to prevent - every wire
       # type has to come from src/gen instead. internal/service is checked the same way: a
       # `json:"..."` struct tag outside a test file means something is being hand-marshaled again,
       # with debug.go's own health-check envelope (see its own comment for why) the one accepted
@@ -119,11 +119,11 @@ jobs:
         shell: bash
         run: |
           if grep -n '^export interface' services/frontend/src/lib/api.ts; then
-            echo "::error file=services/frontend/src/lib/api.ts::api.ts declares a hand-written interface - wire types must come from src/gen (see CLAUDE.md's Contract Layer)."
+            echo "::error file=services/frontend/src/lib/api.ts::api.ts declares a hand-written interface - wire types must come from src/gen (see packages/protos/CLAUDE.md's Contract Layer)."
             exit 1
           fi
           if grep -rn 'json:"' services/backend/internal/service --include='*.go' | grep -v '_test.go' | grep -v '/debug.go:'; then
-            echo "::error::internal/service declares a hand-written json-tagged struct outside debug.go - wire types must come from packages/protos (see CLAUDE.md's Contract Layer)."
+            echo "::error::internal/service declares a hand-written json-tagged struct outside debug.go - wire types must come from packages/protos (see packages/protos/CLAUDE.md's Contract Layer)."
             exit 1
           fi
 

@@ -25,7 +25,7 @@ export const protobufPackage = "blog.v1";
  * mechanism, not the small change this would need to be to be worth it. More basically, the five
  * glyphs are policy - what a reaction may be, exactly what entity.ValidEmoji decides - and this
  * layer models the wire, not policy, the same line that keeps entity.ValidEmoji itself
- * hand-written per #110's carve-out (see CLAUDE.md's "Contract Layer"). So the values can still
+ * hand-written per #110's carve-out (see `packages/protos/CLAUDE.md`'s "Contract Layer"). So the values can still
  * drift between the two literals; only the shape is guaranteed identical, and that is the
  * accepted, documented trade rather than an oversight.
  */

@@ -13,15 +13,15 @@ inputs:
     required: false
     default: 'dist'
   backend_url:
-    description: 'Base URL of the backend service, written into config.json for the app to read at runtime (see CLAUDE.md). Omit to deploy the build unmodified.'
+    description: 'Base URL of the backend service, written into config.json for the app to read at runtime (see Production Releases in .github/CLAUDE.md). Omit to deploy the build unmodified.'
     required: false
     default: ''
   version:
-    description: 'Release tag written into config.json for the app to display and link to its GitHub release (see CLAUDE.md and issue #152) - on staging, the tag this commit is about to become (see push-commit.yaml''s "version" job), on production the tag actually promoted. Omit to leave it out of config.json.'
+    description: 'Release tag written into config.json for the app to display and link to its GitHub release (see .github/CLAUDE.md and issue #152) - on staging, the tag this commit is about to become (see push-commit.yaml''s "version" job), on production the tag actually promoted. Omit to leave it out of config.json.'
     required: false
     default: ''
   environment:
-    description: 'Environment name written into config.json - "staging" or "production" (see CLAUDE.md and issue #152). Omit to leave it out of config.json.'
+    description: 'Environment name written into config.json - "staging" or "production" (see .github/CLAUDE.md and issue #152). Omit to leave it out of config.json.'
     required: false
     default: ''
 

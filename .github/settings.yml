@@ -17,7 +17,7 @@ repository:
   default_branch: main
 
   # Merge button behaviour — squash-only keeps trunk history linear, which the
-  # pre-release/release tagging strategy in CLAUDE.md depends on.
+  # pre-release/release tagging strategy in .github/CLAUDE.md depends on.
   allow_squash_merge: true
   allow_merge_commit: false
   allow_rebase_merge: false

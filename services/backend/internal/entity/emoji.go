@@ -10,7 +10,7 @@ import genblogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal
 //
 // It is read off the generated blog.v1.AllowedEmojis message (packages/protos/blog/v1/emoji.proto)
 // rather than written as a plain literal, so the shape a client eventually decodes off the wire is
-// the same shape this package validates against - see CLAUDE.md's "Contract Layer" section.
+// the same shape this package validates against - see `packages/protos/CLAUDE.md`'s "Contract Layer" section.
 var AllowedEmojis = (&genblogv1.AllowedEmojis{
 	Emoji: []string{"👍", "👎", "❤️", "😄", "🎉"},
 }).GetEmoji()

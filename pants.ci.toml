@@ -1,5 +1,5 @@
 # CI-only settings, layered on top of pants.toml via PANTS_CONFIG_FILES (set by the
-# pantsbuild/actions/init-pants composite action). See CLAUDE.md's "Building with Pants" section
+# pantsbuild/actions/init-pants composite action). See .github/CLAUDE.md's "Building with Pants" section
 # for how init-pants wires remote_cache_* below to the GitHub Actions cache - every composite
 # action that runs `pants` under this config must pass its `experimental-remote-cache-via-gha`
 # input, or these options have nowhere to point and Pants refuses to bootstrap.

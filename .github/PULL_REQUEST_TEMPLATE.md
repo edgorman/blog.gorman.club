@@ -2,6 +2,8 @@
 
 <!-- What does this change do, and why? -->
 
+Closes #<!-- optional: issue number this PR closes, e.g. Closes #123 -->
+
 ## Area
 
 <!-- Check all that apply; label the PR to match (see .github/settings.yml). -->

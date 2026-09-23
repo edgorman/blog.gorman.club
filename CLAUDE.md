@@ -20,6 +20,31 @@ Each language's manifest lives in the directory that owns that language's code, 
 
 Shared Go code, when there is any, therefore gets a second module beside the first — `packages/go`, consumed through a `require` paired with a relative `replace` — rather than one module hoisted to the root to cover both. Generated code follows its consumer rather than the contract it came from: a shared `.proto` is the shared thing, while the Go and TypeScript bindings generated from it are build output committed for the sake of editor tooling, and belong next to the service that compiles them.
 
+## Commands
+
+What a contributor (or Claude Code) runs locally to check a change before pushing - each language's own tooling, per Repository Structure above, mirroring what `pull-request.yaml` runs in CI:
+
+```
+# Backend (services/backend)
+go test ./... && go vet ./... && gofmt -l .
+
+# Frontend (services/frontend)
+npm test && npm run lint && npm run build
+
+# Protos (packages/protos) - commit the regenerated internal/gen and src/gen alongside the .proto
+buf lint && buf format -d --exit-code && buf generate
+
+# Infrastructure
+terraform fmt -check -recursive infrastructure
+
+# CI parity (repo root) - only to reproduce a Pants-specific CI failure
+pants tailor --check :: && pants --changed-since=origin/main lint check
+```
+
+Never run `terraform apply`, `gcloud run deploy`, `wrangler` or anything else that mutates a real environment by hand: every one of those goes through the workflows in CI/CD below. `.claude/settings.json` denies them to Claude Code outright.
+
+In a Claude Code cloud session, `.claude/hooks/session-start.sh` installs the pinned toolchain these need. Two of them still depend on the session's network access: `terraform init`/`validate` needs `registry.terraform.io`, and `pants` currently fails to bootstrap because its bundled Python rejects the session proxy's CA certificate. The Go, npm and buf commands work with the default allowlist.
+
 ## Contract Layer
 
 `/packages/protos` holds the `.proto` definitions shared across languages, built with [buf](https://buf.build) rather than plain `protoc`. It exists to close a gap plain Go/TypeScript duplication leaves open: an entity shape declared once in Go (`services/backend/internal/entity`) and hand-copied into TypeScript has nothing enforcing the two agree — a field renamed on one side is caught at runtime, if at all. A shared `.proto` message is instead the one definition both sides generate from.

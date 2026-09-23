@@ -29,9 +29,12 @@ const blogSlugAttempts = 5
 // uid, which is never public. Resolving it on read rather than storing it on the post means
 // renaming reaches every post at once instead of leaving old ones attributed to a name nobody
 // holds. It is empty when the owner never created a profile, which a post does not require.
+// The json tag blogResponse carried here before #173 was vestigial: blogMessage always builds the
+// wire shape by reading these fields directly rather than by marshaling this struct itself, so
+// nothing ever read it.
 type blogResponse struct {
 	entity.Blog
-	AuthorUsername string `json:"authorUsername"`
+	AuthorUsername string
 }
 
 // blogMessage is the wire shape of a single post: what GetBlog, CreateBlog, and UpdateBlog answer

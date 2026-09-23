@@ -11,12 +11,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 )
-
-// apiError is the body of every non-2xx response, so clients parse success and failure the same way.
-type apiError struct {
-	Error string `json:"error"`
-}
 
 // protoJSON is how every generated message reaches the wire. The options are the whole of the
 // compatibility story between encoding/json and protojson, so they are set once here rather than
@@ -91,8 +87,11 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
+// writeError answers with the wire's one error envelope (blogv1.ErrorResponse, #173), shared
+// across every resource rather than declared per one: every handler fails the same way regardless
+// of what it was doing, so there is exactly one shape to keep in sync with api.ts's own read of it.
 func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, apiError{Error: message})
+	writeProto(w, status, &blogv1.ErrorResponse{Error: message})
 }
 
 // writeValidationError reports a failed entity rule as a 400 carrying the field and reason.

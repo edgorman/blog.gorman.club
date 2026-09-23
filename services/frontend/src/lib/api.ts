@@ -5,13 +5,16 @@
  * Wire types come from `src/gen` rather than being declared here - see CLAUDE.md's "Contract
  * Layer". `User`/`CurrentUser` moved in #169, `Blog`/`BlogPage`/`ListBlogsParams` in #170,
  * `Comment`/`ReactionCount`/`PageReactions` in #171, `ChatMessage`/`ChatEdit`/`ChatRequest`/
- * `ChatReply` in #172.
+ * `ChatReply` in #172, and the shared `ErrorResponse` envelope in #173, which also closed the
+ * sweep: this file declares no `export interface` of its own, and CI fails a PR that adds one back
+ * (see the "Wire Types" step in `.github/workflows/pull-request.yaml`).
  */
 import type { CurrentUser, User } from '../gen/blog/v1/user'
 import type { Blog, BlogPage, ListBlogsParams } from '../gen/blog/v1/blog'
 import type { Comment, CommentThread, CreateCommentRequest } from '../gen/blog/v1/comment'
 import type { PageReactions, TargetReactions } from '../gen/blog/v1/reaction'
 import type { ChatHistory, ChatReply, ChatRequest } from '../gen/blog/v1/chat'
+import type { ErrorResponse } from '../gen/blog/v1/error'
 
 export type { User, CurrentUser } from '../gen/blog/v1/user'
 export type { Blog, BlogPage, ListBlogsParams } from '../gen/blog/v1/blog'
@@ -88,10 +91,11 @@ async function request<T>(
   })
 
   if (!response.ok) {
-    // Every non-2xx response is `{"error": "..."}`, but fall back to the status if that changes.
+    // Every non-2xx response is an ErrorResponse (see CLAUDE.md's "Contract Layer"), but fall back
+    // to the status if parsing it fails for any reason.
     const message = await response
       .json()
-      .then((body: { error?: string }) => body.error)
+      .then((body: ErrorResponse) => body.error)
       .catch(() => undefined)
     throw new ApiError(response.status, message ?? `Request failed with ${response.status}`)
   }

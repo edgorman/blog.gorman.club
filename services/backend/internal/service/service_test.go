@@ -551,14 +551,22 @@ func withUID(req *http.Request, uid string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), callerContextKey, entity.Caller{UID: uid}))
 }
 
+// wireError is what a non-2xx response body actually carries, spelled out here rather than
+// decoded into blogv1.ErrorResponse - see wireBlog (blog_test.go) and wireComment (comment_test.go)
+// for why: reusing the production type would hide the wire, since both sides would move together
+// and a field leaving the body would assert nothing. Declared separately, a rename fails here.
+type wireError struct {
+	Error string `json:"error"`
+}
+
 // decodeAPIError asserts the response carries a JSON error body rather than plain text.
-func decodeAPIError(t *testing.T, rec *httptest.ResponseRecorder) apiError {
+func decodeAPIError(t *testing.T, rec *httptest.ResponseRecorder) wireError {
 	t.Helper()
 
 	if ct := rec.Result().Header.Get("Content-Type"); ct != "application/json" {
 		t.Errorf("Content-Type = %q, want %q", ct, "application/json")
 	}
-	var body apiError
+	var body wireError
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error response: %v", err)
 	}

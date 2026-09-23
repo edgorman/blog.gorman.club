@@ -25,7 +25,7 @@ const (
 // User is a profile as anybody may read it - what `GET /users/{username}` answers with.
 //
 // It is the wire shape, not entity.User: the entity also carries SubscribedUntil, which a public
-// lookup must never disclose and which therefore has no field here at all. See CLAUDE.md's
+// lookup must never disclose and which therefore has no field here at all. See `packages/protos/AGENTS.md`'s
 // "Contract Layer" for why protos model the wire rather than the domain.
 type User struct {
 	state protoimpl.MessageState `protogen:"open.v1"`

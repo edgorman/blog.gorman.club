@@ -2,7 +2,7 @@
  * Client for the backend API (see /services/backend). Callers pass the header map from
  * useGoogleAuth, so this module knows nothing about any auth provider.
  *
- * Wire types come from `src/gen` rather than being declared here - see CLAUDE.md's "Contract
+ * Wire types come from `src/gen` rather than being declared here - see packages/protos/AGENTS.md's "Contract
  * Layer". `User`/`CurrentUser` moved in #169, `Blog`/`BlogPage`/`ListBlogsParams` in #170,
  * `Comment`/`ReactionCount`/`PageReactions` in #171, `ChatMessage`/`ChatEdit`/`ChatRequest`/
  * `ChatReply` in #172, and the shared `ErrorResponse` envelope in #173, which also closed the
@@ -24,7 +24,7 @@ export type { ChatMessage, ChatEdit, ChatRequest, ChatReply } from '../gen/blog/
 
 /**
  * "public" or "private" - what a post's `visibility` actually holds, kept as a union here rather
- * than derived from `Blog['visibility']`: the proto field is a plain string (see CLAUDE.md's
+ * than derived from `Blog['visibility']`: the proto field is a plain string (see `packages/protos/AGENTS.md`'s
  * "Contract Layer" for why), so the generated `Blog` type carries no such constraint of its own.
  */
 export type Visibility = 'public' | 'private'
@@ -91,7 +91,7 @@ async function request<T>(
   })
 
   if (!response.ok) {
-    // Every non-2xx response is an ErrorResponse (see CLAUDE.md's "Contract Layer"), but fall back
+    // Every non-2xx response is an ErrorResponse (see `packages/protos/AGENTS.md`'s "Contract Layer"), but fall back
     // to the status if parsing it fails for any reason.
     const message = await response
       .json()
@@ -170,7 +170,7 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
     // one - while writing to it needs a credential, since a comment is signed by whoever left it.
     //
     // `GET .../comments` answers with a `CommentThread` rather than a bare array - protojson can
-    // only marshal a message at the top level (see CLAUDE.md's "Contract Layer") - so the list is
+    // only marshal a message at the top level (see `packages/protos/AGENTS.md`'s "Contract Layer") - so the list is
     // unwrapped here, and every other caller still sees a plain `Comment[]`.
     listComments: (slug: string) =>
       request<CommentThread>(baseUrl, authHeaders, 'GET', commentsPath(slug)).then((thread) => thread.comments),

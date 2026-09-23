@@ -24,7 +24,7 @@ const NONE: ReactionCount[] = []
  * The page's reactions kept as plain count lists, both on the post and per comment - the shape
  * every caller here wants to draw with. The wire's `PageReactions.comments` is a map of
  * `TargetReactions` (a one-field wrapper, since a map value and a top-level protojson body can
- * each only be a message - see CLAUDE.md's "Contract Layer"), unwrapped once on load rather than
+ * each only be a message - see `packages/protos/AGENTS.md`'s "Contract Layer"), unwrapped once on load rather than
  * carried through this hook's state.
  */
 interface ReactionsState {

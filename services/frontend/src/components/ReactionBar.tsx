@@ -9,7 +9,7 @@ import type { ReactionCount } from '../lib/api'
  *
  * Typed off the generated blog.v1.AllowedEmojis message (packages/protos/blog/v1/emoji.proto)
  * rather than a bare string[], the same way entity.AllowedEmojis reads off it on the backend - see
- * CLAUDE.md's "Contract Layer" section. Renaming the message's `emoji` field is a type error here,
+ * `packages/protos/AGENTS.md`'s "Contract Layer" section. Renaming the message's `emoji` field is a type error here,
  * not a silent runtime mismatch.
  */
 const REACTIONS: AllowedEmojis['emoji'] = ['👍', '👎', '❤️', '😄', '🎉']

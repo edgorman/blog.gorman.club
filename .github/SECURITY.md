@@ -12,5 +12,5 @@ steps, potential impact) so it can be triaged quickly.
 ## Scope
 
 This repository spans infrastructure (Terraform), backend services, and
-the frontend static site described in `CLAUDE.md`. Vulnerabilities in any
+the frontend static site described in `AGENTS.md`. Vulnerabilities in any
 of these areas, or in the CI/CD pipelines that deploy them, are in scope.

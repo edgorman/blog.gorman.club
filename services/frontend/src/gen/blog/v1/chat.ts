@@ -31,7 +31,7 @@ export interface ChatEdit {
  * role is a plain string ("user" or "assistant"), not a proto enum, for the same reason
  * blog.proto's Blog.visibility is: protojson serializes an enum by its member name, which would
  * force an ALL_CAPS rewrite on the wire for a field entity.ChatRole already constrains server-side
- * (see CLAUDE.md's "Contract Layer"). entity.ChatMessage.Validate stays the one place that
+ * (see `packages/protos/AGENTS.md`'s "Contract Layer"). entity.ChatMessage.Validate stays the one place that
  * enforces it.
  */
 export interface ChatMessage {
@@ -66,7 +66,7 @@ export interface ChatHistory {
  * wants the assistant to see that. The editor is a form with unsaved changes in it - "tighten this
  * paragraph" has to mean the paragraph on screen, not the one last written to Firestore - which is
  * exactly what a message field's presence (rather than a scalar's) preserves on the wire; see
- * CLAUDE.md's note on useOptionals=messages for why that distinction survives at all.
+ * `packages/protos/AGENTS.md`'s note on useOptionals=messages for why that distinction survives at all.
  */
 export interface ChatRequest {
   message: string;

@@ -28,7 +28,7 @@ import (
 //     `createdAt`, not `created_at` - which is what the hand-written `json` tags already produced
 //     and what the frontend already reads.
 //
-// See CLAUDE.md's "Contract Layer" for why responses are built from generated messages at all.
+// See `packages/protos/AGENTS.md`'s "Contract Layer" for why responses are built from generated messages at all.
 var protoJSON = protojson.MarshalOptions{EmitDefaultValues: true}
 
 // writeProto is writeJSON for a generated message. It exists because encoding/json cannot

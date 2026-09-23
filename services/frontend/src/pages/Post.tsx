@@ -111,7 +111,9 @@ export function Post() {
       </div>
       <header style={{ paddingBottom: 'var(--space-4)' }}>
         <div className="post-meta">
-          <span className="text-muted feed-row-date">{formatDate(post.createdAt)}</span>
+          {/* Optional because the wire says so: createdAt is a google.protobuf.Timestamp, and
+              protojson may leave a message field out of the body - see api.ts's Blog. */}
+          {post.createdAt && <span className="text-muted feed-row-date">{formatDate(post.createdAt)}</span>}
           {post.visibility === 'private' && <span className="tag tag-outline">private</span>}
         </div>
         <h1 className="title-post">{post.title || '(untitled)'}</h1>

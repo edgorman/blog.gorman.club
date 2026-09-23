@@ -13,7 +13,9 @@ const blog: Blog = {
   authorUsername: 'calm-smiling-kestrel',
   title: 'Hello world',
   content: '# Hi\n\nBody text.',
+  tags: [],
   visibility: 'public',
+  allowedUserIds: [],
   createdAt: '2026-08-01T00:00:00Z',
   updatedAt: '2026-08-01T00:00:00Z',
 }

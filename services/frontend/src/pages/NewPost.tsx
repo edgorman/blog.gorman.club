@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GoogleSignInButton } from '../components/GoogleSignInButton'
 import { useApp } from '../context/AppContext'
-import { errorMessage, postPath, type Blog } from '../lib/api'
+import { errorMessage, postPath, type Blog, type Visibility } from '../lib/api'
 import { renderMarkdown } from '../lib/markdown'
 import { MAX_TAGS, parseTags } from '../lib/tags'
 
@@ -16,7 +16,6 @@ Start writing in **markdown**. A blank line makes a new paragraph.
 Switch to Preview any time to see the rendered post.`
 
 type Mode = 'write' | 'preview'
-type Visibility = Blog['visibility']
 
 export function NewPost() {
   const { api, user, authError, authReady, renderSignInButton } = useApp()

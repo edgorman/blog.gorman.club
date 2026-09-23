@@ -29,7 +29,7 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
 function reply(overrides: Partial<ChatReply> = {}): ChatReply {
   return {
     messages: [
-      { role: 'user', content: 'say dog instead', createdAt: '2026-08-01T00:00:01Z' },
+      { role: 'user', content: 'say dog instead', edits: [], createdAt: '2026-08-01T00:00:01Z' },
       {
         role: 'assistant',
         content: 'Swapped the cat for a dog.',
@@ -56,7 +56,7 @@ describe('AssistantPanel', () => {
     const api = fakeApi({
       getChat: jest.fn().mockResolvedValue({
         messages: [
-          { role: 'user', content: 'add an intro', createdAt: '2026-08-01T00:00:01Z' },
+          { role: 'user', content: 'add an intro', edits: [], createdAt: '2026-08-01T00:00:01Z' },
           {
             role: 'assistant',
             content: 'Added one.',
@@ -110,8 +110,8 @@ describe('AssistantPanel', () => {
   it('leaves the editor alone when nothing was edited', async () => {
     const answer = reply({
       messages: [
-        { role: 'user', content: 'is it ok?', createdAt: '2026-08-01T00:00:01Z' },
-        { role: 'assistant', content: 'It reads well.', createdAt: '2026-08-01T00:00:02Z' },
+        { role: 'user', content: 'is it ok?', edits: [], createdAt: '2026-08-01T00:00:01Z' },
+        { role: 'assistant', content: 'It reads well.', edits: [], createdAt: '2026-08-01T00:00:02Z' },
       ],
       blog,
       updated: false,
@@ -156,7 +156,9 @@ describe('AssistantPanel', () => {
     const api = fakeApi({
       getChat: jest
         .fn()
-        .mockResolvedValue({ messages: [{ role: 'user', content: 'add an intro', createdAt: '2026-08-01T00:00:01Z' }] }),
+        .mockResolvedValue({
+          messages: [{ role: 'user', content: 'add an intro', edits: [], createdAt: '2026-08-01T00:00:01Z' }],
+        }),
       clearChat,
     })
     const onEdited = renderPanel(api)

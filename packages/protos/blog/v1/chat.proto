@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package blog.v1;
+
+import "blog/v1/blog.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1;blogv1";
+
+// This file is the browser<->backend hop only - one of two protocols the assistant feature speaks,
+// and deliberately the only one modeled here. internal/repository/gemini carries its own
+// hand-written wire types (protocol.go) for the backend<->Gemini hop, and those stay exactly as
+// they are: they describe a third-party API's contract, which this repo does not define and
+// cannot version, so putting them in packages/protos would claim ownership of a shape that is
+// Google's to change. The two hops sit closer together here than anywhere else in this service -
+// the assistant is the one feature that is a middle layer rather than an endpoint - which is
+// exactly why this boundary is worth stating rather than assuming it's obvious.
+
+// ChatEdit records one change the assistant made to the post, alongside what it said - the wire
+// counterpart of entity.ChatEdit. It is a description rather than a diff: the post itself is the
+// record of its own contents, and a stored/transmitted diff would only be a second copy to fall
+// out of date.
+message ChatEdit {
+  // The name of the tool the model called, e.g. "set_title".
+  string tool = 1;
+  // A one-line description of the change, written for the person reading the chat.
+  string summary = 2;
+}
+
+// ChatMessage is one turn of the conversation, as clients see it - what GetChat's history and
+// SendChatMessage's reply both carry.
+//
+// role is a plain string ("user" or "assistant"), not a proto enum, for the same reason
+// blog.proto's Blog.visibility is: protojson serializes an enum by its member name, which would
+// force an ALL_CAPS rewrite on the wire for a field entity.ChatRole already constrains server-side
+// (see CLAUDE.md's "Contract Layer"). entity.ChatMessage.Validate stays the one place that
+// enforces it.
+message ChatMessage {
+  string role = 1;
+  // Empty for an assistant turn that only edited and said nothing about it - see
+  // entity.ChatMessage.Validate, which requires content or edits but not both.
+  string content = 2;
+  // Empty for a user message and for an assistant turn that only answered a question.
+  repeated ChatEdit edits = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+// ChatHistory is a whole conversation about a post - what GetChat answers with. It exists purely
+// because protojson can only marshal a message at the top level, never a bare array (the same
+// reason comment.proto's CommentThread and reaction.proto's TargetReactions each wrap a repeated
+// field); the wire shape a client actually reads is still a plain list, carried in `messages`.
+message ChatHistory {
+  repeated ChatMessage messages = 1;
+}
+
+// ChatRequest is the body of `POST /blogs/{slug}/chat` - one message from the author, optionally
+// carrying the draft they are looking at.
+//
+// title and content are optional, not because the assistant can be asked without them, but because
+// omitting them and sending an explicit empty string are different requests: omitted means "use
+// the post as it was saved", while "" is an author who has emptied the field in the editor and
+// wants the assistant to see that. The editor is a form with unsaved changes in it - "tighten this
+// paragraph" has to mean the paragraph on screen, not the one last written to Firestore - which is
+// exactly what a message field's presence (rather than a scalar's) preserves on the wire; see
+// CLAUDE.md's note on useOptionals=messages for why that distinction survives at all.
+message ChatRequest {
+  string message = 1;
+  optional string title = 2;
+  optional string content = 3;
+}
+
+// ChatReply is one exchange with the assistant: what was said on both sides, and the post as it
+// now stands. It is the response to `POST /blogs/{slug}/chat`.
+//
+// blog comes back whole rather than as a diff because the assistant edits the author's live draft
+// server-side: the editor has to replace what is in its fields with what was actually stored, or
+// the next save would write the pre-assistant text back over it. updated says whether that
+// happened, so an editor whose author is still typing is only interrupted when there is really
+// something to show them.
+message ChatReply {
+  repeated ChatMessage messages = 1;
+  Blog blog = 2;
+  bool updated = 3;
+}

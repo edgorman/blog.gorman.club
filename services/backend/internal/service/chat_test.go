@@ -12,7 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
@@ -76,28 +79,67 @@ func chatRequestFor(method string, body io.Reader) *http.Request {
 	return withUID(req, chatOwner)
 }
 
-func chatBody(t *testing.T, body any) io.Reader {
+// chatRequestBody marshals a chat turn the way a real client would, through protojson rather than
+// encoding/json - see blogRequestBody (blog_test.go) for why.
+func chatRequestBody(t *testing.T, body *blogv1.ChatRequest) []byte {
 	t.Helper()
 
-	encoded, err := json.Marshal(body)
+	encoded, err := protojson.Marshal(body)
 	if err != nil {
 		t.Fatalf("encode body: %v", err)
 	}
-	return bytes.NewReader(encoded)
+	return encoded
 }
 
-func (f *chatFixture) send(t *testing.T, body any) *httptest.ResponseRecorder {
+func (f *chatFixture) send(t *testing.T, body *blogv1.ChatRequest) *httptest.ResponseRecorder {
 	t.Helper()
 
 	rec := httptest.NewRecorder()
-	f.service.SendChatMessage(rec, chatRequestFor(http.MethodPost, chatBody(t, body)))
+	f.service.SendChatMessage(rec, chatRequestFor(http.MethodPost, bytes.NewReader(chatRequestBody(t, body))))
 	return rec
 }
 
-func decodeChatReply(t *testing.T, rec *httptest.ResponseRecorder) chatReplyResponse {
+// wireChatEdit, wireChatMessage, and wireChatReply are what a response body actually carries,
+// spelled out here rather than decoded into entity.ChatEdit/entity.ChatMessage or blogResponse -
+// see wireBlog (blog_test.go) and wireComment (comment_test.go) for why: reusing the production
+// type would hide the wire, since both sides would move together and a field leaving the body
+// would assert nothing. Declared separately, a rename fails here.
+type wireChatEdit struct {
+	Tool    string `json:"tool"`
+	Summary string `json:"summary"`
+}
+
+type wireChatMessage struct {
+	Role      string         `json:"role"`
+	Content   string         `json:"content"`
+	Edits     []wireChatEdit `json:"edits"`
+	CreatedAt string         `json:"createdAt"`
+}
+
+type wireChatHistory struct {
+	Messages []wireChatMessage `json:"messages"`
+}
+
+type wireChatReply struct {
+	Messages []wireChatMessage `json:"messages"`
+	Blog     wireBlog          `json:"blog"`
+	Updated  bool              `json:"updated"`
+}
+
+func decodeChatReply(t *testing.T, rec *httptest.ResponseRecorder) wireChatReply {
 	t.Helper()
 
-	var got chatReplyResponse
+	var got wireChatReply
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	return got
+}
+
+func decodeChatHistory(t *testing.T, rec *httptest.ResponseRecorder) wireChatHistory {
+	t.Helper()
+
+	var got wireChatHistory
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -118,7 +160,7 @@ func TestSendChatMessage_AppliesEdits(t *testing.T) {
 		}, nil
 	}
 
-	rec := f.send(t, map[string]string{"message": "say dog instead"})
+	rec := f.send(t, &blogv1.ChatRequest{Message: "say dog instead"})
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -139,10 +181,10 @@ func TestSendChatMessage_AppliesEdits(t *testing.T) {
 	if len(got.Messages) != 2 {
 		t.Fatalf("len(Messages) = %d, want the exchange on both sides", len(got.Messages))
 	}
-	if got.Messages[0].Role != entity.ChatRoleUser || got.Messages[0].Content != "say dog instead" {
+	if got.Messages[0].Role != string(entity.ChatRoleUser) || got.Messages[0].Content != "say dog instead" {
 		t.Errorf("Messages[0] = %+v, want the question", got.Messages[0])
 	}
-	if got.Messages[1].Role != entity.ChatRoleAssistant || len(got.Messages[1].Edits) != 1 {
+	if got.Messages[1].Role != string(entity.ChatRoleAssistant) || len(got.Messages[1].Edits) != 1 {
 		t.Errorf("Messages[1] = %+v, want the answer and its edit", got.Messages[1])
 	}
 
@@ -160,11 +202,7 @@ func TestSendChatMessage_AppliesEdits(t *testing.T) {
 func TestSendChatMessage_UsesSuppliedDraft(t *testing.T) {
 	f := newChatFixture(t)
 
-	f.send(t, map[string]any{
-		"message": "any thoughts?",
-		"title":   "Unsaved title",
-		"content": "unsaved body",
-	})
+	f.send(t, &blogv1.ChatRequest{Message: "any thoughts?", Title: ptr("Unsaved title"), Content: ptr("unsaved body")})
 
 	if len(f.assistant.requests) != 1 {
 		t.Fatalf("assistant called %d times, want 1", len(f.assistant.requests))
@@ -179,7 +217,7 @@ func TestSendChatMessage_UsesSuppliedDraft(t *testing.T) {
 func TestSendChatMessage_DefaultsToStoredDraft(t *testing.T) {
 	f := newChatFixture(t)
 
-	f.send(t, map[string]string{"message": "any thoughts?"})
+	f.send(t, &blogv1.ChatRequest{Message: "any thoughts?"})
 
 	draft := f.assistant.requests[0].Draft
 	if draft.Title != "Hello" || draft.Content != "the cat sat" {
@@ -195,7 +233,7 @@ func TestSendChatMessage_WithoutEditsDoesNotWrite(t *testing.T) {
 		return repository.AssistantReply{Text: "It reads well.", Draft: req.Draft}, nil
 	}
 
-	rec := f.send(t, map[string]any{"message": "is it ok?", "content": "unsaved body"})
+	rec := f.send(t, &blogv1.ChatRequest{Message: "is it ok?", Content: ptr("unsaved body")})
 
 	got := decodeChatReply(t, rec)
 	if got.Updated {
@@ -219,7 +257,7 @@ func TestSendChatMessage_NoOpEditDoesNotWrite(t *testing.T) {
 		}, nil
 	}
 
-	got := decodeChatReply(t, f.send(t, map[string]string{"message": "rewrite it"}))
+	got := decodeChatReply(t, f.send(t, &blogv1.ChatRequest{Message: "rewrite it"}))
 
 	if got.Updated {
 		t.Error("Updated = true, want false - the draft came back identical")
@@ -235,7 +273,7 @@ func TestSendChatMessage_SendsHistory(t *testing.T) {
 		Messages: []entity.ChatMessage{{Role: entity.ChatRoleUser, Content: "add an intro"}},
 	})
 
-	f.send(t, map[string]string{"message": "make that shorter"})
+	f.send(t, &blogv1.ChatRequest{Message: "make that shorter"})
 
 	history := f.assistant.requests[0].History
 	if len(history) != 1 || history[0].Content != "add an intro" {
@@ -251,7 +289,7 @@ func TestSendChatMessage_ProviderFailureStoresNothing(t *testing.T) {
 		return repository.AssistantReply{}, errors.New("gemini returned 503")
 	}
 
-	rec := f.send(t, map[string]any{"message": "rewrite it", "content": "unsaved body"})
+	rec := f.send(t, &blogv1.ChatRequest{Message: "rewrite it", Content: ptr("unsaved body")})
 
 	if rec.Result().StatusCode != http.StatusBadGateway {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadGateway)
@@ -276,7 +314,7 @@ func TestSendChatMessage_Unconfigured(t *testing.T) {
 		return repository.AssistantReply{}, repository.ErrAssistantNotConfigured
 	}
 
-	rec := f.send(t, map[string]string{"message": "rewrite it"})
+	rec := f.send(t, &blogv1.ChatRequest{Message: "rewrite it"})
 
 	if rec.Result().StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusServiceUnavailable)
@@ -290,7 +328,7 @@ func TestSendChatMessage_SilentReply(t *testing.T) {
 		return repository.AssistantReply{Draft: req.Draft}, nil
 	}
 
-	got := decodeChatReply(t, f.send(t, map[string]string{"message": "..."}))
+	got := decodeChatReply(t, f.send(t, &blogv1.ChatRequest{Message: "..."}))
 
 	if got.Messages[1].Content == "" {
 		t.Error("the assistant's turn is empty, want a stand-in reply")
@@ -301,7 +339,7 @@ func TestSendChatMessage_RejectsEmptyMessage(t *testing.T) {
 	f := newChatFixture(t)
 
 	for _, message := range []string{"", "   ", strings.Repeat("a", entity.MaxChatMessageLength+1)} {
-		rec := f.send(t, map[string]string{"message": message})
+		rec := f.send(t, &blogv1.ChatRequest{Message: message})
 
 		if rec.Result().StatusCode != http.StatusBadRequest {
 			t.Errorf("status for %d-character message = %d, want %d",
@@ -318,7 +356,7 @@ func TestSendChatMessage_RejectsEmptyMessage(t *testing.T) {
 func TestSendChatMessage_NotSubscribed(t *testing.T) {
 	f := newChatFixture(t, false)
 
-	rec := f.send(t, map[string]string{"message": "rewrite it"})
+	rec := f.send(t, &blogv1.ChatRequest{Message: "rewrite it"})
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
@@ -334,7 +372,7 @@ func TestSendChatMessage_NotSubscribed(t *testing.T) {
 func TestSendChatMessage_NotOwner(t *testing.T) {
 	f := newChatFixture(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/blogs/"+chatSlug+"/chat", chatBody(t, map[string]string{"message": "hi"}))
+	req := httptest.NewRequest(http.MethodPost, "/blogs/"+chatSlug+"/chat", bytes.NewReader(chatRequestBody(t, &blogv1.ChatRequest{Message: "hi"})))
 	req.SetPathValue("slug", chatSlug)
 	rec := httptest.NewRecorder()
 	f.service.SendChatMessage(rec, withUID(req, "stranger"))
@@ -374,10 +412,7 @@ func TestGetChat_ReturnsConversation(t *testing.T) {
 	rec := httptest.NewRecorder()
 	f.service.GetChat(rec, chatRequestFor(http.MethodGet, nil))
 
-	var got chatResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	got := decodeChatHistory(t, rec)
 	if len(got.Messages) != 1 || got.Messages[0].Content != "add an intro" {
 		t.Errorf("Messages = %+v, want the stored conversation", got.Messages)
 	}
@@ -414,7 +449,7 @@ func TestSendChatMessage_ExpiredSubscription(t *testing.T) {
 	expired := time.Now().UTC().Add(-time.Minute)
 	f.users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel", SubscribedUntil: &expired})
 
-	rec := f.send(t, map[string]string{"message": "tighten it"})
+	rec := f.send(t, &blogv1.ChatRequest{Message: "tighten it"})
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
@@ -443,7 +478,7 @@ func TestSendChatMessage_ProfileLookupFails(t *testing.T) {
 	f := newChatFixture(t)
 	f.users.getErr = errors.New("firestore is down")
 
-	rec := f.send(t, map[string]string{"message": "tighten it"})
+	rec := f.send(t, &blogv1.ChatRequest{Message: "tighten it"})
 
 	if rec.Result().StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusInternalServerError)

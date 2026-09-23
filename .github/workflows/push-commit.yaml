@@ -213,16 +213,25 @@ jobs:
   # frontend folder behind it in both environments (the one failure promotion can't recover from:
   # nothing to deploy, nothing to roll back to).
   #
-  # Bare `needs:` with no `if:` is deliberate, and is what GitHub's default behaviour already means
-  # here - run only if every dependency succeeded, skip if any failed *or skipped*. An earlier
-  # `always()` plus `success || skipped` allowed exactly the case it was added to stop: neither
-  # publish job has a benign skip path (each only skips when `changed` or an infrastructure job
-  # failed - a legitimately skipped infrastructure job makes them run, since their own `if` accepts
-  # `skipped` there), so every skip is an upstream failure, and treating it as tag-worthy is the
-  # bug. version (above) never skips either, so the same reasoning covers it. Drafts the body from
-  # commits since the last tag, plus a read-only prod plan showing the infra impact.
+  # `if:` explicitly checks only this job's own direct needs (#185). A bare `needs:` with no `if:`
+  # looks equivalent - GitHub's default condition is "run only if every dependency succeeded" - but
+  # GitHub's default success() check isn't limited to direct needs: it's defeated by a `skipped`
+  # conclusion anywhere upstream in the needs graph, including two hops back through
+  # infrastructure-root/infrastructure-staging (which skip on almost every merge, since most commits
+  # touch neither infrastructure/** nor .github/**) even though services-backend/services-frontend
+  # each already override their own `if:` to tolerate exactly that skip. The result: pre-release
+  # silently skipped on nearly every merge, while services-frontend had already written that merge's
+  # speculative next version into staging's config.json - a version with no release ever cut for it.
+  # always() opts out of that default short-circuit, matching the pattern services-frontend already
+  # uses above; the explicit `== 'success'` (not `'success' || 'skipped'`) keeps the fix #156 made -
+  # neither publish job has a benign skip path, so a skip of either here is still not tag-worthy.
   pre-release:
     needs: [services-backend, services-frontend, version]
+    if: |
+      always() &&
+      needs.services-backend.result == 'success' &&
+      needs.services-frontend.result == 'success' &&
+      needs.version.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -55,21 +55,23 @@ if ! "$BIN_DIR/terraform" version 2>/dev/null | head -1 | grep -qx 'Terraform v1
 fi
 
 # --- Pants launcher (best-effort) --------------------------------------------------------------
-# pants.toml pins `pants_version = "2.33.0"`; there's no committed ./pants wrapper (CI bootstraps
-# it via pantsbuild/actions/init-pants instead), so getting `pants` here means fetching the
-# scie-pants launcher, which reads pants.toml itself and resolves 2.33.0 on first invocation.
+# pants.toml pins `pants_version = "2.33.0"`; getting `pants` here means running the checked-in
+# get-pants.sh (see CLAUDE.md's "Building with Pants" section for why it's vendored at the repo
+# root), which installs the scie-pants launcher - that in turn reads pants.toml itself and
+# resolves 2.33.0 on first invocation. Using the vendored copy rather than curling
+# static.pantsbuild.org directly is Pants' own recommendation, and also sidesteps that host not
+# being in a cloud session's default network allowlist - get-pants.sh's own downloads go to
+# github.com/pantsbuild/scie-pants, which is.
 #
 # This is genuinely optional: CLAUDE.md's "Building with Pants" section is explicit that neither
 # service uses Pants as a local dev wrapper - only CI does, via `pants --changed-since=origin/main
 # lint check` / `test package`. Day-to-day work in a session runs `go test`, `npm test`,
 # `buf generate`, `terraform plan`, etc. directly, same as CLAUDE.md tells a contributor to. `pants`
 # is only worth having on hand to reproduce a Pants-specific CI failure (a `tailor --check` gap, a
-# BUILD-graph issue) locally, so a failure to install it here shouldn't fail the whole hook -
-# static.pantsbuild.org also isn't in the cloud environment's default Trusted allowlist, so this
-# needs Custom network access listing it to succeed at all.
+# BUILD-graph issue) locally, so a failure to install it here shouldn't fail the whole hook.
 if ! command -v pants >/dev/null 2>&1; then
-  if ! curl -fsSL https://static.pantsbuild.org/setup/get-pants.sh | bash; then
-    echo "warning: could not install the pants launcher (static.pantsbuild.org unreachable?)." \
+  if ! ./get-pants.sh; then
+    echo "warning: could not install the pants launcher." \
       "Not fatal - see the comment above this step in $0." >&2
   fi
 fi

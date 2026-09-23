@@ -45,6 +45,8 @@ Never run `terraform apply`, `gcloud run deploy`, `wrangler` or anything else th
 
 In a Claude Code cloud session, `.claude/hooks/session-start.sh` installs the pinned toolchain these need. Two of them still depend on the session's network access: `terraform init`/`validate` needs `registry.terraform.io`, and `pants` currently fails to bootstrap because its bundled Python rejects the session proxy's CA certificate. The Go, npm and buf commands work with the default allowlist.
 
+`.claude/settings.json` also enables the team's Claude Code plugins (`enabledPlugins`, from the marketplaces in `extraKnownMarketplaces`). Locally, Claude Code offers to install them once you trust the folder. A cloud session never installs a repository's plugins itself, so `.claude/hooks/install-plugins.sh` does it, reading the same two keys, in the background at session start. The session has already loaded its plugins by the time the hook runs, so they become active on the next start or resume, or straight away with `/reload-plugins`. To have them from the first message, enable them for your claude.ai account instead, which cloud sessions load as synced plugins.
+
 ## Contract Layer
 
 `/packages/protos` holds the `.proto` definitions shared across languages, built with [buf](https://buf.build) rather than plain `protoc`. It exists to close a gap plain Go/TypeScript duplication leaves open: an entity shape declared once in Go (`services/backend/internal/entity`) and hand-copied into TypeScript has nothing enforcing the two agree — a field renamed on one side is caught at runtime, if at all. A shared `.proto` message is instead the one definition both sides generate from.

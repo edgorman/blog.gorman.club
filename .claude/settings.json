@@ -1,50 +1,61 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
-      "Bash(go test:*)",
-      "Bash(go vet:*)",
-      "Bash(go build:*)",
-      "Bash(go mod download:*)",
-      "Bash(gofmt:*)",
-      "Bash(npm test:*)",
-      "Bash(npm ci:*)",
-      "Bash(npm run lint:*)",
-      "Bash(npm run build:*)",
-      "Bash(npx jest:*)",
-      "Bash(npx tsc:*)",
-      "Bash(buf lint:*)",
-      "Bash(buf format:*)",
-      "Bash(buf generate:*)",
-      "Bash(pants:*)",
-      "Bash(terraform fmt:*)",
-      "Bash(terraform validate:*)",
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git show:*)"
+      "Bash(go test *)",
+      "Bash(go vet *)",
+      "Bash(go build *)",
+      "Bash(go mod download *)",
+      "Bash(gofmt *)",
+      "Bash(npm test *)",
+      "Bash(npm ci *)",
+      "Bash(npm run lint *)",
+      "Bash(npm run build *)",
+      "Bash(npx jest *)",
+      "Bash(npx tsc *)",
+      "Bash(buf lint *)",
+      "Bash(buf format *)",
+      "Bash(buf generate *)",
+      "Bash(pants *)",
+      "Bash(terraform fmt *)",
+      "Bash(terraform validate *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)"
     ],
     "deny": [
-      "Bash(terraform apply:*)",
-      "Bash(terraform destroy:*)",
-      "Bash(terraform import:*)",
-      "Bash(terraform state:*)",
-      "Bash(terraform -chdir=* apply:*)",
-      "Bash(terraform -chdir=* destroy:*)",
-      "Bash(terraform -chdir=* import:*)",
-      "Bash(terraform -chdir=* state:*)",
-      "Bash(gcloud run deploy:*)",
-      "Bash(gcloud secrets versions access:*)",
-      "Bash(wrangler:*)",
-      "Bash(npx wrangler:*)"
+      "Bash(terraform apply *)",
+      "Bash(terraform destroy *)",
+      "Bash(terraform import *)",
+      "Bash(terraform state *)",
+      "Bash(terraform -chdir=* apply *)",
+      "Bash(terraform -chdir=* destroy *)",
+      "Bash(terraform -chdir=* import *)",
+      "Bash(terraform -chdir=* state *)",
+      "Bash(gcloud run deploy *)",
+      "Bash(gcloud secrets versions access *)",
+      "Bash(wrangler *)",
+      "Bash(npx wrangler *)",
+      "Read(**/*.tfstate)",
+      "Read(**/*.tfstate.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)"
     ]
   },
   "hooks": {
     "SessionStart": [
       {
+        "matcher": "startup|resume",
         "hooks": [
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/install-plugins.sh",
+            "async": true
           }
         ]
       }
@@ -60,5 +71,25 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "claude-community": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-community"
+      }
+    },
+    "google-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "google/skills"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "ponytail@claude-community": true,
+    "code-simplifier@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "google-cloud-developer@google-plugins": true
   }
 }

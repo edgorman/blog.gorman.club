@@ -14,6 +14,20 @@ export const protobufPackage = "blog.v1";
  * entity.AllowedEmojis (services/backend/internal/entity/emoji.go). It is proto's first message in
  * this repository, kept deliberately small: proving the generate-and-verify pipeline end to end,
  * not migrating the entity model.
+ *
+ * It constrains the *shape* of the set - both sides read a `repeated string` off the same message,
+ * so renaming or resizing the field breaks both builds - but not its *contents*: entity.go and
+ * ReactionBar.tsx each still write the five glyphs out as their own literal `[]string`/`string[]`,
+ * typed against this message rather than generated from it. #171 considered moving the values
+ * themselves in here too and left them out, on purpose. proto3 has no scalar-list default or
+ * constant it could hold at the file level for both `protoc-gen-go` and ts-proto to read back
+ * identically without a custom protobuf option plus runtime reflection on both sides - a
+ * mechanism, not the small change this would need to be to be worth it. More basically, the five
+ * glyphs are policy - what a reaction may be, exactly what entity.ValidEmoji decides - and this
+ * layer models the wire, not policy, the same line that keeps entity.ValidEmoji itself
+ * hand-written per #110's carve-out (see CLAUDE.md's "Contract Layer"). So the values can still
+ * drift between the two literals; only the shape is guaranteed identical, and that is the
+ * accepted, documented trade rather than an oversight.
  */
 export interface AllowedEmojis {
   emoji: string[];

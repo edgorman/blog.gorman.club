@@ -3,13 +3,18 @@
  * useGoogleAuth, so this module knows nothing about any auth provider.
  *
  * Wire types come from `src/gen` rather than being declared here - see CLAUDE.md's "Contract
- * Layer". `User`/`CurrentUser` moved in #169, `Blog`/`BlogPage`/`ListBlogsParams` in #170.
+ * Layer". `User`/`CurrentUser` moved in #169, `Blog`/`BlogPage`/`ListBlogsParams` in #170,
+ * `Comment`/`ReactionCount`/`PageReactions` in #171.
  */
 import type { CurrentUser, User } from '../gen/blog/v1/user'
 import type { Blog, BlogPage, ListBlogsParams } from '../gen/blog/v1/blog'
+import type { Comment, CommentThread, CreateCommentRequest } from '../gen/blog/v1/comment'
+import type { PageReactions, TargetReactions } from '../gen/blog/v1/reaction'
 
 export type { User, CurrentUser } from '../gen/blog/v1/user'
 export type { Blog, BlogPage, ListBlogsParams } from '../gen/blog/v1/blog'
+export type { Comment } from '../gen/blog/v1/comment'
+export type { ReactionCount, PageReactions, TargetReactions } from '../gen/blog/v1/reaction'
 
 /**
  * "public" or "private" - what a post's `visibility` actually holds, kept as a union here rather
@@ -56,50 +61,6 @@ export interface ChatRequest {
    */
   title?: string
   content?: string
-}
-
-/**
- * One reader's comment on a post.
- *
- * A comment is never edited, only written and removed, so there is no `updatedAt` and no update
- * call below - a reply somebody has already read and answered cannot become a different reply.
- * `authorId` is carried for the same reason a post carries `ownerId`: it is how a client knows
- * whose comment it is looking at, and so whether to offer a delete button.
- */
-export interface Comment {
-  /** Assigned by the backend, and meaningful only beneath the post it hangs off. */
-  id: string
-  blogSlug: string
-  authorId: string
-  /**
-   * The commenter's username, resolved server-side - the only handle a client holds for the
-   * profile behind a comment, exactly as `Blog.authorUsername` is for a post.
-   */
-  authorUsername: string
-  body: string
-  createdAt: string
-}
-
-/**
- * One emoji on a post or a comment, as the bar draws it: the glyph, how many readers chose it, and
- * whether you are one of them. Who else reacted is deliberately not reported - a count and a "you
- * are in it" is the whole of what a bar shows, and naming the readers would make a one-click
- * gesture into a public record.
- */
-export interface ReactionCount {
-  emoji: string
-  count: number
-  reacted: boolean
-}
-
-/**
- * Every reaction on a post page: the post's own, and each reacted-to comment's by id. It is one
- * response because it is one query server-side - a comment's reactions are stored beneath the post
- * alongside the post's - so a page costs one request rather than one per comment.
- */
-export interface PageReactions {
-  post: ReactionCount[]
-  comments: Record<string, ReactionCount[]>
 }
 
 /** Thrown for any non-2xx response, carrying the status so callers can treat 404 as "absent". */
@@ -240,10 +201,14 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
     // Comments hang off their post like the chat below, but they are the readers' half of it: the
     // thread is readable by exactly whoever may read the post - signed out included, for a public
     // one - while writing to it needs a credential, since a comment is signed by whoever left it.
+    //
+    // `GET .../comments` answers with a `CommentThread` rather than a bare array - protojson can
+    // only marshal a message at the top level (see CLAUDE.md's "Contract Layer") - so the list is
+    // unwrapped here, and every other caller still sees a plain `Comment[]`.
     listComments: (slug: string) =>
-      request<Comment[]>(baseUrl, authHeaders, 'GET', commentsPath(slug)),
+      request<CommentThread>(baseUrl, authHeaders, 'GET', commentsPath(slug)).then((thread) => thread.comments),
     createComment: (slug: string, body: string) =>
-      request<Comment>(baseUrl, authHeaders, 'POST', commentsPath(slug), { body }),
+      request<Comment>(baseUrl, authHeaders, 'POST', commentsPath(slug), { body } satisfies CreateCommentRequest),
     // Deleting is allowed for the comment's author and for the post's owner, who moderates their
     // own post; the backend decides, and answers a 403 for anybody else.
     deleteComment: (slug: string, id: string) =>
@@ -252,14 +217,19 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
     // Reactions are read for the whole page at once and written one at a time. A write is
     // addressed rather than toggled - PUT puts the reaction there, DELETE takes it back - so a
     // retried click or a stale page lands where it was aiming instead of undoing itself. Both
-    // answer with the target's counts as they now stand, since a bar is a shared number that this
-    // client's own click cannot predict.
+    // answer with the target's counts as they now stand (wrapped in a `TargetReactions`, for the
+    // same top-level-message reason `CommentThread` wraps a list above), since a bar is a shared
+    // number that this client's own click cannot predict.
     getReactions: (slug: string) =>
       request<PageReactions>(baseUrl, authHeaders, 'GET', `${blogPath(slug)}/reactions`),
     addReaction: (slug: string, emoji: string, commentId?: string) =>
-      request<ReactionCount[]>(baseUrl, authHeaders, 'PUT', reactionPath(slug, emoji, commentId)),
+      request<TargetReactions>(baseUrl, authHeaders, 'PUT', reactionPath(slug, emoji, commentId)).then(
+        (target) => target.reactions,
+      ),
     removeReaction: (slug: string, emoji: string, commentId?: string) =>
-      request<ReactionCount[]>(baseUrl, authHeaders, 'DELETE', reactionPath(slug, emoji, commentId)),
+      request<TargetReactions>(baseUrl, authHeaders, 'DELETE', reactionPath(slug, emoji, commentId)).then(
+        (target) => target.reactions,
+      ),
 
     // The assistant conversation hangs off the post it is about, since that is all a chat is: it
     // has no identity apart from its post. Every one of these requires the caller to own the post

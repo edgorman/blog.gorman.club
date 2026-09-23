@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { errorMessage, type PageReactions, type ReactionCount } from '../lib/api'
+import { errorMessage, type ReactionCount } from '../lib/api'
 
 /**
  * The reactions on one post page: the post's own and every comment's, loaded together because the
@@ -20,9 +20,21 @@ export interface Reactions {
 
 const NONE: ReactionCount[] = []
 
+/**
+ * The page's reactions kept as plain count lists, both on the post and per comment - the shape
+ * every caller here wants to draw with. The wire's `PageReactions.comments` is a map of
+ * `TargetReactions` (a one-field wrapper, since a map value and a top-level protojson body can
+ * each only be a message - see CLAUDE.md's "Contract Layer"), unwrapped once on load rather than
+ * carried through this hook's state.
+ */
+interface ReactionsState {
+  post: ReactionCount[]
+  comments: Record<string, ReactionCount[]>
+}
+
 export function useReactions(slug: string): Reactions {
   const { api } = useApp()
-  const [reactions, setReactions] = useState<PageReactions>({ post: [], comments: {} })
+  const [reactions, setReactions] = useState<ReactionsState>({ post: [], comments: {} })
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -31,7 +43,12 @@ export function useReactions(slug: string): Reactions {
     api
       .getReactions(slug)
       .then((page) => {
-        if (!cancelled) setReactions(page)
+        if (cancelled) return
+        const comments: Record<string, ReactionCount[]> = {}
+        for (const [commentId, target] of Object.entries(page.comments)) {
+          comments[commentId] = target.reactions
+        }
+        setReactions({ post: page.post, comments })
       })
       // A page whose reactions could not be loaded still reads: the post and its comments are the
       // point, and a bar nobody can see is not worth an error above them.

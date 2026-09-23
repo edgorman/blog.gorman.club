@@ -1,7 +1,7 @@
 go_mod(name="mod")
 
 # The Dockerfile's `COPY . .` is unchanged so a standalone `docker build services/backend` (what
-# backend-deploy/action.yml still runs) keeps working - see services/backend/CLAUDE.md's "Container image under Pants"
+# backend-deploy/action.yml still runs) keeps working - see services/backend/AGENTS.md's "Container image under Pants"
 # section. That also means Pants can't infer this target's dependencies from the Dockerfile, so
 # they're declared by hand: `:src` supplies the file bytes the build context needs (a go_package's
 # sources aren't picked up transitively by the Docker context assembler), and cmd/backend below

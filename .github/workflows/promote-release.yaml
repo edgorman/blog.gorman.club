@@ -37,7 +37,7 @@ jobs:
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
 
   # Step 2: deploy the commit-SHA-tagged image already sitting in prod's own registry, pushed there
-  # when this commit was built and deployed to staging (see Staging Deployments in `.github/CLAUDE.md`).
+  # when this commit was built and deployed to staging (see Staging Deployments in `.github/AGENTS.md`).
   # Promotion is nothing but a deploy - it reads nothing from the staging project.
   services-backend:
     needs: infrastructure-prod

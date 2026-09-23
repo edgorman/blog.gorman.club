@@ -29,7 +29,7 @@ const GITHUB_REPO = 'edgorman/blog.gorman.club'
 
 /**
  * Links a release tag (e.g. "v1.2.3", written into config.json by the deploy pipeline - see
- * `.github/CLAUDE.md`'s Versioning and Staging Deployments sections) to its GitHub Releases page. Works for
+ * `.github/AGENTS.md`'s Versioning and Staging Deployments sections) to its GitHub Releases page. Works for
  * a still-accumulating pre-release on staging and a promoted one on production alike, since both
  * live at this same URL shape.
  */

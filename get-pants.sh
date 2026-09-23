@@ -5,7 +5,7 @@
 # Vendored verbatim from pantsbuild/setup@6f136713a46e555946a22ffb3ed49c372eea58df
 # (https://github.com/pantsbuild/setup/blob/6f136713a46e555946a22ffb3ed49c372eea58df/get-pants.sh) -
 # the same commit `.github/actions/pants-setup`'s pinned `pantsbuild/actions/init-pants` already
-# trusts as its own default `setup-commit`. See .github/CLAUDE.md's "Building with Pants" section for why
+# trusts as its own default `setup-commit`. See .github/AGENTS.md's "Building with Pants" section for why
 # this lives at the repo root rather than being fetched fresh each time.
 
 set -euo pipefail

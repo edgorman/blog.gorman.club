@@ -4,7 +4,7 @@ set -euo pipefail
 # Installs the exact toolchain versions this repo's CI pins - buf and terraform, plus a
 # best-effort Pants launcher - so a cloud session can run `buf generate` and `terraform plan`
 # against the same binaries CI uses, instead of whatever (if anything) happens to be preinstalled.
-# See "Building with Pants" in .github/CLAUDE.md and "Contract Layer" in packages/protos/CLAUDE.md for where each version comes
+# See "Building with Pants" in .github/AGENTS.md and "Contract Layer" in packages/protos/AGENTS.md for where each version comes
 # from.
 #
 # Local sessions skip this entirely: contributors manage their own toolchain versions, and this
@@ -56,17 +56,17 @@ fi
 
 # --- Pants launcher (best-effort) --------------------------------------------------------------
 # pants.toml pins `pants_version = "2.33.0"`; getting `pants` here means running the checked-in
-# get-pants.sh (see .github/CLAUDE.md's "Building with Pants" section for why it's vendored at the repo
+# get-pants.sh (see .github/AGENTS.md's "Building with Pants" section for why it's vendored at the repo
 # root), which installs the scie-pants launcher - that in turn reads pants.toml itself and
 # resolves 2.33.0 on first invocation. Using the vendored copy rather than curling
 # static.pantsbuild.org directly is Pants' own recommendation, and also sidesteps that host not
 # being in a cloud session's default network allowlist - get-pants.sh's own downloads go to
 # github.com/pantsbuild/scie-pants, which is.
 #
-# This is genuinely optional: .github/CLAUDE.md's "Building with Pants" section is explicit that neither
+# This is genuinely optional: .github/AGENTS.md's "Building with Pants" section is explicit that neither
 # service uses Pants as a local dev wrapper - only CI does, via `pants --changed-since=origin/main
 # lint check` / `test package`. Day-to-day work in a session runs `go test`, `npm test`,
-# `buf generate`, `terraform plan`, etc. directly, same as CLAUDE.md tells a contributor to. `pants`
+# `buf generate`, `terraform plan`, etc. directly, same as AGENTS.md tells a contributor to. `pants`
 # is only worth having on hand to reproduce a Pants-specific CI failure (a `tailor --check` gap, a
 # BUILD-graph issue) locally, so a failure to install it here shouldn't fail the whole hook.
 if ! command -v pants >/dev/null 2>&1; then

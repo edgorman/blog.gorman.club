@@ -9,7 +9,7 @@ import (
 // the one deliberate exception #173's sweep left hand-written, rather than a leftover it missed.
 // Nothing in this repository declares a second copy of this shape to drift against: the frontend
 // has no dashboard reading it (that half of the health-check design was never built), and its one
-// real consumer is the GCP uptime check (`infrastructure/CLAUDE.md`'s "Monitoring & Alerting"), which matches on
+// real consumer is the GCP uptime check (`infrastructure/AGENTS.md`'s "Monitoring & Alerting"), which matches on
 // the literal `"status":"ok"` substring rather than through any type this repo controls. Moving it
 // into packages/protos would add a message with nothing on either side to keep it honest -
 // exactly the case the Contract Layer exists to prevent, not one it needs to cover.

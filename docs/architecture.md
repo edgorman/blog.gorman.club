@@ -1,6 +1,6 @@
 # Architecture notes
 
-History and reasoning behind past decisions: how the repository got to where it is, rather than rules to follow. The rules themselves live in `CLAUDE.md` at the root and in each directory's own `CLAUDE.md`.
+History and reasoning behind past decisions: how the repository got to where it is, rather than rules to follow. The rules themselves live in `AGENTS.md` at the root and in each directory's own `AGENTS.md`.
 
 ## Manifests per directory
 

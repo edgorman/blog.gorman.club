@@ -1,6 +1,6 @@
 # services/backend
 
-The Go backend on Cloud Run. See also `README.md` here, `packages/protos/CLAUDE.md` for the wire contract, and `infrastructure/CLAUDE.md` for the environments it runs in.
+The Go backend on Cloud Run. See also `README.md` here, `packages/protos/AGENTS.md` for the wire contract, and `infrastructure/AGENTS.md` for the environments it runs in.
 
 ## AI Writing Assistant
 

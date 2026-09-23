@@ -1,6 +1,6 @@
 # services/frontend
 
-The Vite/React SPA on Cloudflare Pages. See also `README.md` here and `packages/protos/CLAUDE.md` for the generated `src/gen` types.
+The Vite/React SPA on Cloudflare Pages. See also `README.md` here and `packages/protos/AGENTS.md` for the generated `src/gen` types.
 
 ## Pants BUILD layout
 

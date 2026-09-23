@@ -1,7 +1,7 @@
 # backend
 
 Go backend service for blog.gorman.club, packaged as a Docker container and
-deployed to GCP Cloud Run (see the repository root `CLAUDE.md` for the full
+deployed to GCP Cloud Run (see the repository root `AGENTS.md` for the full
 deployment architecture).
 
 It implements the Debug Endpoint Contract: `/health` and `/debug` both
@@ -569,7 +569,7 @@ go test ./... -cover                   # test
 go build -o bin/backend ./cmd/backend  # build
 ```
 
-`go run ./cmd/backend` starts the server directly on `:8080`. CI runs the same checks via Pants (`pants --changed-since=origin/main lint check test`, see .github/CLAUDE.md's "Building with Pants").
+`go run ./cmd/backend` starts the server directly on `:8080`. CI runs the same checks via Pants (`pants --changed-since=origin/main lint check test`, see .github/AGENTS.md's "Building with Pants").
 
 ## Configuration
 

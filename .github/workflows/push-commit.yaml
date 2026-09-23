@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      # Reads Conventional Commit subjects (see CLAUDE.md) from the squash-merge history on `main`
+      # Reads Conventional Commit subjects (see AGENTS.md) from the squash-merge history on `main`
       # to pick the bump: a bare `feat:` is minor, `!` or a `BREAKING CHANGE:` footer is major,
       # anything else (`fix:`, `chore:`, ...) is patch - same fallback as the old always-patch logic.
       - id: version

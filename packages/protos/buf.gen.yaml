@@ -1,11 +1,11 @@
 # Generates committed Go bindings into services/backend/internal/gen - see the "Contract Layer"
-# section of `packages/protos/CLAUDE.md` for why committed rather than Pants-ephemeral. The plugin version is pinned
+# section of `packages/protos/AGENTS.md` for why committed rather than Pants-ephemeral. The plugin version is pinned
 # here to the exact version of google.golang.org/protobuf services/backend/go.mod requires, so
 # `buf generate` never drifts from what the module actually builds against.
 #
 # The second plugin generates committed TypeScript bindings into services/frontend/src/gen, next
 # to the service that compiles them - generated code follows its consumer rather than the contract
-# it came from (see "Contract Layer" in `packages/protos/CLAUDE.md` and "Repository Structure" in the root `CLAUDE.md`), the same rule the Go
+# it came from (see "Contract Layer" in `packages/protos/AGENTS.md` and "Repository Structure" in the root `AGENTS.md`), the same rule the Go
 # plugin above follows. ts-proto is a devDependency of services/frontend/package.json (the only npm
 # project in this repo) rather than of packages/protos, which has no package.json of its own; the
 # local plugin path reaches into services/frontend's own node_modules for that reason. `strategy:

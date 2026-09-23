@@ -159,10 +159,7 @@ func TestHandler_AnonymousListOnlyReturnsPublicBlogs(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/blogs", nil))
 
-	var got blogListResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	got := decodeBlogPage(t, rec)
 	if len(got.Posts) != 1 || got.Posts[0].Slug != "public" {
 		t.Errorf("got %v, want only the public blog", got.Posts)
 	}

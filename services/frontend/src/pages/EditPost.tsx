@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { AssistantPanel } from '../components/AssistantPanel'
 import { useApp } from '../context/AppContext'
-import { ApiError, errorMessage, postPath, type Blog } from '../lib/api'
+import { ApiError, errorMessage, postPath, type Blog, type Visibility } from '../lib/api'
 import { renderMarkdown } from '../lib/markdown'
 import { MAX_TAGS, formatTags, parseTags } from '../lib/tags'
 
@@ -16,7 +16,6 @@ type State =
   | { phase: 'ready'; post: Blog }
 
 type Mode = 'write' | 'preview'
-type Visibility = Blog['visibility']
 
 export function EditPost() {
   // The slug addresses the post on its own: slugs are unique across every author.
@@ -45,7 +44,10 @@ export function EditPost() {
         setTitle(post.title)
         setMarkdown(post.content)
         setTags(formatTags(post.tags))
-        setVisibility(post.visibility)
+        // The wire only guarantees "public" or "private" (entity.Visibility.Valid() rejects
+        // anything else); the proto field itself is a plain string, so that guarantee is not
+        // something the generated type can carry - see api.ts's Visibility.
+        setVisibility(post.visibility as Visibility)
       })
       .catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 404) return setState({ phase: 'not-found' })

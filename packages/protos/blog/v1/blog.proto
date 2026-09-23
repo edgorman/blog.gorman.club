@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package blog.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1;blogv1";
+
+// Blog is a post as a client sees it - what `GET /blogs/{slug}` and every other read of a single
+// post answer with, and what each entry of BlogPage.posts is.
+//
+// It is the wire shape, not entity.Blog: author_username is resolved server-side
+// (internal/service/blog.go's blogResponse) and has no counterpart on the entity, while the
+// entity's DeletedAt - a soft-delete marker no response has ever included - has no field here at
+// all. See CLAUDE.md's "Contract Layer" for why protos model the wire rather than the domain.
+message Blog {
+  // The whole of the post's address, assigned once at creation and never revised - a retitle
+  // changes `title` beneath a fixed slug rather than moving the URL. Slugs are unique across every
+  // author, so this alone identifies a post; it carries no author segment.
+  string slug = 1;
+  string owner_id = 2;
+  // The owner's username, resolved server-side rather than stored on the post: a post records its
+  // owner by uid, which is never public, so this is the only handle a client holds for the author
+  // behind it. Empty for a post whose owner holds no profile.
+  string author_username = 3;
+  string title = 4;
+  string content = 5;
+  // The topics a post is filed under, normalized server-side (lowercase, one hyphen between
+  // words). They narrow a feed and say nothing about who may read it, which is `visibility`'s
+  // alone.
+  repeated string tags = 6;
+  // "public" or "private" - see the "Contract Layer" section of CLAUDE.md for why this is a plain
+  // string rather than a proto enum.
+  string visibility = 7;
+  repeated string allowed_user_ids = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+// BlogPage is one page of `GET /blogs`: the posts themselves, newest first, plus whether a further
+// page follows. There is no separate cursor field - a caller continues by sending the createdAt on
+// the last post here back as ListBlogsParams.start_after.
+message BlogPage {
+  repeated Blog posts = 1;
+  // Whether a further page follows. A plain bool rather than optional, so a page that happens to
+  // be the last one still carries `hasMore: false` on the wire rather than omitting the field -
+  // exactly what EmitDefaultValues (see internal/service/respond.go) guarantees for a scalar.
+  bool has_more = 2;
+}
+
+// ListBlogsParams is what `GET /blogs` pages and scopes by, all optional so the bare call still
+// means "the feed".
+//
+// Unlike every other message here, this one never crosses the wire as JSON: `GET /blogs` reads a
+// query string, not a body, so the backend keeps parsing it by hand (see
+// internal/service/blog.go's parseBlogListParams) and this message exists only to give the
+// frontend one generated type for the params it sends, rather than a second hand-written
+// interface that could drift from the query keys the backend actually reads.
+message ListBlogsParams {
+  // How many posts a page holds. The backend applies its own default and cap when omitted -
+  // explicit presence (rather than treating 0 as "omitted") is what lets that distinction survive
+  // the trip through a generated type at all.
+  optional int32 limit = 1;
+  // Continues a previous page: the createdAt of the last post the previous one held.
+  optional string start_after = 2;
+  // Narrows to one author's posts - a profile feed's User.id, not their username.
+  optional string owner_id = 3;
+  // Narrows to one topic. Any spelling works; the backend normalizes it before matching.
+  optional string tag = 4;
+  // Narrows to posts holding this term in their title or body, ignoring case. Never widens what
+  // comes back: a post the caller may not read stays hidden however exactly it is named.
+  optional string q = 5;
+}
+
+// BlogRequest is the client-settable half of a post - the body of both `POST /blogs` and
+// `PUT /blogs/{slug}`, which share the same shape (internal/service/blog.go's blogRequest and
+// decodeBlogRequest serve both routes with it). The slug, owner_id, and the timestamps are decided
+// by the server, so none of them are here.
+message BlogRequest {
+  string title = 1;
+  string content = 2;
+  repeated string tags = 3;
+  // "public" or "private" - see the "Contract Layer" section of CLAUDE.md for why this is a plain
+  // string rather than a proto enum.
+  string visibility = 4;
+  repeated string allowed_user_ids = 5;
+}

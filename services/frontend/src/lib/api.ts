@@ -3,70 +3,20 @@
  * useGoogleAuth, so this module knows nothing about any auth provider.
  *
  * Wire types come from `src/gen` rather than being declared here - see CLAUDE.md's "Contract
- * Layer". `User`/`CurrentUser` moved in #169; the rest follow.
+ * Layer". `User`/`CurrentUser` moved in #169, `Blog`/`BlogPage`/`ListBlogsParams` in #170.
  */
 import type { CurrentUser, User } from '../gen/blog/v1/user'
-
-export interface Blog {
-  /**
-   * The whole of the post's address: the title, slugified, plus a short random suffix when some
-   * post already holds that slug. Slugs are unique across every author, so a slug identifies one
-   * post anywhere - use `postPath` to build a link. It is assigned when the post is created and
-   * never changes, so a link keeps working after a retitle; render `title`, not this.
-   */
-  slug: string
-  ownerId: string
-  /**
-   * The owner's username, resolved server-side. It is what an author is shown and linked as, not
-   * part of the post's address. Empty only for a post whose owner holds no profile, which cannot
-   * happen for one published since posting started naming its author - such a post is shown
-   * unattributed.
-   */
-  authorUsername: string
-  title: string
-  content: string
-  /**
-   * The topics the post is filed under, normalized server-side: lowercase, one hyphen between
-   * words, so "Web Dev" and "web-dev" are one tag. Absent for an untagged post. They are how a
-   * reader finds a post by subject rather than by date - `tagPath` builds the link - and say
-   * nothing about who may read it, which is `visibility`'s alone.
-   */
-  tags?: string[]
-  visibility: 'public' | 'private'
-  allowedUserIds?: string[]
-  createdAt: string
-  updatedAt: string
-}
-
-/**
- * One page of `listBlogs`: the posts themselves, newest first, plus whether a further page
- * follows. There is no separate cursor - the `createdAt` on the last post here already is one,
- * fed back as `ListBlogsParams.startAfter` to continue.
- */
-export interface BlogPage {
-  posts: Blog[]
-  hasMore: boolean
-}
-
-/** What `listBlogs` pages and scopes by - all optional, so the bare call still means "the feed". */
-export interface ListBlogsParams {
-  /** How many posts a page holds. The backend applies its own default and cap when omitted. */
-  limit?: number
-  /** Continues a previous page: the `createdAt` of the last post it held. */
-  startAfter?: string
-  /** Narrows to one author's posts - a profile feed's `User.id`, not their username. */
-  ownerId?: string
-  /** Narrows to one topic. Any spelling works - the backend normalizes it before matching. */
-  tag?: string
-  /**
-   * Narrows to posts holding this term in their title or body, ignoring case. It is a plain
-   * substring match rather than a search index, and it never widens what comes back: a post the
-   * caller may not read stays hidden however exactly it is named.
-   */
-  q?: string
-}
+import type { Blog, BlogPage, ListBlogsParams } from '../gen/blog/v1/blog'
 
 export type { User, CurrentUser } from '../gen/blog/v1/user'
+export type { Blog, BlogPage, ListBlogsParams } from '../gen/blog/v1/blog'
+
+/**
+ * "public" or "private" - what a post's `visibility` actually holds, kept as a union here rather
+ * than derived from `Blog['visibility']`: the proto field is a plain string (see CLAUDE.md's
+ * "Contract Layer" for why), so the generated `Blog` type carries no such constraint of its own.
+ */
+export type Visibility = 'public' | 'private'
 
 /** One change the assistant made to the post, shown beneath the message that made it. */
 export interface ChatEdit {

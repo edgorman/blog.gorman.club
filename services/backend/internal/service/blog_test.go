@@ -17,14 +17,17 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
-func blogRequestBody(t *testing.T, body blogRequest) *bytes.Reader {
+func blogRequestBody(t *testing.T, body *blogv1.BlogRequest) *bytes.Reader {
 	t.Helper()
 
-	encoded, err := json.Marshal(body)
+	encoded, err := protojson.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}
@@ -56,14 +59,60 @@ func author(uid, username string) entity.User {
 	return entity.User{ID: uid, Username: username}
 }
 
-func decodeBlog(t *testing.T, rec *httptest.ResponseRecorder) blogResponse {
+// wireBlog and wireBlogPage are what a response body actually carries, spelled out here rather
+// than decoded into blogResponse - see wireUser in user_test.go for why: reusing the production
+// type would hide the wire, since both sides would move together and a field leaving the body
+// would assert nothing. Declared separately, a rename fails here. CreatedAt/UpdatedAt stay strings
+// rather than time.Time, matching what protojson actually puts on the wire (see blog.proto's
+// useDate=string).
+type wireBlog struct {
+	Slug           string   `json:"slug"`
+	OwnerID        string   `json:"ownerId"`
+	AuthorUsername string   `json:"authorUsername"`
+	Title          string   `json:"title"`
+	Content        string   `json:"content"`
+	Tags           []string `json:"tags"`
+	Visibility     string   `json:"visibility"`
+	AllowedUserIDs []string `json:"allowedUserIds"`
+	CreatedAt      string   `json:"createdAt"`
+	UpdatedAt      string   `json:"updatedAt"`
+}
+
+type wireBlogPage struct {
+	Posts   []wireBlog `json:"posts"`
+	HasMore bool       `json:"hasMore"`
+}
+
+func decodeBlog(t *testing.T, rec *httptest.ResponseRecorder) wireBlog {
 	t.Helper()
 
-	var got blogResponse
+	var got wireBlog
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 	return got
+}
+
+func decodeBlogPage(t *testing.T, rec *httptest.ResponseRecorder) wireBlogPage {
+	t.Helper()
+
+	var got wireBlogPage
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	return got
+}
+
+// wireTime parses a wire timestamp back into a time.Time, so a test can compare it against the
+// repository's own time.Time without formatting one side to match the other's type.
+func wireTime(t *testing.T, s string) time.Time {
+	t.Helper()
+
+	parsed, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		t.Fatalf("parse wire timestamp %q: %v", s, err)
+	}
+	return parsed
 }
 
 func TestListBlogs_OnlyReadableBlogs(t *testing.T) {
@@ -83,10 +132,7 @@ func TestListBlogs_OnlyReadableBlogs(t *testing.T) {
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	var got blogListResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	got := decodeBlogPage(t, rec)
 	slugs := make([]string, 0, len(got.Posts))
 	for _, blog := range got.Posts {
 		slugs = append(slugs, blog.Slug)
@@ -110,10 +156,7 @@ func TestListBlogs_NewestFirst(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.ListBlogs(rec, req)
 
-	var got blogListResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	got := decodeBlogPage(t, rec)
 	if len(got.Posts) != 2 || got.Posts[0].Slug != "newer" || got.Posts[1].Slug != "older" {
 		t.Errorf("got %v, want newer before older", got.Posts)
 	}
@@ -127,15 +170,29 @@ func TestListBlogs_EmptyIsArray(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.ListBlogs(rec, req)
 
-	var got blogListResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	got := decodeBlogPage(t, rec)
 	if body, err := json.Marshal(got.Posts); err != nil || string(body) != "[]" {
 		t.Errorf("posts = %s, want %q", body, "[]")
 	}
 	if got.HasMore {
 		t.Errorf("hasMore = true, want false")
+	}
+}
+
+// hasMore is exactly the field that vanishes under bare protojson: a false bool is a zero value,
+// which protojson drops by default. Asserted against the literal body, not a decoded struct, so
+// the field's presence - not just its decoded value - is what is being checked; a decode alone
+// cannot tell "false" from "absent, so Go zeroed it".
+func TestListBlogs_WireBodyCarriesHasMoreFalse(t *testing.T) {
+	s := newTestService(nil, nil)
+
+	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "caller")
+	rec := httptest.NewRecorder()
+	s.ListBlogs(rec, req)
+
+	want := `{"posts":[],"hasMore":false}`
+	if got := strings.TrimSpace(rec.Body.String()); got != want {
+		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}
 }
 
@@ -157,10 +214,7 @@ func TestListBlogs_Paginates(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.ListBlogs(rec, req)
 
-	var page1 blogListResponse
-	if err := json.NewDecoder(rec.Body).Decode(&page1); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	page1 := decodeBlogPage(t, rec)
 	if len(page1.Posts) != 2 || page1.Posts[0].Slug != "post-2" || page1.Posts[1].Slug != "post-1" {
 		t.Fatalf("page1 = %v, want [post-2 post-1]", page1.Posts)
 	}
@@ -168,15 +222,12 @@ func TestListBlogs_Paginates(t *testing.T) {
 		t.Fatalf("page1.HasMore = false, want true")
 	}
 
-	cursor := page1.Posts[len(page1.Posts)-1].CreatedAt.Format(time.RFC3339Nano)
+	cursor := page1.Posts[len(page1.Posts)-1].CreatedAt
 	req2 := withUID(httptest.NewRequest(http.MethodGet, "/blogs?limit=2&startAfter="+url.QueryEscape(cursor), nil), "caller")
 	rec2 := httptest.NewRecorder()
 	s.ListBlogs(rec2, req2)
 
-	var page2 blogListResponse
-	if err := json.NewDecoder(rec2.Body).Decode(&page2); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	page2 := decodeBlogPage(t, rec2)
 	if len(page2.Posts) != 1 || page2.Posts[0].Slug != "post-0" {
 		t.Fatalf("page2 = %v, want [post-0]", page2.Posts)
 	}
@@ -226,10 +277,7 @@ func TestListBlogs_OwnerIDScopesToOneAuthor(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.ListBlogs(rec, req)
 
-	var got blogListResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	got := decodeBlogPage(t, rec)
 	if len(got.Posts) != 1 || got.Posts[0].Slug != "mine-public" {
 		t.Errorf("posts = %v, want [mine-public]", got.Posts)
 	}
@@ -348,8 +396,8 @@ func TestGetBlog_NotFoundForMalformedAddresses(t *testing.T) {
 	}
 }
 
-// ownerId is not part of blogRequest at all, so a client cannot express one - the handler takes it
-// from the verified caller.
+// ownerId is not part of blogv1.BlogRequest at all, so a client cannot express one - the handler
+// takes it from the verified caller.
 func TestCreateBlog_OwnerIDFromCaller(t *testing.T) {
 	repo := newFakeBlogRepository()
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
@@ -373,7 +421,7 @@ func TestCreateBlog_SlugFromTitle(t *testing.T) {
 	repo := newFakeBlogRepository()
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, blogRequest{Title: "Hello, world!", Visibility: entity.VisibilityPublic})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello, world!", Visibility: string(entity.VisibilityPublic)})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
 	s.CreateBlog(rec, req)
@@ -402,7 +450,7 @@ func TestCreateBlog_SlugsAreUniqueAcrossAuthors(t *testing.T) {
 
 	slugs := make(map[string]string, 2)
 	for _, uid := range []string{"first", "second"} {
-		body := blogRequestBody(t, blogRequest{Title: "Hello world", Visibility: entity.VisibilityPublic})
+		body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello world", Visibility: string(entity.VisibilityPublic)})
 		req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), uid)
 		rec := httptest.NewRecorder()
 		s.CreateBlog(rec, req)
@@ -432,7 +480,7 @@ func TestCreateBlog_UntitledPostsAreStillAddressable(t *testing.T) {
 
 	slugs := make([]string, 0, 2)
 	for range 2 {
-		body := blogRequestBody(t, blogRequest{Visibility: entity.VisibilityPublic})
+		body := blogRequestBody(t, &blogv1.BlogRequest{Visibility: string(entity.VisibilityPublic)})
 		req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 		rec := httptest.NewRecorder()
 		s.CreateBlog(rec, req)
@@ -457,10 +505,10 @@ func TestCreateBlog_SuffixesATitleAlreadyUsed(t *testing.T) {
 	repo := newFakeBlogRepository()
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
 
-	create := func() blogResponse {
+	create := func() wireBlog {
 		t.Helper()
 
-		body := blogRequestBody(t, blogRequest{Title: "Hello world", Content: "Body", Visibility: entity.VisibilityPublic})
+		body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello world", Content: "Body", Visibility: string(entity.VisibilityPublic)})
 		req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 		rec := httptest.NewRecorder()
 		s.CreateBlog(rec, req)
@@ -484,7 +532,7 @@ func TestCreateBlog_SuffixesATitleAlreadyUsed(t *testing.T) {
 	}
 	// The first post must still be where it was: a colliding post takes a new slug, it does not
 	// displace the one that got there first.
-	if stored, _ := repo.stored("hello-world"); stored.CreatedAt != first.CreatedAt {
+	if stored, _ := repo.stored("hello-world"); !stored.CreatedAt.Equal(wireTime(t, first.CreatedAt)) {
 		t.Errorf("post at %q = %+v, want the first post left untouched", "hello-world", stored)
 	}
 	if len(repo.blogs) != 2 {
@@ -498,7 +546,7 @@ func TestCreateBlog_AvoidsSlugsTheFrontendReserves(t *testing.T) {
 	repo := newFakeBlogRepository()
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, blogRequest{Title: "New", Visibility: entity.VisibilityPublic})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "New", Visibility: string(entity.VisibilityPublic)})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
 	s.CreateBlog(rec, req)
@@ -522,7 +570,7 @@ func TestCreateBlog_FailsWhenNoSlugIsFree(t *testing.T) {
 	repo.beforeCreate = func(entity.Blog) error { return repository.ErrSlugTaken }
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, blogRequest{Title: "Hello world", Visibility: entity.VisibilityPublic})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello world", Visibility: string(entity.VisibilityPublic)})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
 	s.CreateBlog(rec, req)
@@ -541,7 +589,7 @@ func TestCreateBlog_NamesAnAuthorWhoHasNoProfile(t *testing.T) {
 	users := newFakeUserRepository()
 	s := newTestService(blogs, users)
 
-	body := blogRequestBody(t, blogRequest{Title: "Hello world", Visibility: entity.VisibilityPublic})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello world", Visibility: string(entity.VisibilityPublic)})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
 	s.CreateBlog(rec, req)
@@ -565,7 +613,7 @@ func TestCreateBlog_NamesAnAuthorWhoHasNoProfile(t *testing.T) {
 func TestCreateBlog_RejectsInvalidVisibility(t *testing.T) {
 	s := newTestService(nil, nil)
 
-	body := blogRequestBody(t, blogRequest{Title: "New post", Visibility: "everyone"})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "New post", Visibility: "everyone"})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
 	s.CreateBlog(rec, req)
@@ -581,9 +629,9 @@ func TestCreateBlog_RejectsInvalidVisibility(t *testing.T) {
 func TestCreateBlog_RejectsOverlongTitle(t *testing.T) {
 	s := newTestService(nil, nil)
 
-	body := blogRequestBody(t, blogRequest{
+	body := blogRequestBody(t, &blogv1.BlogRequest{
 		Title:      strings.Repeat("a", entity.MaxTitleLength+1),
-		Visibility: entity.VisibilityPublic,
+		Visibility: string(entity.VisibilityPublic),
 	})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
@@ -617,10 +665,7 @@ func TestListBlogs_TagNarrowsToOneTopic(t *testing.T) {
 			if rec.Result().StatusCode != http.StatusOK {
 				t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 			}
-			var got blogListResponse
-			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-				t.Fatalf("decode response: %v", err)
-			}
+			got := decodeBlogPage(t, rec)
 			if len(got.Posts) != 1 || got.Posts[0].Slug != "about-go" {
 				t.Errorf("posts = %v, want [about-go]", got.Posts)
 			}
@@ -642,10 +687,7 @@ func TestListBlogs_QuerySearchesTitleAndContent(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.ListBlogs(rec, req)
 
-	var got blogListResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	got := decodeBlogPage(t, rec)
 	slugs := make([]string, 0, len(got.Posts))
 	for _, blog := range got.Posts {
 		slugs = append(slugs, blog.Slug)
@@ -671,10 +713,7 @@ func TestListBlogs_SearchNeverSurfacesUnreadablePosts(t *testing.T) {
 			rec := httptest.NewRecorder()
 			s.ListBlogs(rec, req)
 
-			var got blogListResponse
-			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-				t.Fatalf("decode response: %v", err)
-			}
+			got := decodeBlogPage(t, rec)
 			if len(got.Posts) != 0 {
 				t.Errorf("posts = %v, want none", got.Posts)
 			}
@@ -697,10 +736,7 @@ func TestListBlogs_FiltersCompose(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.ListBlogs(rec, req)
 
-	var got blogListResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	got := decodeBlogPage(t, rec)
 	if len(got.Posts) != 1 || got.Posts[0].Slug != "wanted" {
 		t.Errorf("posts = %v, want [wanted]", got.Posts)
 	}
@@ -712,9 +748,9 @@ func TestCreateBlog_NormalizesTags(t *testing.T) {
 	repo := newFakeBlogRepository()
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, blogRequest{
+	body := blogRequestBody(t, &blogv1.BlogRequest{
 		Title:      "Hello, world!",
-		Visibility: entity.VisibilityPublic,
+		Visibility: string(entity.VisibilityPublic),
 		Tags:       []string{"Go", " Web Dev ", "go", "!!!"},
 	})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
@@ -744,7 +780,7 @@ func TestCreateBlog_RejectsTooManyTags(t *testing.T) {
 	for i := range tags {
 		tags[i] = fmt.Sprintf("tag%d", i)
 	}
-	body := blogRequestBody(t, blogRequest{Title: "New post", Visibility: entity.VisibilityPublic, Tags: tags})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "New post", Visibility: string(entity.VisibilityPublic), Tags: tags})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
 	s.CreateBlog(rec, req)
@@ -766,7 +802,7 @@ func TestUpdateBlog_ReplacesTags(t *testing.T) {
 	})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, blogRequest{Title: "Hello", Visibility: entity.VisibilityPublic, Tags: []string{"Rust"}})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello", Visibility: string(entity.VisibilityPublic), Tags: []string{"Rust"}})
 	req := withUID(blogPathRequest(http.MethodPut, "hello-world", body), "owner")
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, req)
@@ -783,7 +819,7 @@ func TestUpdateBlog_ReplacesTags(t *testing.T) {
 	}
 
 	// An update carrying no tags at all clears them, since a blog request is a full replace.
-	body = blogRequestBody(t, blogRequest{Title: "Hello", Visibility: entity.VisibilityPublic})
+	body = blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello", Visibility: string(entity.VisibilityPublic)})
 	req = withUID(blogPathRequest(http.MethodPut, "hello-world", body), "owner")
 	rec = httptest.NewRecorder()
 	s.UpdateBlog(rec, req)
@@ -798,7 +834,7 @@ func TestUpdateBlog_ForbiddenForNonOwner(t *testing.T) {
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, blogRequest{Title: "Edited", Visibility: entity.VisibilityPublic})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Edited", Visibility: string(entity.VisibilityPublic)})
 	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "not-the-owner"))
@@ -817,7 +853,7 @@ func TestUpdateBlog_NotFoundForUnreadablePrivatePost(t *testing.T) {
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPrivate, AllowedUserIDs: []string{"another"}})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, blogRequest{Title: "Edited", Visibility: entity.VisibilityPublic})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Edited", Visibility: string(entity.VisibilityPublic)})
 	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "not-the-owner"))
@@ -831,7 +867,7 @@ func TestUpdateBlog_NotFoundForUnreadablePrivatePost(t *testing.T) {
 func TestUpdateBlog_NotFound(t *testing.T) {
 	s := newBlogService(newFakeBlogRepository(), author("caller", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, blogRequest{Title: "Edited", Visibility: entity.VisibilityPublic})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Edited", Visibility: string(entity.VisibilityPublic)})
 	req := blogPathRequest(http.MethodPut, "missing", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "caller"))
@@ -874,7 +910,7 @@ func TestUpdateBlog_Owner(t *testing.T) {
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic, Title: "Original"})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, blogRequest{Title: "Edited", Visibility: entity.VisibilityPrivate})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Edited", Visibility: string(entity.VisibilityPrivate)})
 	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "owner"))
@@ -899,7 +935,7 @@ func TestUpdateBlog_RetitlingKeepsTheSlug(t *testing.T) {
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic, Title: "Hello world"})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, blogRequest{Title: "Something else entirely", Visibility: entity.VisibilityPublic})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Something else entirely", Visibility: string(entity.VisibilityPublic)})
 	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "owner"))
@@ -926,7 +962,7 @@ func TestUpdateBlog_InvalidBodyLeavesBlogUntouched(t *testing.T) {
 	repo.seed(original)
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, blogRequest{Title: "Edited", Visibility: "everyone"})
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Edited", Visibility: "everyone"})
 	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
 	s.UpdateBlog(rec, withUID(req, "owner"))
@@ -1006,12 +1042,32 @@ func TestDeleteBlog_PostIsNoLongerReadableOrListed(t *testing.T) {
 
 	listRec := httptest.NewRecorder()
 	s.ListBlogs(listRec, withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "owner"))
-	var got blogListResponse
-	if err := json.NewDecoder(listRec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	got := decodeBlogPage(t, listRec)
 	if len(got.Posts) != 0 {
 		t.Errorf("ListBlogs after delete = %v, want the deleted post excluded", got.Posts)
+	}
+}
+
+// The response body is the contract, so this pins it literally rather than field by field - the
+// same reasoning TestGetUser_WireBody documents in user_test.go. tags and allowedUserIds are empty
+// arrays rather than absent: EmitDefaultValues emits a zero-valued repeated field as `[]`, where
+// the hand-written `omitempty` this replaced left it out entirely. deletedAt never appears at all:
+// blogv1.Blog has no field for it, so a soft-delete marker cannot leak through by oversight.
+func TestGetBlog_WireBody(t *testing.T) {
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	blogs := newFakeBlogRepository()
+	blogs.seed(entity.Blog{
+		Slug: "hello-world", OwnerID: "owner", Title: "Hello", Content: "World",
+		Visibility: entity.VisibilityPublic, CreatedAt: at, UpdatedAt: at,
+	})
+	s := newBlogService(blogs, author("owner", "sly-dancing-monkey"))
+
+	rec := httptest.NewRecorder()
+	s.GetBlog(rec, withUID(blogPathRequest(http.MethodGet, "hello-world", nil), "reader"))
+
+	want := `{"slug":"hello-world","ownerId":"owner","authorUsername":"sly-dancing-monkey","title":"Hello","content":"World","tags":[],"visibility":"public","allowedUserIds":[],"createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z"}`
+	if got := strings.TrimSpace(rec.Body.String()); got != want {
+		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}
 }
 
@@ -1048,10 +1104,7 @@ func TestListBlogs_EmptyAuthorWhenTheOwnerHasNoProfile(t *testing.T) {
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	var got blogListResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	got := decodeBlogPage(t, rec)
 	if len(got.Posts) != 1 {
 		t.Fatalf("posts = %d, want 1", len(got.Posts))
 	}
@@ -1076,10 +1129,7 @@ func TestListBlogs_ResolvesEachAuthorOnce(t *testing.T) {
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
 	}
-	var got blogListResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	got := decodeBlogPage(t, rec)
 	if len(got.Posts) != 3 {
 		t.Fatalf("posts = %d, want 3", len(got.Posts))
 	}

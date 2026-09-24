@@ -1,0 +1,54 @@
+$schema: '../../.moon/cache/schemas/project.json'
+language: 'typescript'
+layer: 'application'
+stack: 'frontend'
+tags: ['typescript']
+# Full source path, not 'protos' - the workspace uses globFormat: 'source-path' (see #191).
+dependsOn: ['packages/protos']
+
+# .moon/toolchains.yml never enables the typescript toolchain workspace-wide (its sync rewrites
+# tsconfig project references, and these tsconfigs are hand-maintained) - restated here so this
+# project stays safe even if that ever changes elsewhere in the workspace.
+toolchains:
+  typescript: false
+  # installDependencies' default (npm install) isn't guaranteed to leave package-lock.json/
+  # package.json untouched. Disable it and run `npm ci` as an explicit, cacheable task instead.
+  npm:
+    installDependencies: false
+
+fileGroups:
+  sources: ['src/**/*', 'public/**/*', 'index.html', 'vite.config.ts']
+  configs: ['package.json', 'package-lock.json', 'tsconfig*.json', '.oxlintrc.json',
+            'babel.config.cjs', 'babel-plugin-import-meta-env.cjs', 'jest.config.cjs', 'jest.setup-env.cjs']
+
+tasks:
+  install:
+    command: 'npm ci'
+    inputs: ['package.json', 'package-lock.json']
+    options:
+      internal: true
+  lint:
+    command: 'npm run lint'
+    deps: ['install']
+    inputs: ['@group(sources)', '@group(configs)']
+  typecheck:
+    command: 'npx tsc -b'
+    deps: ['install']
+    inputs: ['@group(sources)', '@group(configs)']
+  test:
+    command: 'npm test'
+    deps: ['install']
+    # An external project input, not a dependsOn/-g relation: v2 --affected doesn't follow graph
+    # relations by default, and a .proto-only edit must still mark this task affected (#155).
+    inputs: ['@group(sources)', '@group(configs)', 'project://packages/protos']
+  build:
+    command: 'npm run build'
+    deps: ['install']
+    inputs: ['@group(sources)', '@group(configs)']
+    # The whole folder, not a glob - moon deletes files under `outputs` that don't match on
+    # cache hydration, and narrowing this would make a hydrated build lose files vite wrote.
+    outputs: ['dist']
+  dev:
+    command: 'npm run dev'
+    deps: ['install']
+    preset: 'server'

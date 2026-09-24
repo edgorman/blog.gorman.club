@@ -1,0 +1,36 @@
+$schema: '../../.moon/cache/schemas/project.json'
+layer: 'library'
+tags: ['contract']
+
+fileGroups:
+  sources: ['**/*.proto', 'buf.yaml', 'buf.gen.yaml']
+  # A leading '/' makes these workspace-relative rather than project-relative, so a hand edit to
+  # either generated folder - not just a .proto edit - marks drift affected too.
+  generated:
+    - '/services/backend/internal/gen/**/*'
+    - '/services/frontend/src/gen/**/*'
+
+tasks:
+  lint:
+    command: 'buf lint'
+    inputs: ['@group(sources)']
+  format:
+    command: 'buf format -d --exit-code'
+    inputs: ['@group(sources)']
+  drift:
+    # buf.gen.yaml's plugin/output paths (../../services/...) are relative to packages/protos, so
+    # buf generate runs from the project root (the task default) rather than the workspace root.
+    # git resolves its own repo root instead of relying on a workspace-root token expanding inside
+    # `script` (unverified); `git status --porcelain`, not `git add -A`, so a local run never
+    # stages the caller's working tree - only reads it.
+    script: |
+      buf generate
+      root="$(git rev-parse --show-toplevel)"
+      test -z "$(git -C "$root" status --porcelain -- packages/protos services/backend/internal/gen services/frontend/src/gen)" || { git -C "$root" status --porcelain -- packages/protos services/backend/internal/gen services/frontend/src/gen; exit 1; }
+    # Needs services/frontend/node_modules for the ts-proto plugin buf.gen.yaml invokes
+    # (../../services/frontend/node_modules/.bin/protoc-gen-ts_proto); the Go plugin resolves its
+    # own module via `go run pkg@version` and needs no project dependency.
+    deps: ['services/frontend:install']
+    inputs: ['@group(sources)', '@group(generated)']
+    options:
+      cache: false

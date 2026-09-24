@@ -15,4 +15,4 @@ Closes #<!-- optional: issue number this PR closes, e.g. Closes #123 -->
 
 ## Testing
 
-<!-- How was this verified? e.g. `terraform plan` output, `pants test`, manual QA. -->
+<!-- How was this verified? e.g. `terraform plan` output, `moon ci`, manual QA. -->

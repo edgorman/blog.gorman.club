@@ -1,0 +1,23 @@
+$schema: '../../../.moon/cache/schemas/project.json'
+dependsOn: ['infra-root']
+tags: ['deployment']
+
+tasks:
+  # A marker task: 'inputs' is the real point of it, defining exactly what reaches this
+  # environment's plan/apply. Its own plan/apply run in the workflow job with WIF creds, not here.
+  plan:
+    command: 'noop'
+    inputs:
+      - 'terraform.tfbackend'
+      - 'terraform.tfvars'
+      - 'project://infra-root'
+      # gcp-secret-manager is only used by root's jobs (both plan and apply fetch secrets through
+      # it); terraform-pull-request/terraform-push-commit are shared by every environment.
+      - '/.github/actions/gcp-secret-manager/**/*'
+      - '/.github/actions/terraform-pull-request/**/*'
+      - '/.github/actions/terraform-push-commit/**/*'
+      - '/.github/workflows/pull-request.yaml'
+      - '/.github/workflows/push-commit.yaml'
+    options:
+      runInCI: false
+      cache: false

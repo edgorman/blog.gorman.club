@@ -1,0 +1,4 @@
+$schema: '../../.moon/cache/schemas/project.json'
+layer: 'configuration'
+stack: 'infrastructure'
+tags: ['terraform']

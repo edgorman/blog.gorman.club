@@ -1,0 +1,23 @@
+$schema: '../../../.moon/cache/schemas/project.json'
+# The dependency on deploy-root is apply ordering (push-commit.yaml's
+# infrastructure-staging: needs: [changed, infrastructure-root]), not a build edge - it's modelled
+# here only so `moon project-graph` reads correctly. The real ordering still lives in `needs:`.
+dependsOn: ['infra-env', 'deploy-root']
+tags: ['deployment']
+
+tasks:
+  # A marker task: 'inputs' is the real point of it, defining exactly what reaches this
+  # environment's plan/apply. Its own plan/apply run in the workflow job with WIF creds, not here.
+  plan:
+    command: 'noop'
+    inputs:
+      - 'terraform.tfbackend'
+      - 'terraform.tfvars'
+      - 'project://infra-env'
+      - '/.github/actions/terraform-pull-request/**/*'
+      - '/.github/actions/terraform-push-commit/**/*'
+      - '/.github/workflows/pull-request.yaml'
+      - '/.github/workflows/push-commit.yaml'
+    options:
+      runInCI: false
+      cache: false

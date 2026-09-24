@@ -1,0 +1,21 @@
+$schema: './cache/schemas/workspace.json'
+versionConstraint: '>=2.5.0 <3'
+
+projects:
+  globFormat: 'source-path'   # avoid folder-name ID collisions (v2.0+)
+  globs:
+    - 'services/*/moon.yml'
+    - 'packages/*/moon.yml'
+  sources:
+    root: '.'
+    infra-root: 'infrastructure/root'
+    infra-env: 'infrastructure/env'
+    deploy-root: 'infrastructure/config/root'
+    deploy-staging: 'infrastructure/config/staging'
+    deploy-prod: 'infrastructure/config/prod'
+
+vcs:
+  client: 'git'
+  provider: 'github'
+  defaultBranch: 'main'     # moon's default is 'master'. This must be set
+  sync: false               # never install git hooks for contributors

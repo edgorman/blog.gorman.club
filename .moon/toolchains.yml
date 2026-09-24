@@ -1,0 +1,9 @@
+$schema: './cache/schemas/toolchains.json'
+go: {}
+javascript:
+  packageManager: 'npm'
+  inferTasksFromScripts: false   # tasks are declared explicitly in moon.yml
+node: {}
+npm: {}
+# Deliberately NOT enabling `typescript:`. Its sync rewrites tsconfig project
+# references, and the frontend's tsconfigs are hand-maintained.

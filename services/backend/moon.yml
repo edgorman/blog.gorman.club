@@ -1,0 +1,38 @@
+$schema: '../../.moon/cache/schemas/project.json'
+language: 'go'
+layer: 'application'
+stack: 'backend'
+tags: ['go']
+# Full source path, not 'protos' - the workspace uses globFormat: 'source-path' (see #191).
+dependsOn: ['packages/protos']
+
+fileGroups:
+  sources: ['**/*.go', 'go.mod', 'go.sum']
+
+tasks:
+  format:
+    script: 'test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }'
+    inputs: ['@group(sources)']
+  vet:
+    command: 'go vet ./...'
+    inputs: ['@group(sources)']
+  test:
+    command: 'go test ./...'
+    # An external project input, not a dependsOn/-g relation: v2 --affected doesn't follow graph
+    # relations by default, and a .proto-only edit must still mark this task affected (#155).
+    inputs: ['@group(sources)', 'project://packages/protos']
+  build:
+    command: 'go build ./...'
+    inputs: ['@group(sources)']
+  image:
+    # Matches the --build-arg COMMIT_SHA backend-deploy/action.yml already passes; context stays
+    # './' so the Dockerfile's `COPY . .` and a standalone `docker build services/backend` both
+    # keep working unmodified.
+    script: 'docker build --build-arg COMMIT_SHA="${COMMIT_SHA:-unknown}" -t backend:${COMMIT_SHA:-local} .'
+    inputs: ['@group(sources)', 'Dockerfile', '.dockerignore']
+    options:
+      cache: false
+      runInCI: true
+  dev:
+    command: 'go run ./cmd/backend'
+    preset: 'server'

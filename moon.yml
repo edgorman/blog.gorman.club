@@ -1,0 +1,63 @@
+$schema: './.moon/cache/schemas/project.json'
+workspace:
+  # The root project must not inherit tasks meant for real projects (e.g. .moon/tasks/terraform.yml's
+  # format/validate, tagged 'terraform' - this project carries no such tag today, but an inherited-by-
+  # default task here would run repo-wide checks against the whole tree for no reason).
+  inheritedTasks:
+    include: []
+
+tasks:
+  # #173: keeps hand-written wire types from coming back now that they've been swept - api.ts's
+  # whole job is declaring API types, so any `export interface` there duplicates what src/gen
+  # already generates; internal/service is checked the same way, with debug.go's own health-check
+  # envelope the one accepted exception (see packages/protos/AGENTS.md's Contract Layer).
+  wire-types:
+    script: |
+      if grep -n '^export interface' services/frontend/src/lib/api.ts; then
+        echo "::error file=services/frontend/src/lib/api.ts::api.ts declares a hand-written interface - wire types must come from src/gen (see packages/protos/AGENTS.md's Contract Layer)."
+        exit 1
+      fi
+      if grep -rn 'json:"' services/backend/internal/service --include='*.go' | grep -v '_test.go' | grep -v '/debug.go:'; then
+        echo "::error::internal/service declares a hand-written json-tagged struct outside debug.go - wire types must come from packages/protos (see packages/protos/AGENTS.md's Contract Layer)."
+        exit 1
+      fi
+    inputs:
+      - '/services/frontend/src/lib/api.ts'
+      - '/services/backend/internal/service/**/*.go'
+
+  # Replaces `pants tailor --check ::` (#155): a services/* or packages/* folder without its own
+  # moon.yml is exactly the folder services/*/moon.yml and packages/*/moon.yml globs (#191) would
+  # silently skip discovering as a project, so check for the file directly rather than parsing
+  # `moon query projects` output - the two are equivalent (a glob only picks up a folder that has
+  # one) and this needs no JSON parsing or dependency on the query command's shape.
+  projects-covered:
+    description: 'Every services/* and packages/* folder is a moon project'
+    script: |
+      missing=0
+      for dir in services/*/ packages/*/; do
+        dir="${dir%/}"
+        if [ ! -f "$dir/moon.yml" ]; then
+          echo "::error file=$dir::${dir} has no moon.yml - every services/* and packages/* folder must be a moon project (see #196)."
+          missing=1
+        fi
+      done
+      exit "$missing"
+    inputs:
+      - '/services/*'
+      - '/packages/*'
+      - '/.moon/workspace.yml'
+
+  # .prototools' `go` pin (#191) is a second source of truth alongside go.mod's own `go` line -
+  # keeping them in sync is a manual invariant now that setup-go no longer reads go.mod alone.
+  go-version-sync:
+    description: '.prototools go pin matches services/backend/go.mod'
+    script: |
+      prototools_go="$(grep -E '^go = ' .prototools | sed -E 's/^go = "([^"]+)".*/\1/')"
+      gomod_go="$(grep -E '^go ' services/backend/go.mod | awk '{print $2}')"
+      if [ "$prototools_go" != "$gomod_go" ]; then
+        echo "::error file=.prototools::.prototools pins go ${prototools_go} but services/backend/go.mod requires go ${gomod_go} - keep them in sync."
+        exit 1
+      fi
+    inputs:
+      - '/.prototools'
+      - '/services/backend/go.mod'

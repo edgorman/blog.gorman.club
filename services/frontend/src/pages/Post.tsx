@@ -46,10 +46,15 @@ export function Post() {
   useEffect(() => {
     setRelated([])
     if (!api || !slug) return
+    // A slower answer for the post the reader just left must not land under this one.
+    let current = true
     api
       .getRelatedBlogs(slug)
-      .then(setRelated)
-      .catch(() => setRelated([]))
+      .then((posts) => current && setRelated(posts))
+      .catch(() => {})
+    return () => {
+      current = false
+    }
   }, [api, slug])
 
   useEffect(() => {

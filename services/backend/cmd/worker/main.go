@@ -45,13 +45,6 @@ func main() {
 		},
 	})).With("commit", commit)
 
-	ctx := context.Background()
-	client, err := fs.NewClient(ctx, fs.DetectProjectID)
-	if err != nil {
-		log.Fatalf("firestore client: %v", err)
-	}
-	defer client.Close()
-
 	dimension, _ := strconv.Atoi(os.Getenv("EMBEDDING_DIMENSION"))
 	embedder := gemini.NewEmbedder(gemini.EmbedderConfig{
 		Config: gemini.Config{
@@ -64,6 +57,13 @@ func main() {
 
 	var blogHandler worker.Handler
 	if embedder.Configured() {
+		ctx := context.Background()
+		client, err := fs.NewClient(ctx, fs.DetectProjectID)
+		if err != nil {
+			log.Fatalf("firestore client: %v", err)
+		}
+		defer client.Close()
+
 		blogs := firestore.NewBlogRepository(client)
 		embeddings := worker.Embeddings{
 			Blogs:      blogs,

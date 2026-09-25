@@ -8,7 +8,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -16,6 +16,7 @@ import (
 	fs "cloud.google.com/go/firestore"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/logging"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/cache"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/firestore"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/gemini"
@@ -27,9 +28,15 @@ import (
 var commit = "unknown"
 
 func main() {
-	// run() owns the deferred cleanup; log.Fatal here would skip it via os.Exit.
+	// Set before anything can log, so every line the process writes - including any a dependency
+	// sends through the standard log package, which slog.SetDefault redirects - reaches Cloud
+	// Logging as structured JSON with a severity (see internal/logging).
+	slog.SetDefault(slog.New(logging.NewHandler(os.Stdout)))
+
+	// run() owns the deferred cleanup; exiting from inside it would skip that via os.Exit.
 	if err := run(); err != nil {
-		log.Fatal(err)
+		slog.Error("backend stopped", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -40,7 +47,7 @@ func run() error {
 	// The OAuth 2.0 client ID ID tokens must be minted for; unset means no request can authenticate.
 	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
 	if googleClientID == "" {
-		log.Print("warning: GOOGLE_CLIENT_ID is unset, so no request can authenticate")
+		slog.Warn("GOOGLE_CLIENT_ID is unset, so no request can authenticate")
 	}
 
 	ctx := context.Background()
@@ -67,7 +74,7 @@ func run() error {
 	// answer 503. Whether a model is configured is the whole of what this passes in - who is
 	// entitled is each account's own subscription, which lives in Firestore rather than here.
 	if !assistant.Configured() {
-		log.Print("warning: ASSISTANT_MODEL or GCP_PROJECT_ID is unset, so the writing assistant is disabled")
+		slog.Warn("ASSISTANT_MODEL or GCP_PROJECT_ID is unset, so the writing assistant is disabled")
 	}
 	entitlement := entity.NewAssistantEntitlement(assistant.Configured())
 
@@ -114,7 +121,7 @@ func run() error {
 		IdleTimeout:       2 * time.Minute,
 	}
 
-	log.Printf("backend listening on :%s (environment=%s, commit=%s)", port, environment, commit)
+	slog.Info("backend listening", "port", port, "environment", environment, "commit", commit)
 	return server.ListenAndServe()
 }
 

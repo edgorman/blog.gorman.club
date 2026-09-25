@@ -2,9 +2,12 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,6 +19,7 @@ import (
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/logging"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
@@ -485,5 +489,151 @@ func TestSendChatMessage_ProfileLookupFails(t *testing.T) {
 	}
 	if len(f.assistant.requests) != 0 {
 		t.Error("the model was called although the caller's entitlement was never established")
+	}
+}
+
+// turnLogs points the fixture's logger at a buffer, through the same handler production uses, and
+// returns a function reading back the assistant-turn lines written so far.
+func (f *chatFixture) turnLogs(t *testing.T) func() []map[string]any {
+	t.Helper()
+
+	var out bytes.Buffer
+	f.service.cfg.Logger = slog.New(logging.NewHandler(&out))
+
+	return func() []map[string]any {
+		var lines []map[string]any
+		for _, raw := range bytes.Split(bytes.TrimSpace(out.Bytes()), []byte("\n")) {
+			if len(raw) == 0 {
+				continue
+			}
+			// Nothing about the post or who asked belongs in the line, whatever field it might
+			// have ended up under.
+			for _, leak := range []string{chatSlug, chatOwner, "the cat sat", "rewrite it", "unsaved body"} {
+				if bytes.Contains(raw, []byte(leak)) {
+					t.Errorf("log line %s contains %q", raw, leak)
+				}
+			}
+			var line map[string]any
+			if err := json.Unmarshal(raw, &line); err != nil {
+				t.Fatalf("log line %q is not JSON", raw)
+			}
+			if line["message"] == assistantTurnMessage {
+				lines = append(lines, line)
+			}
+		}
+		return lines
+	}
+}
+
+// Each turn writes exactly one line, and a successful one says what it cost without an upstream
+// status it never had.
+func TestSendChatMessage_LogsTheTurn(t *testing.T) {
+	f := newChatFixture(t)
+	logs := f.turnLogs(t)
+	f.assistant.reply = func(req repository.AssistantRequest) (repository.AssistantReply, error) {
+		return repository.AssistantReply{
+			Text:  "done",
+			Draft: req.Draft,
+			Usage: repository.AssistantUsage{Rounds: 2, PromptTokens: 200, CandidateTokens: 40, TotalTokens: 300},
+		}, nil
+	}
+
+	if rec := f.send(t, &blogv1.ChatRequest{Message: "rewrite it", Content: ptr("unsaved body")}); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	lines := logs()
+	if len(lines) != 1 {
+		t.Fatalf("wrote %d turn lines, want exactly 1: %v", len(lines), lines)
+	}
+	line := lines[0]
+	want := map[string]any{
+		"severity":         "INFO",
+		"outcome":          "ok",
+		"rounds":           float64(2),
+		"prompt_tokens":    float64(200),
+		"candidate_tokens": float64(40),
+		"total_tokens":     float64(300),
+	}
+	for key, value := range want {
+		if line[key] != value {
+			t.Errorf("%s = %v, want %v", key, line[key], value)
+		}
+	}
+	for _, key := range []string{"upstream_status", "error"} {
+		if _, ok := line[key]; ok {
+			t.Errorf("%s = %v on a successful turn, want it absent", key, line[key])
+		}
+	}
+}
+
+// A failed turn is logged at ERROR, which is what Cloud Logging shows it as, with the model API's
+// own status when it answered with one and 0 when it never did.
+func TestSendChatMessage_LogsTheFailedTurn(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status float64
+	}{
+		{"status", &repository.AssistantStatusError{StatusCode: http.StatusTooManyRequests, Detail: " (RESOURCE_EXHAUSTED)"}, 429},
+		{"wrapped status", fmt.Errorf("round 2: %w", &repository.AssistantStatusError{StatusCode: http.StatusForbidden}), 403},
+		{"no status", context.DeadlineExceeded, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newChatFixture(t)
+			logs := f.turnLogs(t)
+			f.assistant.reply = func(repository.AssistantRequest) (repository.AssistantReply, error) {
+				return repository.AssistantReply{Usage: repository.AssistantUsage{Rounds: 1}}, tc.err
+			}
+
+			if rec := f.send(t, &blogv1.ChatRequest{Message: "rewrite it"}); rec.Code != http.StatusBadGateway {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadGateway)
+			}
+
+			lines := logs()
+			if len(lines) != 1 {
+				t.Fatalf("wrote %d turn lines, want exactly 1: %v", len(lines), lines)
+			}
+			line := lines[0]
+			if line["severity"] != "ERROR" {
+				t.Errorf("severity = %v, want ERROR", line["severity"])
+			}
+			if line["outcome"] != "error" {
+				t.Errorf("outcome = %v, want error", line["outcome"])
+			}
+			if line["upstream_status"] != tc.status {
+				t.Errorf("upstream_status = %v, want %v", line["upstream_status"], tc.status)
+			}
+			if line["rounds"] != float64(1) {
+				t.Errorf("rounds = %v, want the failed turn's usage kept", line["rounds"])
+			}
+			if line["error"] != tc.err.Error() {
+				t.Errorf("error = %v, want %q", line["error"], tc.err)
+			}
+		})
+	}
+}
+
+// A turn the caller walked away from is not a failure anyone could fix, so it is logged as its own
+// outcome and never reaches the failure alert, which counts only "error".
+func TestSendChatMessage_LogsTheCanceledTurn(t *testing.T) {
+	f := newChatFixture(t)
+	logs := f.turnLogs(t)
+	f.assistant.reply = func(repository.AssistantRequest) (repository.AssistantReply, error) {
+		return repository.AssistantReply{Usage: repository.AssistantUsage{Rounds: 1}}, context.Canceled
+	}
+
+	// Cancelled from the request's own context, which is what carries the caller.
+	req := chatRequestFor(http.MethodPost, bytes.NewReader(chatRequestBody(t, &blogv1.ChatRequest{Message: "rewrite it"})))
+	ctx, cancel := context.WithCancel(req.Context())
+	cancel()
+	f.service.SendChatMessage(httptest.NewRecorder(), req.WithContext(ctx))
+
+	lines := logs()
+	if len(lines) != 1 {
+		t.Fatalf("wrote %d turn lines, want exactly 1: %v", len(lines), lines)
+	}
+	if lines[0]["outcome"] != "canceled" || lines[0]["severity"] != "WARNING" {
+		t.Errorf("line = %v, want outcome canceled at WARNING", lines[0])
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -542,6 +543,8 @@ func newFullService(
 			Environment:          "test",
 			Commit:               "abc123",
 			AssistantEntitlement: entity.NewAssistantEntitlement(true),
+			// Quiet by default; a test asserting on what is logged points this at a buffer.
+			Logger: slog.New(slog.DiscardHandler),
 		},
 		blogs, users, chats, comments, reactions, fakeVerifier{uid: "caller"}, assistant,
 	)

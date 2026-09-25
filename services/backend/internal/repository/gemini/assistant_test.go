@@ -54,6 +54,10 @@ func (m *modelServer) handle(w http.ResponseWriter, r *http.Request) {
 		Content      content `json:"content"`
 		FinishReason string  `json:"finishReason"`
 	}{Content: content{Role: roleModel, Parts: m.responses[len(m.requests)-1]}, FinishReason: "STOP"})
+	// Every call reports the same cost, so a test can tell from the totals how many were summed.
+	response.UsageMetadata.PromptTokenCount = 100
+	response.UsageMetadata.CandidatesTokenCount = 20
+	response.UsageMetadata.TotalTokenCount = 150
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -132,6 +136,11 @@ func TestAssistant_ReplyAppliesEdits(t *testing.T) {
 	}
 	if len(reply.Edits) != 1 || reply.Edits[0].Tool != toolSetTitle {
 		t.Fatalf("Edits = %+v, want one %s", reply.Edits, toolSetTitle)
+	}
+	// Two calls, each reporting its own cost, so the turn's usage is both of them added up.
+	want := repository.AssistantUsage{Rounds: 2, PromptTokens: 200, CandidateTokens: 40, TotalTokens: 300}
+	if reply.Usage != want {
+		t.Errorf("Usage = %+v, want %+v", reply.Usage, want)
 	}
 	if reply.Edits[0].Summary == "" {
 		t.Error("Summary is empty, want a line describing the change")
@@ -275,10 +284,14 @@ func TestAssistant_ReplyProviderError(t *testing.T) {
 		BaseURL: server.URL, HTTPClient: server.Client(),
 	})
 
-	_, err := assistant.Reply(context.Background(), repository.AssistantRequest{Message: "hello"})
+	reply, err := assistant.Reply(context.Background(), repository.AssistantRequest{Message: "hello"})
 
-	if err == nil {
-		t.Fatal("Reply = nil, want an error")
+	var status *repository.AssistantStatusError
+	if !errors.As(err, &status) || status.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("Reply = %v, want an AssistantStatusError carrying 429", err)
+	}
+	if reply.Usage.Rounds != 1 {
+		t.Errorf("Usage.Rounds = %d, want the failed call counted", reply.Usage.Rounds)
 	}
 	if strings.Contains(err.Error(), "secret") {
 		t.Errorf("error = %q, want the provider's message not to be forwarded", err)

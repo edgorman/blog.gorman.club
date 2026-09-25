@@ -120,6 +120,13 @@ type generateResponse struct {
 	PromptFeedback struct {
 		BlockReason string `json:"blockReason"`
 	} `json:"promptFeedback"`
+	// UsageMetadata is the API's own count of what the call cost. It is read only to be reported
+	// (see repository.AssistantUsage); nothing here decides anything on it.
+	UsageMetadata struct {
+		PromptTokenCount     int `json:"promptTokenCount"`
+		CandidatesTokenCount int `json:"candidatesTokenCount"`
+		TotalTokenCount      int `json:"totalTokenCount"`
+	} `json:"usageMetadata"`
 }
 
 // blockReason names why a request produced no candidate, when the API said.

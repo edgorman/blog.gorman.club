@@ -43,6 +43,24 @@ variable "assistant_location" {
   default     = "global"
 }
 
+variable "embedding_model" {
+  description = "Text-embedding model the worker embeds posts with, served by the Agent Platform's :predict method in embedding_location. Changing it re-embeds every post on the worker's next start, since vectors from different models are not comparable. Empty disables embeddings."
+  type        = string
+  default     = "gemini-embedding-001"
+}
+
+variable "embedding_location" {
+  description = "Location embedding_model is called in: a region such as europe-west1, or \"global\" for the multi-region endpoint."
+  type        = string
+  default     = "europe-west1"
+}
+
+variable "embedding_dimension" {
+  description = "Length of every post embedding, and of the vector index on the embeddings collection that must match it. At most 2048, Firestore's limit for an indexed vector. Changing it needs every embedding rewritten, which changing embedding_model alongside it does."
+  type        = number
+  default     = 768
+}
+
 variable "alert_notification_emails" {
   description = "Addresses the monitoring alerts in monitoring.tf are sent to. Empty leaves the policies in place but silent - they still show in the console, nobody is told. These are recipients rather than an entitlement: an address here is where a message goes, not an account admitted to anything."
   type        = list(string)

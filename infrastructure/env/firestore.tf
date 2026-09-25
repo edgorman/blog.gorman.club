@@ -125,3 +125,24 @@ resource "google_firestore_index" "blogs_by_owner_tag_and_created_at" {
     order      = "DESCENDING"
   }
 }
+
+# Related posts (`GET /blogs/{slug}/related`) run FindNearest over the worker's embeddings/{slug}
+# documents, which needs a vector index on the field the vectors are stored in. Its dimension is
+# the same variable the worker asks the model for, so the two cannot drift apart.
+resource "google_firestore_index" "embeddings_by_vector" {
+  project    = var.gcp_project_id
+  database   = google_firestore_database.database.name
+  collection = "embeddings"
+
+  fields {
+    field_path = "__name__"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "embedding"
+    vector_config {
+      dimension = var.embedding_dimension
+      flat {}
+    }
+  }
+}

@@ -37,6 +37,9 @@ const (
 	// which is exactly why it is in the same table as the rest: a gated feature that is not a
 	// resource is how the assistant ended up with a bespoke email allowlist bolted onto the config.
 	ResourceAssistant Resource = "assistant"
+	// ResourceRelated is the list of posts nearest in meaning to one post. It is derived rather than
+	// stored, and every post in it has already passed its own read rule.
+	ResourceRelated Resource = "related"
 )
 
 // Action is one thing that can be done to a resource. These four are the whole vocabulary, and
@@ -125,6 +128,11 @@ var policy = map[Resource]map[Action]Access{
 		ActionRead:   AccessWhitelist,
 		ActionUpdate: AccessWhitelist,
 		ActionDelete: AccessWhitelist,
+	},
+	// Related posts are as public as the post they hang under, which is asked first, and each post
+	// listed is filtered by its own read rule: ranking by meaning never widens who sees what.
+	ResourceRelated: {
+		ActionRead: AccessPublic,
 	},
 }
 

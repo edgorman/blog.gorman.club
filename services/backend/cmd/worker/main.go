@@ -3,14 +3,24 @@
 package main
 
 import (
+	"context"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
+	fs "cloud.google.com/go/firestore"
+
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/firestore"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/gemini"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/worker"
 )
+
+// backfillTimeout bounds the reconcile run before the worker starts listening, well inside Cloud
+// Run's default four-minute startup probe.
+const backfillTimeout = 2 * time.Minute
 
 // Baked in at build time via -ldflags (see Dockerfile); images are never rebuilt for production.
 var commit = "unknown"
@@ -35,10 +45,41 @@ func main() {
 		},
 	})).With("commit", commit)
 
-	// Timeouts for the same reason as cmd/backend's server; the worker has no long-running calls yet.
+	ctx := context.Background()
+	client, err := fs.NewClient(ctx, fs.DetectProjectID)
+	if err != nil {
+		log.Fatalf("firestore client: %v", err)
+	}
+	defer client.Close()
+
+	dimension, _ := strconv.Atoi(os.Getenv("EMBEDDING_DIMENSION"))
+	embedder := gemini.NewEmbedder(gemini.EmbedderConfig{
+		Config: gemini.Config{
+			Model:     os.Getenv("EMBEDDING_MODEL"),
+			ProjectID: os.Getenv("GCP_PROJECT_ID"),
+			Location:  os.Getenv("EMBEDDING_LOCATION"),
+		},
+		Dimension: dimension,
+	})
+
+	var blogHandler worker.Handler
+	if embedder.Configured() {
+		blogs := firestore.NewBlogRepository(client)
+		embeddings := worker.Embeddings{
+			Blogs:      blogs,
+			Embeddings: firestore.NewEmbeddingRepository(client),
+			Embedder:   embedder,
+		}
+		blogHandler = embeddings.Handle
+		backfill(ctx, logger, blogs, embeddings)
+	} else {
+		logger.Warn("EMBEDDING_MODEL, EMBEDDING_DIMENSION or GCP_PROJECT_ID is unset, so posts are not embedded")
+	}
+
+	// Timeouts for the same reason as cmd/backend's server. An event makes at most one model call.
 	server := &http.Server{
 		Addr:              ":" + port,
-		Handler:           worker.New(logger),
+		Handler:           worker.New(logger, blogHandler),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      time.Minute,
@@ -47,4 +88,30 @@ func main() {
 
 	logger.Info("worker listening", "port", port)
 	log.Fatal(server.ListenAndServe())
+}
+
+// backfill syncs every post's embedding before the worker takes events, so posts written before
+// embeddings existed, or while the worker was failing, catch up on the next start - and a deploy
+// always starts one. A post already in step costs two reads and no model call, and a failure is
+// logged rather than fatal: the next write to that post, or the next start, tries again.
+//
+// ponytail: reads every post on each cold start; move to a Cloud Run job if the collection grows
+// past a few thousand posts.
+func backfill(ctx context.Context, logger *slog.Logger, blogs *firestore.BlogRepository, embeddings worker.Embeddings) {
+	ctx, cancel := context.WithTimeout(ctx, backfillTimeout)
+	defer cancel()
+
+	slugs, err := blogs.Slugs(ctx)
+	if err != nil {
+		logger.Error("backfill: list posts", "error", err)
+		return
+	}
+	failed := 0
+	for _, slug := range slugs {
+		if err := embeddings.Sync(ctx, slug); err != nil {
+			failed++
+			logger.Error("backfill: sync embedding", "document", "blogs/"+slug, "error", err)
+		}
+	}
+	logger.Info("backfill done", "posts", len(slugs), "failed", failed)
 }

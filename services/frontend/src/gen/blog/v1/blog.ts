@@ -67,6 +67,15 @@ export interface BlogPage {
 }
 
 /**
+ * RelatedPosts is what `GET /blogs/{slug}/related` answers with: the posts nearest in meaning to
+ * one post, closest first, already narrowed to what the caller may read. It is not a BlogPage
+ * because there is no next page to offer - the list is a fixed handful, not a feed.
+ */
+export interface RelatedPosts {
+  posts: Blog[];
+}
+
+/**
  * ListBlogsParams is what `GET /blogs` pages and scopes by, all optional so the bare call still
  * means "the feed".
  *
@@ -451,6 +460,73 @@ export const BlogPage: MessageFns<BlogPage> = {
     const message = createBaseBlogPage();
     message.posts = object.posts?.map((e) => Blog.fromPartial(e)) || [];
     message.hasMore = object.hasMore ?? false;
+    return message;
+  },
+};
+
+function createBaseRelatedPosts(): RelatedPosts {
+  return { posts: [] };
+}
+
+export const RelatedPosts: MessageFns<RelatedPosts> = {
+  encode(message: RelatedPosts, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.posts) {
+      Blog.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RelatedPosts {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRelatedPosts();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.posts.push(Blog.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RelatedPosts {
+    return { posts: globalThis.Array.isArray(object?.posts) ? object.posts.map((e: any) => Blog.fromJSON(e)) : [] };
+  },
+
+  toJSON(message: RelatedPosts): unknown {
+    const obj: any = {};
+    if (message.posts?.length) {
+      obj.posts = message.posts.map((e) => Blog.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RelatedPosts>, I>>(base?: I): RelatedPosts {
+    return RelatedPosts.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RelatedPosts>, I>>(object: I): RelatedPosts {
+    const message = createBaseRelatedPosts();
+    message.posts = object.posts?.map((e) => Blog.fromPartial(e)) || [];
     return message;
   },
 };

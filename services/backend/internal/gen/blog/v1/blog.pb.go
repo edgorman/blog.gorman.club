@@ -214,6 +214,53 @@ func (x *BlogPage) GetHasMore() bool {
 	return false
 }
 
+// RelatedPosts is what `GET /blogs/{slug}/related` answers with: the posts nearest in meaning to
+// one post, closest first, already narrowed to what the caller may read. It is not a BlogPage
+// because there is no next page to offer - the list is a fixed handful, not a feed.
+type RelatedPosts struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Posts         []*Blog                `protobuf:"bytes,1,rep,name=posts,proto3" json:"posts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RelatedPosts) Reset() {
+	*x = RelatedPosts{}
+	mi := &file_blog_v1_blog_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RelatedPosts) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RelatedPosts) ProtoMessage() {}
+
+func (x *RelatedPosts) ProtoReflect() protoreflect.Message {
+	mi := &file_blog_v1_blog_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RelatedPosts.ProtoReflect.Descriptor instead.
+func (*RelatedPosts) Descriptor() ([]byte, []int) {
+	return file_blog_v1_blog_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *RelatedPosts) GetPosts() []*Blog {
+	if x != nil {
+		return x.Posts
+	}
+	return nil
+}
+
 // ListBlogsParams is what `GET /blogs` pages and scopes by, all optional so the bare call still
 // means "the feed".
 //
@@ -243,7 +290,7 @@ type ListBlogsParams struct {
 
 func (x *ListBlogsParams) Reset() {
 	*x = ListBlogsParams{}
-	mi := &file_blog_v1_blog_proto_msgTypes[2]
+	mi := &file_blog_v1_blog_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -255,7 +302,7 @@ func (x *ListBlogsParams) String() string {
 func (*ListBlogsParams) ProtoMessage() {}
 
 func (x *ListBlogsParams) ProtoReflect() protoreflect.Message {
-	mi := &file_blog_v1_blog_proto_msgTypes[2]
+	mi := &file_blog_v1_blog_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -268,7 +315,7 @@ func (x *ListBlogsParams) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBlogsParams.ProtoReflect.Descriptor instead.
 func (*ListBlogsParams) Descriptor() ([]byte, []int) {
-	return file_blog_v1_blog_proto_rawDescGZIP(), []int{2}
+	return file_blog_v1_blog_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListBlogsParams) GetLimit() int32 {
@@ -325,7 +372,7 @@ type BlogRequest struct {
 
 func (x *BlogRequest) Reset() {
 	*x = BlogRequest{}
-	mi := &file_blog_v1_blog_proto_msgTypes[3]
+	mi := &file_blog_v1_blog_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -337,7 +384,7 @@ func (x *BlogRequest) String() string {
 func (*BlogRequest) ProtoMessage() {}
 
 func (x *BlogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_blog_v1_blog_proto_msgTypes[3]
+	mi := &file_blog_v1_blog_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -350,7 +397,7 @@ func (x *BlogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlogRequest.ProtoReflect.Descriptor instead.
 func (*BlogRequest) Descriptor() ([]byte, []int) {
-	return file_blog_v1_blog_proto_rawDescGZIP(), []int{3}
+	return file_blog_v1_blog_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *BlogRequest) GetTitle() string {
@@ -411,7 +458,9 @@ const file_blog_v1_blog_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"J\n" +
 	"\bBlogPage\x12#\n" +
 	"\x05posts\x18\x01 \x03(\v2\r.blog.v1.BlogR\x05posts\x12\x19\n" +
-	"\bhas_more\x18\x02 \x01(\bR\ahasMore\"\xd1\x01\n" +
+	"\bhas_more\x18\x02 \x01(\bR\ahasMore\"3\n" +
+	"\fRelatedPosts\x12#\n" +
+	"\x05posts\x18\x01 \x03(\v2\r.blog.v1.BlogR\x05posts\"\xd1\x01\n" +
 	"\x0fListBlogsParams\x12\x19\n" +
 	"\x05limit\x18\x01 \x01(\x05H\x00R\x05limit\x88\x01\x01\x12$\n" +
 	"\vstart_after\x18\x02 \x01(\tH\x01R\n" +
@@ -445,23 +494,25 @@ func file_blog_v1_blog_proto_rawDescGZIP() []byte {
 	return file_blog_v1_blog_proto_rawDescData
 }
 
-var file_blog_v1_blog_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_blog_v1_blog_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_blog_v1_blog_proto_goTypes = []any{
 	(*Blog)(nil),                  // 0: blog.v1.Blog
 	(*BlogPage)(nil),              // 1: blog.v1.BlogPage
-	(*ListBlogsParams)(nil),       // 2: blog.v1.ListBlogsParams
-	(*BlogRequest)(nil),           // 3: blog.v1.BlogRequest
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(*RelatedPosts)(nil),          // 2: blog.v1.RelatedPosts
+	(*ListBlogsParams)(nil),       // 3: blog.v1.ListBlogsParams
+	(*BlogRequest)(nil),           // 4: blog.v1.BlogRequest
+	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
 }
 var file_blog_v1_blog_proto_depIdxs = []int32{
-	4, // 0: blog.v1.Blog.created_at:type_name -> google.protobuf.Timestamp
-	4, // 1: blog.v1.Blog.updated_at:type_name -> google.protobuf.Timestamp
+	5, // 0: blog.v1.Blog.created_at:type_name -> google.protobuf.Timestamp
+	5, // 1: blog.v1.Blog.updated_at:type_name -> google.protobuf.Timestamp
 	0, // 2: blog.v1.BlogPage.posts:type_name -> blog.v1.Blog
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	0, // 3: blog.v1.RelatedPosts.posts:type_name -> blog.v1.Blog
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_blog_v1_blog_proto_init() }
@@ -469,14 +520,14 @@ func file_blog_v1_blog_proto_init() {
 	if File_blog_v1_blog_proto != nil {
 		return
 	}
-	file_blog_v1_blog_proto_msgTypes[2].OneofWrappers = []any{}
+	file_blog_v1_blog_proto_msgTypes[3].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_blog_v1_blog_proto_rawDesc), len(file_blog_v1_blog_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

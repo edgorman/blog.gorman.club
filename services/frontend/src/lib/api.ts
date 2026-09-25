@@ -10,7 +10,7 @@
  * (see the "Wire Types" step in `.github/workflows/pull-request.yaml`).
  */
 import type { CurrentUser, User } from '../gen/blog/v1/user'
-import type { Blog, BlogPage, ListBlogsParams } from '../gen/blog/v1/blog'
+import type { Blog, BlogPage, ListBlogsParams, RelatedPosts } from '../gen/blog/v1/blog'
 import type { Comment, CommentThread, CreateCommentRequest } from '../gen/blog/v1/comment'
 import type { PageReactions, TargetReactions } from '../gen/blog/v1/reaction'
 import type { ChatHistory, ChatReply, ChatRequest } from '../gen/blog/v1/chat'
@@ -150,6 +150,11 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
     // suffixed instead. The uid a post records its owner by is never a URL, exactly as for a
     // profile.
     getBlog: (slug: string) => request<Blog>(baseUrl, authHeaders, 'GET', blogPath(slug)),
+    // The posts nearest in meaning to this one, already narrowed to what the caller may read, and
+    // empty until the worker has embedded the post. Unwrapped from `RelatedPosts` for the same
+    // top-level-message reason `CommentThread` is below.
+    getRelatedBlogs: (slug: string) =>
+      request<RelatedPosts>(baseUrl, authHeaders, 'GET', `${blogPath(slug)}/related`).then((related) => related.posts),
     createBlog: (blog: Partial<Blog>) => request<Blog>(baseUrl, authHeaders, 'POST', '/blogs', blog),
     updateBlog: (slug: string, blog: Partial<Blog>) =>
       request<Blog>(baseUrl, authHeaders, 'PUT', blogPath(slug), blog),

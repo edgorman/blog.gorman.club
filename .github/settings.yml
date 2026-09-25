@@ -49,20 +49,12 @@ labels:
 branches:
   - name: main
     protection:
-      # No required review count: CODEOWNERS names only @edgorman as owner
-      # of everything, and GitHub never counts a PR author's own review as
-      # satisfying a review requirement - so with required_approving_review_count
-      # at 1 and require_code_owner_reviews true, every PR from the sole
-      # maintainer was unapprovable by construction (self-review doesn't
-      # count, and there's no second collaborator to approve it). This repo
-      # is user-owned rather than org-owned, so `bypass_pull_request_allowances`
-      # (letting a named user skip required reviews while everyone else still
-      # needs one) isn't available here - GitHub restricts that field to
-      # org-owned repos. Status checks, linear history, and conversation
-      # resolution below still gate every merge; only the human-approval gate
-      # is dropped. Add required_pull_request_reviews back (with
-      # bypass_pull_request_allowances for @edgorman) if this repo ever moves
-      # under an org, or gets a second collaborator to actually review.
+      # Require every change to land via reviewed PR — trunk-based dev with
+      # no direct pushes to main.
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: true
+        require_code_owner_reviews: true
 
       # The jobs of .github/workflows/pull-request.yaml, named by their job ids
       # (none of them set a `name:`, so that is what the check run is called).

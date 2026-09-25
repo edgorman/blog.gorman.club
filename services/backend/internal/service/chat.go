@@ -1,8 +1,9 @@
 package service
 
 import (
+	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -216,14 +217,14 @@ func (s *Service) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		History: chat.Messages,
 		Message: asked.Content,
 	})
+	s.logAssistantTurn(r.Context(), reply.Usage, err)
 	if errors.Is(err, repository.ErrAssistantNotConfigured) {
 		writeError(w, http.StatusServiceUnavailable, "the writing assistant is not available")
 		return
 	}
 	if err != nil {
-		// Logged rather than returned: the reason is an operator's to read, and it can quote the
-		// request - which holds the post - back at whoever asked.
-		log.Printf("assistant reply for %q failed: %v", blog.Slug, err)
+		// The reason is logged above rather than returned: it is an operator's to read, not the
+		// caller's.
 		writeError(w, http.StatusBadGateway, "the writing assistant could not be reached")
 		return
 	}
@@ -264,4 +265,59 @@ func (s *Service) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeProto(w, http.StatusOK, chatReplyMessage([]entity.ChatMessage{asked, answered}, response, updated))
+}
+
+// assistantTurnMessage is the message of the one line logAssistantTurn writes. The log-based
+// metrics in infrastructure/env/monitoring.tf select on it exactly, so it is a constant rather
+// than something a rewording here could quietly break.
+const assistantTurnMessage = "assistant turn"
+
+// logAssistantTurn writes the one line every assistant turn produces, whether it succeeded or not.
+// It is what the assistant's usage and error alerts count (see infrastructure/env/monitoring.tf),
+// which is why it is one line per turn rather than one per model call: a turn is what an author
+// asked for and what the rate limiter meters.
+//
+// It carries counts and outcomes only. The post, the conversation and the caller are all left out -
+// not even the slug or the uid - because nothing here needs them to answer "how much is the
+// assistant being used, and is it failing", and a log line is readable by far more people than
+// the post's owner. The error is kept, since the assistant never puts the model's own prose in one
+// (see gemini.failureDetail).
+func (s *Service) logAssistantTurn(ctx context.Context, usage repository.AssistantUsage, err error) {
+	attrs := []slog.Attr{
+		slog.Int("rounds", usage.Rounds),
+		slog.Int("prompt_tokens", usage.PromptTokens),
+		slog.Int("candidate_tokens", usage.CandidateTokens),
+		slog.Int("total_tokens", usage.TotalTokens),
+	}
+	if err == nil {
+		s.logger().LogAttrs(ctx, slog.LevelInfo, assistantTurnMessage,
+			append([]slog.Attr{slog.String("outcome", "ok")}, attrs...)...)
+		return
+	}
+
+	// A caller who went away mid-turn - closed the tab, navigated off - cancels the request, and
+	// the model call with it. Nothing failed that an operator could fix, so it is its own outcome
+	// rather than an error: the failure alert counts only "error", while the usage alert still
+	// sees the turn and whatever it spent before it was cut off.
+	if errors.Is(ctx.Err(), context.Canceled) {
+		s.logger().LogAttrs(ctx, slog.LevelWarn, assistantTurnMessage,
+			append([]slog.Attr{slog.String("outcome", "canceled")}, attrs...)...)
+		return
+	}
+
+	// upstream_status is the model API's HTTP status, or 0 when the turn failed without one - it
+	// timed out, never reached the API, was not configured, or the API answered 200 with no
+	// candidate. 0 rather than an absent field so the metric counting failures by status always
+	// has a label value to show.
+	status := 0
+	var statusErr *repository.AssistantStatusError
+	if errors.As(err, &statusErr) {
+		status = statusErr.StatusCode
+	}
+	s.logger().LogAttrs(ctx, slog.LevelError, assistantTurnMessage,
+		append([]slog.Attr{
+			slog.String("outcome", "error"),
+			slog.Int("upstream_status", status),
+			slog.String("error", err.Error()),
+		}, attrs...)...)
 }

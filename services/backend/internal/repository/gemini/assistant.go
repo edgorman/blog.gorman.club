@@ -168,15 +168,20 @@ func (a *Assistant) Reply(ctx context.Context, req repository.AssistantRequest) 
 	var (
 		edits []entity.ChatEdit
 		said  []string
+		usage repository.AssistantUsage
 	)
 
 	for range maxToolRounds {
 		// The instructions carry the draft as it stands, so a second round sees the edits the
 		// first one made rather than the post as it was when the turn started.
+		usage.Rounds++
 		response, err := a.generate(ctx, client, instructions(draft), contents)
 		if err != nil {
-			return repository.AssistantReply{}, err
+			return repository.AssistantReply{Usage: usage}, err
 		}
+		usage.PromptTokens += response.UsageMetadata.PromptTokenCount
+		usage.CandidateTokens += response.UsageMetadata.CandidatesTokenCount
+		usage.TotalTokens += response.UsageMetadata.TotalTokenCount
 
 		text, calls := response.parts()
 		if text != "" {
@@ -208,6 +213,7 @@ func (a *Assistant) Reply(ctx context.Context, req repository.AssistantRequest) 
 		Text:  truncate(strings.Join(said, "\n\n"), maxReplyLength),
 		Draft: draft,
 		Edits: edits,
+		Usage: usage,
 	}, nil
 }
 
@@ -248,7 +254,10 @@ func (a *Assistant) generate(ctx context.Context, client *http.Client, system st
 		// ACCESS_TOKEN_SCOPE_INSUFFICIENT, SERVICE_DISABLED) - so those are carried, because a
 		// bare status code cannot tell an operator whether the deployment is missing a role, a
 		// scope, an enabled API, or a model that exists.
-		return generateResponse{}, fmt.Errorf("gemini returned %d%s", response.StatusCode, failureDetail(payload))
+		return generateResponse{}, &repository.AssistantStatusError{
+			StatusCode: response.StatusCode,
+			Detail:     failureDetail(payload),
+		}
 	}
 
 	var decoded generateResponse

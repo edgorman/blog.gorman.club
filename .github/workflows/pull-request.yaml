@@ -91,7 +91,8 @@ jobs:
   # `:test` (every project's tests, affected-and-runInCI filtered - a change to a shared package
   # still reaches its dependents via each test task's own `inputs`, e.g. backend/frontend's
   # `project://packages/protos`, #155) plus services/backend:image (the docker_image parity target
-  # from #117), so a broken image build fails the PR rather than the job that publishes it.
+  # from #117) and worker:image, so a broken image build fails the PR rather than the job that
+  # publishes it.
   test:
     runs-on: ubuntu-latest
     permissions:
@@ -107,7 +108,7 @@ jobs:
           cache: false # see `changed`'s identical setup step above for why
       - name: moon ci
         shell: bash
-        run: moon ci :test services/backend:image
+        run: moon ci :test services/backend:image worker:image
         env:
           MOON_BASE: origin/main
 

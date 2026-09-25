@@ -1,0 +1,24 @@
+$schema: '../../../../.moon/cache/schemas/project.json'
+# Its own project, nested in services/backend's Go module, so CI builds, publishes and deploys the
+# worker as a separate artifact. Formatting, vet and tests stay with services/backend, whose
+# `go ... ./...` tasks already cover this folder and internal/worker.
+# No layer: moon infers a dependency on services/backend (the enclosing project), and an
+# 'application' layer may not depend on another application.
+stack: 'backend'
+tags: ['go']
+
+tasks:
+  image:
+    # services/backend:image with CMD=worker. Everything under internal/ is an input, since the
+    # worker may import any of it.
+    script: 'docker build --build-arg CMD=worker --build-arg COMMIT_SHA="${COMMIT_SHA:-unknown}" -t worker:${COMMIT_SHA:-local} ../..'
+    inputs:
+      - '**/*.go'
+      - '/services/backend/internal/**/*.go'
+      - '/services/backend/go.mod'
+      - '/services/backend/go.sum'
+      - '/services/backend/Dockerfile'
+      - '/services/backend/.dockerignore'
+    options:
+      cache: false
+      runInCI: true

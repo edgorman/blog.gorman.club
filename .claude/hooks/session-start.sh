@@ -58,16 +58,19 @@ fi
 # reachable through the session proxy (403), and moonrepo.dev isn't in the default allowlist.
 #
 # This gets the `moon`/`proto` binaries only, deliberately not `proto install`/`moon setup`.
-# Every proto/moon plugin - every toolchain (go, node, npm) *and* every third-party TOML plugin
-# (buf, terraform, see .prototools) - is fetched as an OCI blob from ghcr.io, by way of
-# pkg-containers.githubusercontent.com. That host isn't in the default allowlist either (confirmed:
-# `moon query projects` fails with plugin::loader::registry::load_failure loading
-# ghcr.io/moonrepo/go_toolchain, and `proto install buf` fails the same way loading
-# ghcr.io/moonrepo/schema_tool - the generic loader every TOML plugin needs too, not just the
-# builtin toolchains). So `moon --version` works here, but `moon setup`/`moon run`/`moon ci` and
-# `proto install` do not, until ghcr.io joins the allowlist - a wider version of the
-# registry.terraform.io gap below. buf and Terraform stay hand-installed above for that reason;
-# see AGENTS.md's Commands section for what does and doesn't work in a cloud session.
+# Every proto/moon plugin is fetched as an OCI blob from ghcr.io by default, by way of
+# pkg-containers.githubusercontent.com, which isn't in the default allowlist (`moon query
+# projects` fails with plugin::loader::registry::load_failure loading ghcr.io/moonrepo/go_toolchain).
+# Two documented moon env vars (https://moonrepo.dev/docs/env-vars), exported below, route around
+# that instead:
+# - MOON_PLUGINS_USE_URL_DIST loads each plugin from its github.com/moonrepo/plugins release asset
+#   (and sets PROTO_PLUGINS_USE_URL_DIST for proto's own plugins) rather than from ghcr.io.
+# - MOON_TOOLCHAIN_FORCE_GLOBALS runs tasks with the go/node/npm already on PATH plus buf and
+#   Terraform from above, rather than having proto download them - dl.google.com, where proto
+#   fetches Go from, is blocked too. The versions still match .prototools: go.mod's `go` line makes
+#   GOTOOLCHAIN=auto fetch the pinned Go (see below), and the base image's Node 22/npm match.
+# With both set, `moon run`/`moon ci` work here. See AGENTS.md's Commands section for the two
+# tasks that still can't (Terraform `validate`, the backend image).
 if ! "$BIN_DIR/proto" --version 2>/dev/null | grep -qx '0.62.3'; then
   proto_tmp="$(mktemp -d)"
   trap 'rm -rf "$proto_tmp"' RETURN
@@ -99,6 +102,9 @@ if ! "$BIN_DIR/moon" --version 2>/dev/null | grep -qx '2.5.5'; then
   rm -rf "$moon_tmp"
   trap - RETURN
 fi
+
+echo 'export MOON_PLUGINS_USE_URL_DIST=true' >>"$CLAUDE_ENV_FILE"
+echo 'export MOON_TOOLCHAIN_FORCE_GLOBALS=true' >>"$CLAUDE_ENV_FILE"
 
 # --- Go 1.26.0 toolchain -----------------------------------------------------------------------
 # go.mod declares `go 1.26.0`; GOTOOLCHAIN defaults to "auto", so any `go` command run inside the

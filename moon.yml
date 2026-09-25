@@ -42,9 +42,11 @@ tasks:
         fi
       done
       exit "$missing"
+    # Recursive, not '/services/*': a single '*' never crosses a '/', so it matched no file inside
+    # a new folder and the check never became affected by the very change it exists to catch.
     inputs:
-      - '/services/*'
-      - '/packages/*'
+      - '/services/**/*'
+      - '/packages/**/*'
       - '/.moon/workspace.yml'
 
   # .prototools' `go` pin (#191) is a second source of truth alongside go.mod's own `go` line -

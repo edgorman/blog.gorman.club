@@ -135,6 +135,14 @@ func (s *Service) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 	// The subscription is fetched rather than read off the event, because Stripe delivers events out
 	// of order and retries them: a stale "updated" arriving after a "deleted" must not bring a
 	// cancelled subscription back. Whatever the event, what is written is the state as it is now.
+	//
+	// Fetch and write happen under one lock, so of two deliveries racing (checkout sends "created"
+	// and "updated" milliseconds apart) the one that fetched later also writes later.
+	// ponytail: per-process lock, like the rate limiter's buckets; a Firestore-held lease if the
+	// service ever runs more than one instance.
+	s.webhookMu.Lock()
+	defer s.webhookMu.Unlock()
+
 	sub, err := s.payments.Subscription(r.Context(), event.SubscriptionID)
 	if err != nil {
 		log.Printf("billing: fetch subscription %s: %v", event.SubscriptionID, err)
@@ -173,13 +181,16 @@ func (s *Service) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 
 // subscribedUntil is what a subscription's current state makes the account's paid access.
 //
-// A live subscription (active, or in a trial) runs to the end of its current period; one cancelled
+// A live subscription runs to the end of its current period: active, in a trial, or past_due - a
+// failed renewal Stripe is still retrying, which it turns into canceled or unpaid if every retry
+// fails. Counting past_due as live keeps the portal (where the card is fixed) in reach, and keeps
+// a second checkout and an account deletion refused while Stripe may still charge. One cancelled
 // at period end stays active until then, so access ends exactly when the period does. Anything else
-// - canceled, unpaid, past_due, incomplete - ends access, except that an ended subscription does
+// - canceled, unpaid, incomplete - ends access, except that an ended subscription does
 // not clear access running later than its own period: that came from a newer subscription, and an
 // old one's late or retried event must not take it away.
 func subscribedUntil(user entity.User, sub repository.Subscription) *time.Time {
-	if sub.Status == "active" || sub.Status == "trialing" {
+	if sub.Status == "active" || sub.Status == "trialing" || sub.Status == "past_due" {
 		end := sub.CurrentPeriodEnd
 		return &end
 	}

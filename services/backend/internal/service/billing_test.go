@@ -80,7 +80,7 @@ func paymentsWith(status string) *fakePayments {
 
 func TestStripeWebhook_LiveSubscriptionSetsThePeriodEnd(t *testing.T) {
 	for _, event := range []string{"customer.subscription.created", "customer.subscription.updated"} {
-		for _, status := range []string{"active", "trialing"} {
+		for _, status := range []string{"active", "trialing", "past_due"} {
 			users := subscriber(nil)
 			s := newBillingService(users, paymentsWith(status))
 
@@ -99,7 +99,7 @@ func TestStripeWebhook_LiveSubscriptionSetsThePeriodEnd(t *testing.T) {
 }
 
 func TestStripeWebhook_EndedSubscriptionClearsAccess(t *testing.T) {
-	for _, status := range []string{"canceled", "unpaid", "incomplete_expired", "past_due"} {
+	for _, status := range []string{"canceled", "unpaid", "incomplete", "incomplete_expired"} {
 		users := subscriber(&periodEnd)
 		s := newBillingService(users, paymentsWith(status))
 

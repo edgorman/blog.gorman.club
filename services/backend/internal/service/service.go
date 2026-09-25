@@ -5,6 +5,7 @@ package service
 import (
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
@@ -43,6 +44,8 @@ type Service struct {
 	verifier   repository.TokenVerifier
 	assistant  repository.Assistant
 	payments   repository.Payments
+	// webhookMu serializes the billing webhook's fetch-and-write (see StripeWebhook).
+	webhookMu sync.Mutex
 	// The rate limiters live on the Service rather than being built in Handler(), so a budget is
 	// spent by the service that served the request rather than by the handler tree - two calls to
 	// Handler() must not hand a caller two budgets. See ratelimit.go for what each one bounds.

@@ -44,10 +44,21 @@ resource "cloudflare_dns_record" "frontend" {
 }
 
 # Proves ownership of gorman.club to Google Search Console (a Domain property), so the blog can be
-# submitted for indexing (#221). Skipped until the token is set in config/root/terraform.tfvars.
-resource "cloudflare_dns_record" "google_site_verification" {
-  count = var.google_site_verification == "" ? 0 : 1
+# submitted for indexing (#221). Search Console created this record itself when the property was
+# verified, so it is imported rather than created; the import is a no-op once it is in state.
+data "cloudflare_dns_records" "google_site_verification" {
+  zone_id = data.cloudflare_zone.gorman_club.id
+  type    = "TXT"
+  name    = { exact = data.cloudflare_zone.gorman_club.name }
+  content = { contains = var.google_site_verification }
+}
 
+import {
+  to = cloudflare_dns_record.google_site_verification
+  id = "${data.cloudflare_zone.gorman_club.id}/${one(data.cloudflare_dns_records.google_site_verification.result).id}"
+}
+
+resource "cloudflare_dns_record" "google_site_verification" {
   zone_id = data.cloudflare_zone.gorman_club.id
   name    = data.cloudflare_zone.gorman_club.name
   type    = "TXT"

@@ -64,7 +64,6 @@ variable "google_client_id" {
 }
 
 variable "google_site_verification" {
-  description = "Token from Google Search Console's DNS verification for the gorman.club Domain property (the part after `google-site-verification=`). Not a secret. Empty skips the TXT record."
+  description = "Token from Google Search Console's DNS verification for the gorman.club Domain property (the part after `google-site-verification=`). Not a secret."
   type        = string
-  default     = ""
 }

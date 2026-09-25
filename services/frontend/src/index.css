@@ -887,6 +887,16 @@ a.tag-topic:hover {
   padding: 0;
   font-size: 12px;
 }
+/* Shown to the post's owner alone, beside Approve, on a comment the classifier flagged. */
+.comment-flagged {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+.comment-approve {
+  padding: 0;
+  font-size: 12px;
+}
 /* Comments are rendered as text rather than markdown (see Comments.tsx), so the line breaks
    somebody typed are the only formatting they get - and `pre-wrap` is what keeps them. */
 .comment-body {

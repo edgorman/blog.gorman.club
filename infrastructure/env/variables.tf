@@ -61,6 +61,18 @@ variable "embedding_dimension" {
   default     = 768
 }
 
+variable "moderation_model" {
+  description = "Model id the worker classifies new comments with. A cheap, fast model is enough for a yes/no verdict; like assistant_model it must be served in moderation_location. Empty leaves comments unscreened."
+  type        = string
+  default     = "gemini-3.7-flash"
+}
+
+variable "moderation_location" {
+  description = "Location moderation_model is called in: a region, or \"global\" for the multi-region endpoint."
+  type        = string
+  default     = "global"
+}
+
 variable "alert_notification_emails" {
   description = "Addresses the monitoring alerts in monitoring.tf are sent to. Empty leaves the policies in place but silent - they still show in the console, nobody is told. These are recipients rather than an entitlement: an address here is where a message goes, not an account admitted to anything."
   type        = list(string)

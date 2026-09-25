@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -21,8 +22,11 @@ type commentResponse struct {
 
 // commentMessage is the wire shape of a single comment: what CreateComment answers with, and what
 // each entry of a CommentThread carries.
+//
+// Moderation is carried whenever the comment holds one, so a caller who may not see it has to have
+// it cleared first (see ListComments).
 func commentMessage(response commentResponse) *blogv1.Comment {
-	return &blogv1.Comment{
+	message := &blogv1.Comment{
 		Id:             response.ID,
 		BlogSlug:       response.BlogSlug,
 		AuthorId:       response.AuthorID,
@@ -30,6 +34,10 @@ func commentMessage(response commentResponse) *blogv1.Comment {
 		Body:           response.Body,
 		CreatedAt:      timestamppb.New(response.CreatedAt),
 	}
+	if m := response.Moderation; m != nil {
+		message.Moderation = &blogv1.CommentModeration{Status: string(m.Status), Category: m.Category}
+	}
+	return message
 }
 
 // commentThreadMessage is the whole thread ListComments answers with, converting each comment the
@@ -102,6 +110,21 @@ func (s *Service) ListComments(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+
+	// A flagged comment is dropped for everybody but its author and the post's owner, and only the
+	// owner is told how it was screened - its author sees it exactly as they wrote it.
+	uid := uidFromContext(r.Context())
+	visible := make([]entity.Comment, 0, len(comments))
+	for _, comment := range comments {
+		if !comment.VisibleTo(uid, blog) {
+			continue
+		}
+		if !comment.ModerationPermission(entity.ActionRead, blog).Allows(uid) {
+			comment.Moderation = nil
+		}
+		visible = append(visible, comment)
+	}
+	comments = visible
 
 	// withCommentAuthors always builds its slice, and commentThreadMessage does the same with
 	// Comments, so a post nobody has commented on answers with an empty JSON array rather than null.
@@ -207,4 +230,49 @@ func (s *Service) DeleteComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ApproveComment overrules the classifier on a comment, putting a flagged one back in its thread.
+// Only the post's owner may, per the comment's moderation permission; a caller who cannot read the
+// post gets its 404 first, as with DeleteComment. Approving is idempotent, so approving a comment
+// that was never flagged, or never screened, simply records the owner's approval.
+func (s *Service) ApproveComment(w http.ResponseWriter, r *http.Request) {
+	blog, ok := s.requireReadableBlog(w, r)
+	if !ok {
+		return
+	}
+
+	comment, ok := s.commentFromPath(w, r, blog)
+	if !ok {
+		return
+	}
+
+	if !requirePermission(w, r, comment.ModerationPermission(entity.ActionUpdate, blog)) {
+		return
+	}
+
+	// The classifier's category is kept as the record of why it was flagged; an empty model says
+	// the owner, not a model, made this call.
+	approval := entity.Moderation{Status: entity.ModerationApproved, Category: "none", At: time.Now().UTC()}
+	if comment.Moderation != nil {
+		approval.Category = comment.Moderation.Category
+	}
+
+	err := s.comments.SetModeration(r.Context(), blog.Slug, comment.ID, approval)
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "comment not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	comment.Moderation = &approval
+
+	responses, err := s.withCommentAuthors(r, []entity.Comment{comment})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeProto(w, http.StatusOK, commentMessage(responses[0]))
 }

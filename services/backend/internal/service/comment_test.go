@@ -115,6 +115,10 @@ type wireComment struct {
 	AuthorUsername string `json:"authorUsername"`
 	Body           string `json:"body"`
 	CreatedAt      string `json:"createdAt"`
+	Moderation     *struct {
+		Status   string `json:"status"`
+		Category string `json:"category"`
+	} `json:"moderation"`
 }
 
 type wireCommentThread struct {

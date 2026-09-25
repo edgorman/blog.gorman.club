@@ -45,6 +45,13 @@ func main() {
 		},
 	})).With("commit", commit)
 
+	ctx := context.Background()
+	client, err := fs.NewClient(ctx, fs.DetectProjectID)
+	if err != nil {
+		log.Fatalf("firestore client: %v", err)
+	}
+	defer client.Close()
+
 	dimension, _ := strconv.Atoi(os.Getenv("EMBEDDING_DIMENSION"))
 	embedder := gemini.NewEmbedder(gemini.EmbedderConfig{
 		Config: gemini.Config{
@@ -57,13 +64,6 @@ func main() {
 
 	var blogHandler worker.Handler
 	if embedder.Configured() {
-		ctx := context.Background()
-		client, err := fs.NewClient(ctx, fs.DetectProjectID)
-		if err != nil {
-			log.Fatalf("firestore client: %v", err)
-		}
-		defer client.Close()
-
 		blogs := firestore.NewBlogRepository(client)
 		embeddings := worker.Embeddings{
 			Blogs:      blogs,
@@ -76,10 +76,23 @@ func main() {
 		logger.Warn("EMBEDDING_MODEL, EMBEDDING_DIMENSION or GCP_PROJECT_ID is unset, so posts are not embedded")
 	}
 
+	// The moderation model is configured like the backend's assistant (see cmd/backend) and
+	// reached as the worker's own runtime service account. Without one, comments go unscreened.
+	var commentHandler worker.Handler
+	if moderator := gemini.NewModerator(gemini.Config{
+		Model:     os.Getenv("MODERATION_MODEL"),
+		ProjectID: os.Getenv("GCP_PROJECT_ID"),
+		Location:  os.Getenv("MODERATION_LOCATION"),
+	}); moderator.Configured() {
+		commentHandler = worker.ModerateComment(logger, firestore.NewCommentRepository(client), moderator)
+	} else {
+		logger.Warn("MODERATION_MODEL or GCP_PROJECT_ID is unset, so comments are not moderated")
+	}
+
 	// Timeouts for the same reason as cmd/backend's server. An event makes at most one model call.
 	server := &http.Server{
 		Addr:              ":" + port,
-		Handler:           worker.New(logger, blogHandler),
+		Handler:           worker.New(logger, blogHandler, commentHandler),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      time.Minute,

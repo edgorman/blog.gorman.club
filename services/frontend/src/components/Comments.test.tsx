@@ -25,6 +25,7 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
     listComments: jest.fn().mockResolvedValue([]),
     createComment: jest.fn(),
     deleteComment: jest.fn().mockResolvedValue(undefined),
+    approveComment: jest.fn(),
     ...overrides,
   } as unknown as Api
 }
@@ -178,5 +179,32 @@ describe('Comments', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('internal error')
     expect(screen.getByRole('button', { name: 'Comment' })).toBeInTheDocument()
+  })
+
+  // Only the post's owner is sent a comment's moderation, so they alone see the badge and Approve.
+  it('shows the post owner a flagged comment with Approve, and approves it', async () => {
+    const flagged = comment({ moderation: { status: 'flagged', category: 'spam' } })
+    const approved = comment({ moderation: { status: 'approved', category: 'spam' } })
+    const api = fakeApi({
+      listComments: jest.fn().mockResolvedValue([flagged]),
+      approveComment: jest.fn().mockResolvedValue(approved),
+    })
+    renderComments(api, OWNER)
+
+    expect(await screen.findByText('Flagged: spam')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
+
+    expect(api.approveComment).toHaveBeenCalledWith('hello-world', 'cmt1')
+    await waitFor(() => expect(screen.queryByText('Flagged: spam')).not.toBeInTheDocument())
+    expect(screen.getByText('Nicely put.')).toBeInTheDocument()
+  })
+
+  it('shows a comment with no moderation as normal', async () => {
+    const api = fakeApi({ listComments: jest.fn().mockResolvedValue([comment()]) })
+    renderComments(api, READER)
+
+    expect(await screen.findByText('Nicely put.')).toBeInTheDocument()
+    expect(screen.queryByText(/Flagged/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
   })
 })

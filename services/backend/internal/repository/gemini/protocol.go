@@ -30,6 +30,9 @@ type generateRequest struct {
 type generationConfig struct {
 	Temperature     float64 `json:"temperature"`
 	MaxOutputTokens int     `json:"maxOutputTokens"`
+	// ResponseMimeType and ResponseSchema ask for structured output: JSON matching the schema.
+	ResponseMimeType string  `json:"responseMimeType,omitempty"`
+	ResponseSchema   *schema `json:"responseSchema,omitempty"`
 }
 
 type content struct {
@@ -103,11 +106,13 @@ type functionDeclaration struct {
 	Parameters  schema `json:"parameters"`
 }
 
-// schema is the subset of OpenAPI that function parameters need here: an object of strings. Type
+// schema is the subset of OpenAPI that function parameters and structured output need here: an
+// object of strings, booleans and string enums. Type
 // names are the API's uppercase enum form.
 type schema struct {
 	Type        string            `json:"type"`
 	Description string            `json:"description,omitempty"`
+	Enum        []string          `json:"enum,omitempty"`
 	Properties  map[string]schema `json:"properties,omitempty"`
 	Required    []string          `json:"required,omitempty"`
 }

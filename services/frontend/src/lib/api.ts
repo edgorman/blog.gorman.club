@@ -15,6 +15,7 @@ import type { Comment, CommentThread, CreateCommentRequest } from '../gen/blog/v
 import type { PageReactions, TargetReactions } from '../gen/blog/v1/reaction'
 import type { ChatHistory, ChatReply, ChatRequest } from '../gen/blog/v1/chat'
 import type { ErrorResponse } from '../gen/blog/v1/error'
+import type { BillingSessionResponse } from '../gen/blog/v1/billing'
 
 export type { User, CurrentUser } from '../gen/blog/v1/user'
 export type { Blog, BlogPage, ListBlogsParams } from '../gen/blog/v1/blog'
@@ -169,6 +170,14 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
     putUser: (user: Partial<User>) =>
       request<CurrentUser>(baseUrl, authHeaders, 'PUT', '/users/me', user),
     deleteUser: () => request<void>(baseUrl, authHeaders, 'DELETE', '/users/me'),
+
+    // Both answer with a Stripe-hosted page to send the browser to, for the caller's own account:
+    // checkout to subscribe, the portal to manage or cancel. Neither grants anything by itself -
+    // only Stripe's webhook to the backend writes `subscribedUntil`.
+    createCheckout: () =>
+      request<BillingSessionResponse>(baseUrl, authHeaders, 'POST', '/billing/checkout').then((session) => session.url),
+    createPortal: () =>
+      request<BillingSessionResponse>(baseUrl, authHeaders, 'POST', '/billing/portal').then((session) => session.url),
 
     // Comments hang off their post like the chat below, but they are the readers' half of it: the
     // thread is readable by exactly whoever may read the post - signed out included, for a public

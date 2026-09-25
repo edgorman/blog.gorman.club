@@ -503,11 +503,10 @@ things are worth knowing about how it is bounded:
 
   A deployment with no model configured is the zero entitlement: nobody is
   entitled, whatever anyone paid, because there is nothing for an entitlement to
-  buy. Note that `SubscribedUntil` lives on the profile, so deleting a profile
-  drops the subscription with it - which is fine while the field is set by hand,
-  and is the first thing to settle when a checkout writes it (either by refusing
-  to delete a profile with live paid access, or by storing the subscription
-  beside the profile rather than in it).
+  buy. `SubscribedUntil` lives on the profile and only the Stripe webhook writes
+  it, so deleting a profile would drop the subscription with it while Stripe
+  kept billing; `DELETE /users/me` is therefore refused (`409`) while paid access
+  is live (see Billing in `AGENTS.md`).
 - **What the draft is.** A chat request carries the title and body the author
   has on screen, unsaved changes included - asking to tighten a paragraph has to
   mean the paragraph they can see, not the one last written to Firestore. The

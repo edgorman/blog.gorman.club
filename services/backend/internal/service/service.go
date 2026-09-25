@@ -42,6 +42,7 @@ type Service struct {
 	embeddings repository.EmbeddingRepository
 	verifier   repository.TokenVerifier
 	assistant  repository.Assistant
+	payments   repository.Payments
 	// The rate limiters live on the Service rather than being built in Handler(), so a budget is
 	// spent by the service that served the request rather than by the handler tree - two calls to
 	// Handler() must not hand a caller two budgets. See ratelimit.go for what each one bounds.
@@ -61,6 +62,7 @@ func New(
 	embeddings repository.EmbeddingRepository,
 	verifier repository.TokenVerifier,
 	assistant repository.Assistant,
+	payments repository.Payments,
 ) *Service {
 	return &Service{
 		cfg:              cfg,
@@ -72,6 +74,7 @@ func New(
 		embeddings:       embeddings,
 		verifier:         verifier,
 		assistant:        assistant,
+		payments:         payments,
 		ipLimiter:        newRateLimiter(requestsPerIP),
 		callerLimiter:    newRateLimiter(requestsPerCaller),
 		assistantLimiter: newRateLimiter(assistantTurnsPerCaller),
@@ -165,6 +168,15 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("DELETE /blogs/{slug}/reactions/{emoji}", authed(s.DeleteReaction))
 	mux.Handle("PUT /blogs/{slug}/comments/{id}/reactions/{emoji}", authed(s.PutReaction))
 	mux.Handle("DELETE /blogs/{slug}/comments/{id}/reactions/{emoji}", authed(s.DeleteReaction))
+	// Billing exists only where it is configured, so a deployment without Stripe keys answers 404
+	// here exactly as it would for any path it does not serve. Checkout and the portal act on the
+	// caller alone; the webhook has no caller and is authenticated by its signature instead (see
+	// StripeWebhook), which is why it is the one write not wrapped in authed.
+	if s.billingEnabled() {
+		mux.Handle("POST /billing/checkout", authed(s.CreateCheckout))
+		mux.Handle("POST /billing/portal", authed(s.CreatePortal))
+		mux.HandleFunc("POST /billing/webhook", s.StripeWebhook)
+	}
 
 	// The per-IP budget wraps the whole mux, so it applies to the routes that admit anonymous
 	// callers too - the ones with no account to meter - and to a request for a path that does not

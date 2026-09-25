@@ -18,6 +18,8 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
     getUser: jest.fn(),
     putUser: jest.fn(),
     deleteUser: jest.fn(),
+    createCheckout: jest.fn(),
+    createPortal: jest.fn(),
     ...overrides,
   } as unknown as Api
 }

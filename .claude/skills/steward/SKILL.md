@@ -54,6 +54,7 @@ The plan job posts its output as a PR comment. Read it:
 - **Body**: follow `.github/PULL_REQUEST_TEMPLATE.md` (Summary, `Closes #`, Area checkboxes, Testing).
 - **`strict: true`**: the branch must be up to date with `main`. When it's behind, merge `origin/main` in. Never rebase or force-push; `allow_force_pushes: false` and squash merge keep `main` linear anyway.
 - **Approval**: one code-owner approval (`@edgorman`), and `dismiss_stale_reviews` is on, so any push drops it. Don't hold back a needed fix because of this. Once CI is green with no open threads, the PR is waiting on the owner and nothing else is yours to do.
+- **`mergeable_state: blocked` on a green PR is expected.** Claude Code pushes and opens PRs as `@edgorman`, and GitHub never lets an author approve their own PR, so the owner merges with the admin override (`enforce_admins: false`). Don't investigate it, and never propose dropping `required_pull_request_reviews` (#210, reverted by #211).
 - **`required_conversation_resolution`**: resolve every thread you've addressed, and reply on any you're not changing.
 
 ## Dependabot PRs

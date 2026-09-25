@@ -1,6 +1,6 @@
 # .github
 
-Workflows, composite actions and repository settings, plus the moon setup CI runs through. Environments and stores they deploy into are in `infrastructure/AGENTS.md`.
+Workflows, composite actions and repository settings, plus the moon setup CI runs through. Environments and stores they deploy into are in `infrastructure/AGENTS.md`. What to do when a PR's checks fail - each required check, its local repro, and which failures need the user - is the `steward` skill (`.claude/skills/steward/SKILL.md`), which Claude Code on the web also reads on its own when it watches a PR it opened.
 
 ## CI/CD, Branching, & Release Lifecycle
 

@@ -3,6 +3,15 @@ go: {}
 javascript:
   packageManager: 'npm'
   inferTasksFromScripts: false   # tasks are declared explicitly in moon.yml
+  # services/frontend:install (`npm ci`) is the only install. moon reads installDependencies from
+  # this workspace-level `javascript` entry alone - a project's `toolchains.npm` override never
+  # reaches it - and left on, it ran its own `npm install` ahead of every frontend task: a second
+  # install in CI, and locally one (plus a dedupe) that rewrote package-lock.json.
+  installDependencies: false
+  # Both default to true and write into services/frontend/package.json: a `packageManager` field,
+  # and a dependency entry for every moon project the frontend dependsOn.
+  syncPackageManagerField: false
+  syncProjectWorkspaceDependencies: false
 node: {}
 npm: {}
 # Deliberately NOT enabling `typescript:`. Its sync rewrites tsconfig project

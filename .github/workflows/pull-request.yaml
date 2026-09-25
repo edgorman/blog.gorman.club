@@ -42,12 +42,13 @@ jobs:
       - id: moon
         name: Compute moon-affected deployments
         shell: bash
+        env:
+          # `moon query affected` has no --base flag, but reads MOON_BASE the same way `moon ci`
+          # does (crates/app/src/queries/changed_files.rs) - set explicitly, matching the other jobs.
+          MOON_BASE: origin/main
         run: |
-          # `moon query affected` has no --base/--head override at all (confirmed against its own
-          # source, crates/app/src/commands/query/affected.rs's QueryAffectedArgs - #198), so this
-          # relies on its CI-mode default-branch diff instead, which is exactly the PR comparison
-          # wanted here. Left at the command's own defaults (no --upstream/--downstream): #206
-          # deliberately modelled deploy-staging/deploy-prod's dependsOn on infra-env/deploy-root as
+          # Left at the command's own defaults (no --upstream/--downstream): #206 deliberately
+          # modelled deploy-staging/deploy-prod's dependsOn on infra-env/deploy-root as
           # apply-ordering only, not an affectedness edge, so pulling in graph relations would mark
           # them affected via the wrong mechanism - the explicit project://infra-root /
           # project://infra-env inputs are the intended signal.
@@ -63,9 +64,11 @@ jobs:
   # affected-and-runInCI filtered. `:taskId` (no project prefix) is moon's "run in every project
   # that has this task" scope
   # (https://moonrepo.dev/docs/concepts/target); a project without a given task is silently
-  # skipped, not an error. `:format` also reaches infra-root/infra-env's inherited `terraform fmt
-  # -check` (.moon/tasks/terraform.yml) - redundant with what infrastructure-*'s own Terraform
-  # Format step runs when it runs, but cheap, credential-free, and fails faster.
+  # skipped, not an error. `:format` and `:validate` reach infra-root/infra-env's inherited
+  # `terraform fmt -check` and `terraform init -backend=false && terraform validate`
+  # (.moon/tasks/terraform.yml) - redundant with infrastructure-*'s own steps when those run, but
+  # credential-free and fail faster. `:validate` is `runInCI: 'only'`, so this is the one place it
+  # runs at all.
   lint-check:
     runs-on: ubuntu-latest
     permissions:
@@ -81,7 +84,7 @@ jobs:
           cache: false # see `changed`'s identical setup step above for why
       - name: moon ci
         shell: bash
-        run: moon ci :format :lint :vet :typecheck :build root:wire-types root:projects-covered root:go-version-sync
+        run: moon ci :format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync
         env:
           MOON_BASE: origin/main
 

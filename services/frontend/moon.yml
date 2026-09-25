@@ -11,10 +11,9 @@ dependsOn: ['packages/protos']
 # project stays safe even if that ever changes elsewhere in the workspace.
 toolchains:
   typescript: false
-  # installDependencies' default (npm install) isn't guaranteed to leave package-lock.json/
-  # package.json untouched. Disable it and run `npm ci` as an explicit, cacheable task instead.
-  npm:
-    installDependencies: false
+# moon's own dependency install is disabled workspace-wide (.moon/toolchains.yml's `javascript`
+# entry, the only place that setting is read), so `install` below is the one `npm ci` every task
+# depends on.
 
 fileGroups:
   sources: ['src/**/*', 'public/**/*', 'index.html', 'vite.config.ts']

@@ -63,5 +63,5 @@ resource "cloudflare_dns_record" "google_site_verification" {
   name    = data.cloudflare_zone.gorman_club.name
   type    = "TXT"
   content = "\"google-site-verification=${var.google_site_verification}\""
-  ttl     = 1
+  ttl     = 3600
 }

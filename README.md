@@ -48,4 +48,3 @@ moon project services/backend                   # list a project's tasks
 
 Each project's tasks live in its `moon.yml` (e.g. `services/backend/moon.yml`). If you change a `.proto`, regenerate with `buf generate` in `packages/protos` and commit the output alongside it.
 
-PR titles must be [Conventional Commits](https://www.conventionalcommits.org/) (`feat(backend): ...`) since PRs are squash-merged and the title drives versioning. See [`AGENTS.md`](AGENTS.md) for the full contributor rules.

@@ -14,54 +14,63 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Replaces the old dorny/paths-filter-only `diff` job. Terraform's own graph
-  # (infrastructure/*/BUILD, wired up in #143) now decides which environment(s) a change reaches -
-  # infrastructure/env:mod is depended on by both infrastructure/config/{staging,prod}:deployment,
-  # so a change to infrastructure/env/** affects both without either being named here. The one thing
-  # Pants can't see is a composite action (see github-file-diff), so that stays a small glob layered
-  # on top with OR.
+  # #199: cutover - moon decides which Terraform deployment(s) a diff reaches, replacing Pants'
+  # own target graph (the deleted composite action that used to query it) and the deleted
+  # composite action that used to layer a blanket .github/** glob on top. That blanket glob has no
+  # replacement here because it needs none: every deploy-{root,staging,prod}:plan task's own
+  # `inputs` (#195/#206) already lists the exact composite actions and workflow files that
+  # environment's job depends on, closing the gap a repo-wide fallback used to paper over. #198
+  # proved this job's moon equivalent matches that old combined answer exactly, across every PR in
+  # that soak period and the real push-commit merge that landed it (#212).
   changed:
     runs-on: ubuntu-latest
     outputs:
-      infrastructure-root: ${{ steps.combine.outputs.infrastructure-root }}
-      infrastructure-staging: ${{ steps.combine.outputs.infrastructure-staging }}
-      infrastructure-prod: ${{ steps.combine.outputs.infrastructure-prod }}
+      infrastructure-root: ${{ steps.moon.outputs.root }}
+      infrastructure-staging: ${{ steps.moon.outputs.staging }}
+      infrastructure-prod: ${{ steps.moon.outputs.prod }}
     steps:
+      # moon needs full history to resolve the merge base - a shallow clone makes affected
+      # detection "inaccurate or fail entirely" (https://moonrepo.dev/docs/guides/ci).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          # --changed-since=origin/main needs origin/main to actually be present locally.
           fetch-depth: 0
-      - id: github-diff
-        uses: ./.github/actions/github-file-diff
+          filter: 'blob:none'
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
-          branch_ref: ${{ github.base_ref }}
-      - id: pants
-        uses: ./.github/actions/pants-changed
-        with:
-          since: origin/main
-      - id: combine
+          auto-install: true
+          # #212's own first three CI runs each failed a different moon task with the identical
+          # `proto-shim: ... Permission denied (os error 13)` error, every time right after a
+          # toolchain cache hit - the cache restore losing proto's shim executable bit, not the
+          # task. Disabled until that's confirmed fixed upstream.
+          cache: false
+      - id: moon
+        name: Compute moon-affected deployments
         shell: bash
         run: |
-          combine() {
-            if [ "$1" = 'true' ] || [ "${{ steps.github-diff.outputs.github-actions }}" = 'true' ]; then
-              echo true
-            else
-              echo false
-            fi
-          }
-          echo "infrastructure-root=$(combine '${{ steps.pants.outputs.infrastructure-root }}')" >> "$GITHUB_OUTPUT"
-          echo "infrastructure-staging=$(combine '${{ steps.pants.outputs.infrastructure-staging }}')" >> "$GITHUB_OUTPUT"
-          echo "infrastructure-prod=$(combine '${{ steps.pants.outputs.infrastructure-prod }}')" >> "$GITHUB_OUTPUT"
+          # `moon query affected` has no --base/--head override at all (confirmed against its own
+          # source, crates/app/src/commands/query/affected.rs's QueryAffectedArgs - #198), so this
+          # relies on its CI-mode default-branch diff instead, which is exactly the PR comparison
+          # wanted here. Left at the command's own defaults (no --upstream/--downstream): #206
+          # deliberately modelled deploy-staging/deploy-prod's dependsOn on infra-env/deploy-root as
+          # apply-ordering only, not an affectedness edge, so pulling in graph relations would mark
+          # them affected via the wrong mechanism - the explicit project://infra-root /
+          # project://infra-env inputs are the intended signal.
+          moon query affected > affected.json
+          for env in root staging prod; do
+            # .tasks is omitted entirely when nothing is affected (moon's Affected struct skips
+            # empty maps on serialize), so `(.tasks // {})` guards against `has` erroring on null.
+            val=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' affected.json)
+            echo "$env=$val" >> "$GITHUB_OUTPUT"
+          done
 
-  # Replaces services-frontend, services-frontend-pants, services-backend, services-backend-pants,
-  # and infrastructure-pants: one lint/check invocation over whatever the diff touches, rather than
-  # a job per service gated on a hand-maintained glob. Per Pants' CI guidance, linters don't care
-  # about dependents - a change to a leaf file doesn't need its callers re-linted.
-  #
-  # `go vet` and oxlint run here too, unconditionally rather than gated on --changed-since: neither
-  # has a Pants integration (go vet's is disabled for the upstream working-directory bug documented
-  # in pants.toml; oxlint has no Pants backend at all), so there is no Pants-derived affected-target
-  # set to scope them to, and both are cheap enough not to need one.
+  # Replaces Pants' old changed-since lint/check invocation, its repo-wide tailor check, the direct
+  # `go vet`/oxlint/`npm run build` steps, and the inline Wire Types bash - one `moon ci` invocation
+  # covering every lint/check/format/build task across every project, affected-and-runInCI filtered.
+  # `:taskId` (no project prefix) is moon's "run in every project that has this task" scope
+  # (https://moonrepo.dev/docs/concepts/target); a project without a given task is silently
+  # skipped, not an error. `:format` also reaches infra-root/infra-env's inherited `terraform fmt
+  # -check` (.moon/tasks/terraform.yml) - redundant with what infrastructure-*'s own Terraform
+  # Format step runs when it runs, but cheap, credential-free, and fails faster.
   lint-check:
     runs-on: ubuntu-latest
     permissions:
@@ -70,68 +79,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/pants-setup
-      - name: Lint, Check
+          filter: 'blob:none'
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+          cache: false # see `changed`'s identical setup step above for why
+      - name: moon ci
         shell: bash
-        run: pants --changed-since=origin/main lint check
-      # Repo-wide rather than --changed-since: a target missing from a diff's own files isn't what
-      # this catches, a source file with no covering target *anywhere* is - and that can only be
-      # seen by looking at the whole tree, same as `pants tailor --check` always does (#155).
-      - name: Tailor Check
-        shell: bash
-        run: 'pants tailor --check ::'
-      # go.mod deliberately doesn't sit at the Pants build root (#114), so `go vet` needs to run
-      # from services/backend itself to find it - same reason pants.backend.experimental.go.lint.vet
-      # stays disabled (see pants.toml).
-      - name: Vet backend
-        working-directory: services/backend
-        shell: bash
-        run: go vet ./...
-      # oxlint isn't a Pants-managed dependency, so the checkout's own node_modules has to exist
-      # before `npm run lint` can find it - same install protos-drift already does for the same
-      # reason.
-      - name: Install frontend dependencies
-        working-directory: services/frontend
-        shell: bash
-        run: npm ci
-      - name: Lint frontend
-        working-directory: services/frontend
-        shell: bash
-        run: npm run lint
-      # The same `npm run build` (`tsc -b && vite build`) frontend-build runs on merge, so a broken
-      # bundle fails the PR rather than the job that publishes it. Run directly rather than through
-      # Pants for the same reason go vet and oxlint above are: see .github/AGENTS.md's "Building with
-      # Pants" for why the node_build_script route was dropped.
-      - name: Build frontend
-        working-directory: services/frontend
-        shell: bash
-        run: npm run build
-      # #173: the sweep that removed the last hand-written wire types also has to keep them from
-      # coming back, cheaper than re-litigating it in review each time. api.ts's whole job is
-      # declaring API types (see its own header comment), so any `export interface` there is
-      # exactly the kind of duplicate the Contract Layer (`packages/protos/AGENTS.md`) exists to prevent - every wire
-      # type has to come from src/gen instead. internal/service is checked the same way: a
-      # `json:"..."` struct tag outside a test file means something is being hand-marshaled again,
-      # with debug.go's own health-check envelope (see its own comment for why) the one accepted
-      # exception. This rides lint-check, an already-required context, rather than adding a new one
-      # - see #154 for what happens when a new check is left out of required_status_checks.
-      - name: Wire Types
-        shell: bash
-        run: |
-          if grep -n '^export interface' services/frontend/src/lib/api.ts; then
-            echo "::error file=services/frontend/src/lib/api.ts::api.ts declares a hand-written interface - wire types must come from src/gen (see packages/protos/AGENTS.md's Contract Layer)."
-            exit 1
-          fi
-          if grep -rn 'json:"' services/backend/internal/service --include='*.go' | grep -v '_test.go' | grep -v '/debug.go:'; then
-            echo "::error::internal/service declares a hand-written json-tagged struct outside debug.go - wire types must come from packages/protos (see packages/protos/AGENTS.md's Contract Layer)."
-            exit 1
-          fi
+        run: moon ci :format :lint :vet :typecheck :build root:wire-types root:projects-covered root:go-version-sync
+        env:
+          MOON_BASE: origin/main
 
-  # Unlike lint-check, tests need transitive dependents: a change to a shared package must re-run
-  # every test that exercises it, not just tests that touch the changed file directly. `package`
-  # rides the same invocation so services/backend:image (the docker_image parity target from #117)
-  # is built on any PR that reaches it, rather than first breaking on merge to main inside the job
-  # that publishes the artifact.
+  # Replaces Pants' old changed-since, transitive-dependents test/package invocation:
+  # `:test` (every project's tests, affected-and-runInCI filtered - a change to a shared package
+  # still reaches its dependents via each test task's own `inputs`, e.g. backend/frontend's
+  # `project://packages/protos`, #155) plus services/backend:image (the docker_image parity target
+  # from #117), so a broken image build fails the PR rather than the job that publishes it.
   test:
     runs-on: ubuntu-latest
     permissions:
@@ -140,57 +103,37 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/pants-setup
-      - name: Test, Package
+          filter: 'blob:none'
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+          cache: false # see `changed`'s identical setup step above for why
+      - name: moon ci
         shell: bash
-        run: pants --changed-since=origin/main --changed-dependents=transitive test package
+        run: moon ci :test services/backend:image
+        env:
+          MOON_BASE: origin/main
 
-  # #121/#122: `buf generate` is deterministic, so re-running it and diffing is how drift between
-  # packages/protos/*.proto and the committed bindings it owns (services/backend/internal/gen and,
-  # since #122, services/frontend/src/gen) gets caught - editing one without regenerating the
-  # others fails here instead of silently shipping a stale contract. Always runs, unconditionally -
-  # unlike lint-check/test above there is no Pants target graph to ask "did this PR touch protos",
-  # since Pants never generates this code (see pants.toml), and the check is cheap enough not to
-  # need one.
+  # Replaces the hand-rolled setup-go/setup-node/buf-setup-action + `buf generate` + diff:
+  # packages/protos:drift (#194) already is that exact check, moved into moon.
   protos-drift:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version-file: services/backend/go.mod
-          cache-dependency-path: services/backend/go.sum
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+          fetch-depth: 0
+          filter: 'blob:none'
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: services/frontend/package-lock.json
-      # The ts-proto plugin buf.gen.yaml invokes lives at
-      # services/frontend/node_modules/.bin/protoc-gen-ts_proto - it has to be installed before
-      # `buf generate` runs, same as the Go plugin needs services/backend/go.mod's module cache.
-      - name: Install frontend dependencies
-        working-directory: services/frontend
+          auto-install: true
+          cache: false # see `changed`'s identical setup step above for why
+      - name: moon ci
         shell: bash
-        run: npm ci
-      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
-        with:
-          version: '1.47.2'
-      - name: Generate
-        working-directory: packages/protos
-        shell: bash
-        run: buf generate
-      - name: Check for drift
-        shell: bash
-        run: |
-          # `git diff` alone ignores untracked files, so a new .proto whose generated output is
-          # never committed would pass silently - staging first makes a new file count as drift too.
-          git add -A -- packages/protos services/backend/internal/gen services/frontend/src/gen
-          if ! git diff --cached --exit-code -- packages/protos services/backend/internal/gen services/frontend/src/gen; then
-            echo "::error::packages/protos and its generated bindings (services/backend/internal/gen, services/frontend/src/gen) have drifted - run 'buf generate' from packages/protos and commit the result."
-            exit 1
-          fi
+        run: moon ci packages/protos:drift
+        env:
+          MOON_BASE: origin/main
 
   infrastructure-root:
     needs: changed
@@ -269,124 +212,3 @@ jobs:
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-  # #198: moon runs alongside Pants, advisory-only - neither job below is in settings.yml's
-  # required_status_checks, so a moon failure or mismatch never blocks a PR. Both jobs need moon's
-  # own full-history clone (a shallow one makes affected detection "inaccurate or fail entirely",
-  # per https://moonrepo.dev/docs/guides/ci) - the same fetch-depth: 0 convention `changed` already
-  # uses above, plus the blobless-filter speed-up moon's CI guide recommends on top of it.
-  #
-  # moon-ci proves moon's own lint/test/build tasks (backend/frontend/protos/root, #192-#197) catch
-  # the same failures Pants + the direct steps in lint-check/test/protos-drift do. It does NOT cover
-  # the infrastructure-* jobs below - those stay Pants-decided until #199 - and moon.yml's `plan`
-  # tasks are `runInCI: false` (#195/#206) so `moon ci` never touches them either; moon-changed below
-  # is what exercises those.
-  moon-ci:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          filter: 'blob:none'
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
-        with:
-          auto-install: true
-          # #212's own first three CI runs each failed a different task (packages/protos:lint,
-          # packages/protos:format, infra-env:format) with the identical
-          # `proto-shim: ... Permission denied (os error 13)` error, and every failure's log shows
-          # a cache hit for the toolchain directory just before it - the shared thread is the
-          # cache restore, not anything about the task itself. Disabling it trades the ~15s
-          # cache-restore savings for not losing proto's shim executable bit on every few runs;
-          # revisit once moonrepo/setup-toolchain's cache restore is confirmed fixed upstream.
-          cache: false
-      - name: moon ci
-        shell: bash
-        run: moon ci
-        env:
-          # ci_env's own GitHub Actions auto-detection should already resolve this on a
-          # pull_request event, but pinning it explicitly removes any doubt rather than trusting an
-          # unverified auto-detect (this session can't execute past the ghcr.io toolchain-plugin
-          # gap documented in #197 to confirm it either way).
-          MOON_BASE: origin/main
-
-  # Computes the same three deploy-{root,staging,prod}:plan booleans as the `changed` job above,
-  # from #195/#206's marker tasks, and diffs them against Pants+github-file-diff's combined result -
-  # never fails, only warns, since this is the parity check #198 asks for before anything depends on
-  # moon's answer.
-  #
-  # `moon query affected` (unlike `moon ci`/`moon exec`) has no `--base`/`--head` override at all -
-  # confirmed against its own source (crates/app/src/commands/query/affected.rs's QueryAffectedArgs
-  # has exactly three fields: `by`, `downstream`, `upstream`, no base/head) rather than assumed from
-  # the command's --help, which also lists no such flag. It always delegates to
-  # query_changed_files_for_affected, which in a CI environment (`CI=true`, set automatically here)
-  # diffs against the configured default branch (`vcs.defaultBranch: main`, #191) when the current
-  # ref isn't already that branch - exactly the PR comparison this job wants, with no override
-  # needed. Left at its own defaults (no --upstream/--downstream): #206 deliberately modelled
-  # deploy-staging/deploy-prod's dependsOn on infra-env/deploy-root as apply-ordering only, not an
-  # affectedness edge, so pulling in graph relations here (moon ci's own --upstream=deep
-  # --downstream=direct) would mark them affected via the wrong mechanism - the explicit
-  # project://infra-root / project://infra-env inputs (#195/#206) are the intended signal.
-  moon-changed:
-    needs: changed
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          filter: 'blob:none'
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
-        with:
-          auto-install: true
-          cache: false # see moon-ci's identical setup step above for why
-      - id: moon
-        name: Compute moon-affected deployments
-        shell: bash
-        run: |
-          moon query affected > affected.json
-          for env in root staging prod; do
-            # .tasks is omitted entirely when nothing is affected (moon's Affected struct skips
-            # empty maps on serialize), so `(.tasks // {})` guards against `has` erroring on null -
-            # a real gap in the issue's own `.tasks | has($t)` sketch, found by reading moon's
-            # source (crates/affected/src/affected.rs) rather than assumed.
-            val=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' affected.json)
-            echo "$env=$val" >> "$GITHUB_OUTPUT"
-          done
-      - name: Compare against Pants
-        shell: bash
-        env:
-          PANTS_ROOT: ${{ needs.changed.outputs.infrastructure-root }}
-          PANTS_STAGING: ${{ needs.changed.outputs.infrastructure-staging }}
-          PANTS_PROD: ${{ needs.changed.outputs.infrastructure-prod }}
-          MOON_ROOT: ${{ steps.moon.outputs.root }}
-          MOON_STAGING: ${{ steps.moon.outputs.staging }}
-          MOON_PROD: ${{ steps.moon.outputs.prod }}
-        run: |
-          {
-            echo '### moon vs Pants: infrastructure affectedness'
-            echo
-            echo '| Environment | Pants (+ github-diff) | moon | Match |'
-            echo '|---|---|---|---|'
-          } >> "$GITHUB_STEP_SUMMARY"
-          mismatch=0
-          for env in root staging prod; do
-            pants_var="PANTS_${env^^}"
-            moon_var="MOON_${env^^}"
-            pants_val="${!pants_var}"
-            moon_val="${!moon_var}"
-            if [ "$pants_val" = "$moon_val" ]; then
-              match='✅'
-            else
-              match='❌'
-              mismatch=1
-              echo "::warning::moon/Pants mismatch for infrastructure-$env: Pants(+github-diff)=$pants_val moon=$moon_val - see #198's parity table for expected divergence (e.g. a .github/** change outside terraform/secret actions or workflows)."
-            fi
-            echo "| infrastructure-$env | $pants_val | $moon_val | $match |" >> "$GITHUB_STEP_SUMMARY"
-          done
-          if [ "$mismatch" = '1' ]; then
-            echo
-            echo '_See #198 for which divergences are expected (moon dropping the blanket `.github/**` glob) vs a real gap to investigate._' >> "$GITHUB_STEP_SUMMARY"
-          fi
-          exit 0

@@ -34,62 +34,16 @@ jobs:
         name: Calculate Next Version
         uses: Fresa/trunk-based-release-versioning@8b8150e3258028d42d7a8d30aec43491f5794d9e # v0.2.0
 
-  # Decides which Terraform deployment(s) an apply reaches, the same way pull-request.yaml's
-  # `changed` job decides which to plan: Pants' own dependency graph
-  # (infrastructure/config/*/BUILD) rather than a hand-maintained glob, with a small `.github/**`
-  # filter layered on top for the one thing Pants can't see - a composite action. There is no
-  # services-frontend/services-backend output here: those jobs below publish artifacts on every
-  # merge unconditionally (see the comment on services-frontend), so nothing gates them.
+  # #199: cutover - moon decides which Terraform deployment(s) an apply reaches, the same way
+  # pull-request.yaml's `changed` job decides which to plan (see its own comment for why the old
+  # github-file-diff blanket glob has no replacement here). There is no services-frontend/
+  # services-backend output here: those jobs below publish artifacts on every merge unconditionally
+  # (see the comment on services-frontend), so nothing gates them.
   changed:
     runs-on: ubuntu-latest
     outputs:
-      infrastructure-root: ${{ steps.combine.outputs.infrastructure-root }}
-      infrastructure-staging: ${{ steps.combine.outputs.infrastructure-staging }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          # --changed-since=${{ github.event.before }} needs that commit to actually be present
-          # locally.
-          fetch-depth: 0
-      - id: github-diff
-        uses: ./.github/actions/github-file-diff
-        with:
-          branch_ref: ${{ github.ref_name }}
-      - id: pants
-        uses: ./.github/actions/pants-changed
-        with:
-          since: ${{ github.event.before }}
-      - id: combine
-        shell: bash
-        run: |
-          combine() {
-            if [ "$1" = 'true' ] || [ "${{ steps.github-diff.outputs.github-actions }}" = 'true' ]; then
-              echo true
-            else
-              echo false
-            fi
-          }
-          echo "infrastructure-root=$(combine '${{ steps.pants.outputs.infrastructure-root }}')" >> "$GITHUB_OUTPUT"
-          echo "infrastructure-staging=$(combine '${{ steps.pants.outputs.infrastructure-staging }}')" >> "$GITHUB_OUTPUT"
-
-  # #198: moon runs alongside Pants, advisory-only - neither job below is in settings.yml's
-  # required_status_checks, so a moon failure or mismatch never blocks anything on `main`. See
-  # pull-request.yaml's identical pair for why each is built the way it is; the one difference here
-  # is the base ref.
-  #
-  # `${{ github.event.before }}` is the pre-push SHA, the same ref `changed`'s pants-changed step
-  # above already diffs against - but unlike that step (which asks Pants to resolve the ref itself),
-  # `moon ci`'s --base needs a ref this checkout can actually reach. On the very first push to a new
-  # ref, `before` is 40 zeros; after a force-push, it can name a commit this history no longer
-  # contains (rewritten away). Both are detected here and fail open (`--force`, i.e. run
-  # unconditionally rather than let `moon ci` error trying to resolve an unreachable ref) - the
-  # issue's own suggested handling, and this repo's branch protection (`allow_force_pushes: false`,
-  # settings.yml) plus squash-merge-only history means the force-push case shouldn't occur in
-  # practice, but it costs nothing to handle.
-  moon-ci:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
+      infrastructure-root: ${{ steps.moon.outputs.root }}
+      infrastructure-staging: ${{ steps.moon.outputs.staging }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -98,94 +52,41 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
-          # See pull-request.yaml's identical moon-ci step: every observed
+          # See pull-request.yaml's identical `changed` step: every observed
           # `proto-shim: ... Permission denied (os error 13)` failure across #209/#212's early CI
           # runs happened right after a toolchain cache hit, on a different task each time - the
           # cache restore is the common thread, not the task. Disabled until that's fixed upstream.
           cache: false
-      - name: moon ci
-        shell: bash
-        run: |
-          before='${{ github.event.before }}'
-          if [ "$before" = '0000000000000000000000000000000000000000' ] || ! git cat-file -e "$before" 2>/dev/null; then
-            moon ci --force
-          else
-            MOON_BASE="$before" moon ci
-          fi
-
-  # Same three-environment parity check as pull-request.yaml's moon-changed, but against push-commit's
-  # own `changed` job (root + staging only - prod is never planned/applied here, see Production
-  # Releases in .github/AGENTS.md) and the pre-push SHA rather than origin/main.
-  moon-changed:
-    needs: changed
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          filter: 'blob:none'
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
-        with:
-          auto-install: true
-          cache: false # see moon-ci's identical setup step above for why
       - id: moon
         name: Compute moon-affected deployments
         shell: bash
         run: |
+          # `moon query affected` has no --base/--head override at all (#198), so this relies on
+          # its CI-mode default-branch diff instead. On `main` itself that means comparing against
+          # the previous revision (HEAD~1), which is exactly `${{ github.event.before }}` here
+          # since every merge to main is a single squash commit (AGENTS.md's Commit Message
+          # Convention) - confirmed against the real push-commit run that merged #212 itself,
+          # where this exact job matched Pants+github-file-diff's answer on every environment.
+          #
+          # The one case that fallback can't cover: on the very first push to a new ref, `before`
+          # is 40 zeros; after a force-push, it can name a commit this history no longer contains
+          # (rewritten away). Both are detected here and fail open - every deployment marked
+          # affected rather than guessed at. This repo's branch protection (`allow_force_pushes:
+          # false`, settings.yml) plus squash-merge-only history means the force-push case
+          # shouldn't occur in practice, but it costs nothing to handle.
           before='${{ github.event.before }}'
           if [ "$before" = '0000000000000000000000000000000000000000' ] || ! git cat-file -e "$before" 2>/dev/null; then
-            # Same fail-open the moon-ci step above takes: nothing to diff against, so every
-            # deployment is treated as affected rather than guessed at.
             echo 'root=true' >> "$GITHUB_OUTPUT"
             echo 'staging=true' >> "$GITHUB_OUTPUT"
           else
-            # moon query affected has no --base of its own (see pull-request.yaml's moon-changed for
-            # why); on `main` itself it falls back to comparing against the previous revision
-            # (HEAD~1) instead, which is exactly $before here since every merge to main is a single
-            # squash commit (AGENTS.md's Commit Message Convention) - never a --base override, but
-            # correct for how this repo actually pushes.
             moon query affected > affected.json
             for env in root staging; do
+              # .tasks is omitted entirely when nothing is affected (moon's Affected struct skips
+              # empty maps on serialize), so `(.tasks // {})` guards against `has` erroring on null.
               val=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' affected.json)
               echo "$env=$val" >> "$GITHUB_OUTPUT"
             done
           fi
-      - name: Compare against Pants
-        shell: bash
-        env:
-          PANTS_ROOT: ${{ needs.changed.outputs.infrastructure-root }}
-          PANTS_STAGING: ${{ needs.changed.outputs.infrastructure-staging }}
-          MOON_ROOT: ${{ steps.moon.outputs.root }}
-          MOON_STAGING: ${{ steps.moon.outputs.staging }}
-        run: |
-          {
-            echo '### moon vs Pants: infrastructure affectedness'
-            echo
-            echo '| Environment | Pants (+ github-diff) | moon | Match |'
-            echo '|---|---|---|---|'
-          } >> "$GITHUB_STEP_SUMMARY"
-          mismatch=0
-          for env in root staging; do
-            pants_var="PANTS_${env^^}"
-            moon_var="MOON_${env^^}"
-            pants_val="${!pants_var}"
-            moon_val="${!moon_var}"
-            if [ "$pants_val" = "$moon_val" ]; then
-              match='✅'
-            else
-              match='❌'
-              mismatch=1
-              echo "::warning::moon/Pants mismatch for infrastructure-$env: Pants(+github-diff)=$pants_val moon=$moon_val - see #198's parity table for expected divergence (e.g. a .github/** change outside terraform/secret actions or workflows)."
-            fi
-            echo "| infrastructure-$env | $pants_val | $moon_val | $match |" >> "$GITHUB_STEP_SUMMARY"
-          done
-          if [ "$mismatch" = '1' ]; then
-            echo
-            echo '_See #198 for which divergences are expected (moon dropping the blanket `.github/**` glob) vs a real gap to investigate._' >> "$GITHUB_STEP_SUMMARY"
-          fi
-          exit 0
 
   # Runs on every merge - not gated on the services-frontend diff - so every commit on `main`, and
   # therefore every release tag, has a folder in both buckets. One build feeds both buckets and

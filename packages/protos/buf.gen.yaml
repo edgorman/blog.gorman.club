@@ -1,5 +1,5 @@
 # Generates committed Go bindings into services/backend/internal/gen - see the "Contract Layer"
-# section of `packages/protos/AGENTS.md` for why committed rather than Pants-ephemeral. The plugin version is pinned
+# section of `packages/protos/AGENTS.md` for why committed rather than build-ephemeral. The plugin version is pinned
 # here to the exact version of google.golang.org/protobuf services/backend/go.mod requires, so
 # `buf generate` never drifts from what the module actually builds against.
 #

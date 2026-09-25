@@ -7,7 +7,8 @@ terraform = "1.15.8"   # matches setup-terraform and every providers.tf required
 
 [plugins]
 # Third-party proto plugins (proto's registry/data/third-party.json), pinned to a commit
-# SHA rather than a branch for the same supply-chain reason get-pants.sh is vendored.
+# SHA rather than a branch, so this pins what each is fetched from rather than trusting
+# whatever a moving ref resolves to at install time.
 # Both verify checksums on download (checksum-url is set for every platform).
 buf = "https://raw.githubusercontent.com/stk0vrfl0w/proto-toml-plugins/6d304ec94bfce675a5ec210ca4d5d87c04ebb318/plugins/buf.toml"
 terraform = "https://raw.githubusercontent.com/theomessin/proto-toml-plugins/b0f45e8bcc34310db680828cab62850328964996/terraform.toml"

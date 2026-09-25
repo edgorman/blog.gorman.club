@@ -222,6 +222,31 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
+  # The worker, published and deployed exactly like services-backend above (every merge, both
+  # registries, staging only), from the same Dockerfile with CMD=worker.
+  services-worker:
+    needs: [changed, infrastructure-staging]
+    if: |
+      always() &&
+      needs.changed.result == 'success' &&
+      (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/backend-deploy
+        with:
+          gcp_project_id: 'blog-gorman-club-stag'
+          prod_project_id: 'blog-gorman-club-prod'
+          gcp_region: 'europe-west1'
+          service_name: 'worker-stag'
+          image_name: 'worker'
+          image_tag: ${{ github.sha }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+
   # Runs on every merge, since the pre-release isn't gated on what changed - it waits on the publish
   # jobs having actually published instead, so a tag never exists without a commit-SHA image and
   # frontend folder behind it in both environments (the one failure promotion can't recover from:
@@ -238,12 +263,13 @@ jobs:
   # speculative next version into staging's config.json - a version with no release ever cut for it.
   # always() opts out of that default short-circuit, matching the pattern services-frontend already
   # uses above; the explicit `== 'success'` (not `'success' || 'skipped'`) keeps the fix #156 made -
-  # neither publish job has a benign skip path, so a skip of either here is still not tag-worthy.
+  # no publish job has a benign skip path, so a skip of any of them here is still not tag-worthy.
   pre-release:
-    needs: [services-backend, services-frontend, version]
+    needs: [services-backend, services-worker, services-frontend, version]
     if: |
       always() &&
       needs.services-backend.result == 'success' &&
+      needs.services-worker.result == 'success' &&
       needs.services-frontend.result == 'success' &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest

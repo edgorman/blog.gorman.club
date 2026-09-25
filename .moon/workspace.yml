@@ -8,6 +8,7 @@ projects:
     - 'packages/*/moon.yml'
   sources:
     root: '.'
+    worker: 'services/backend/cmd/worker'
     infra-root: 'infrastructure/root'
     infra-env: 'infrastructure/env'
     deploy-root: 'infrastructure/config/root'

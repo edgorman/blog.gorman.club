@@ -96,3 +96,9 @@ variable "frontend_retention_days" {
   type        = number
   default     = 90
 }
+
+variable "worker_max_instances" {
+  description = "Upper bound on worker instances. Events arrive one per post write or new comment, so a handful is plenty, and a low bound caps what a retry storm can cost."
+  type        = number
+  default     = 3
+}

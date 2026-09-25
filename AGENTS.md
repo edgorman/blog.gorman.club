@@ -18,6 +18,7 @@ This is a single-repository (monorepo), multi-cloud deployment strategy built on
 
 - `/infrastructure` — Centralized Terraform manifests. The `env` subfolder holds the manifests applied once per environment (staging/prod) using environment-specific variable configurations (`staging.tfvars`, `prod.tfvars`); the `root` subfolder holds shared, manually-bootstrapped resources (see Root Environment in `infrastructure/AGENTS.md`).
 - `/services/backend` — Golang backend service(s) packaged as Docker containers targeted for GCP Cloud Run.
+- `/services/backend/cmd/worker` — The event-driven worker: a second binary in the backend's Go module, but its own moon project (`worker`), image and Cloud Run service (see Worker in `services/backend/AGENTS.md`).
 - `/services/frontend` — Conventional Vite/React single-page app deployed to Cloudflare Pages.
 - Neither service carries its own `lint`/`test`/`build` Makefile: CI runs those through moon (see Building with moon in `.github/AGENTS.md`), and local development calls the language's own tooling directly (`go test`, `npm test`, ...) rather than through a wrapper.
 - `/.github/actions` — Modular, local GitHub Composite Actions (`action.yml`) encapsulating reusable workflow logic.

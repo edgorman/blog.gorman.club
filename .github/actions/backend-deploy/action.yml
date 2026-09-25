@@ -1,5 +1,5 @@
 name: 'Backend Deploy'
-description: 'Builds the backend image, pushes it to both environments'' Artifact Registries tagged with the commit SHA, and deploys it to staging Cloud Run'
+description: 'Builds a backend-module image (the API or the worker), pushes it to both environments'' Artifact Registries tagged with the commit SHA, and deploys it to staging Cloud Run'
 
 inputs:
   gcp_project_id:
@@ -14,6 +14,10 @@ inputs:
   service_name:
     description: 'Cloud Run service name (e.g. backend-stag)'
     required: true
+  image_name:
+    description: 'Which binary under services/backend/cmd to build, and the image name it is pushed under in the backend repository (backend or worker)'
+    required: false
+    default: 'backend'
   image_tag:
     description: 'Tag to push the image under - the commit SHA, per the Staging Deployments section of `.github/AGENTS.md`'
     required: true
@@ -48,14 +52,15 @@ runs:
     - id: image
       shell: bash
       run: |
-        echo "staging_ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/backend:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
-        echo "prod_ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.prod_project_id }}/backend/backend:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+        echo "staging_ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/${{ inputs.image_name }}:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+        echo "prod_ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.prod_project_id }}/backend/${{ inputs.image_name }}:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
 
     - name: Build Image
       shell: bash
       run: |
         docker build \
           --build-arg COMMIT_SHA="${{ inputs.image_tag }}" \
+          --build-arg CMD="${{ inputs.image_name }}" \
           -t "${{ steps.image.outputs.staging_ref }}" \
           services/backend
 

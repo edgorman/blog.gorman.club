@@ -42,3 +42,15 @@ resource "cloudflare_dns_record" "frontend" {
   proxied = true
   ttl     = 1
 }
+
+# Proves ownership of gorman.club to Google Search Console (a Domain property), so the blog can be
+# submitted for indexing (#221). Skipped until the token is set in config/root/terraform.tfvars.
+resource "cloudflare_dns_record" "google_site_verification" {
+  count = var.google_site_verification == "" ? 0 : 1
+
+  zone_id = data.cloudflare_zone.gorman_club.id
+  name    = "@"
+  type    = "TXT"
+  content = "\"google-site-verification=${var.google_site_verification}\""
+  ttl     = 1
+}

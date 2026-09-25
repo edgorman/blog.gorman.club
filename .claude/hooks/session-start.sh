@@ -1,11 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-# Installs the exact toolchain versions this repo's CI pins - buf and terraform, plus a
-# best-effort Pants launcher - so a cloud session can run `buf generate` and `terraform plan`
-# against the same binaries CI uses, instead of whatever (if anything) happens to be preinstalled.
+# Installs the exact toolchain versions this repo's CI pins - buf, terraform, and the moon/proto
+# binaries themselves - so a cloud session can run `buf generate` and `terraform plan` against the
+# same binaries CI uses, instead of whatever (if anything) happens to be preinstalled.
 # See "Building with Pants" in .github/AGENTS.md and "Contract Layer" in packages/protos/AGENTS.md for where each version comes
-# from.
+# from. The Pants launcher is no longer installed here - see the moon/proto block below for why,
+# and .github/AGENTS.md for what pants.toml/get-pants.sh are still needed for until #200.
 #
 # Local sessions skip this entirely: contributors manage their own toolchain versions, and this
 # only exists to fill gaps in the cloud session base image (see
@@ -54,26 +55,52 @@ if ! "$BIN_DIR/terraform" version 2>/dev/null | head -1 | grep -qx 'Terraform v1
   trap - RETURN
 fi
 
-# --- Pants launcher (best-effort) --------------------------------------------------------------
-# pants.toml pins `pants_version = "2.33.0"`; getting `pants` here means running the checked-in
-# get-pants.sh (see .github/AGENTS.md's "Building with Pants" section for why it's vendored at the repo
-# root), which installs the scie-pants launcher - that in turn reads pants.toml itself and
-# resolves 2.33.0 on first invocation. Using the vendored copy rather than curling
-# static.pantsbuild.org directly is Pants' own recommendation, and also sidesteps that host not
-# being in a cloud session's default network allowlist - get-pants.sh's own downloads go to
-# github.com/pantsbuild/scie-pants, which is.
+# --- proto 0.62.3 + moon 2.5.5 -----------------------------------------------------------------
+# Pinned GitHub release binaries with verified checksums, the same pattern buf/terraform above
+# use - not `curl https://moonrepo.dev/install/moon.sh | bash`, since that installer isn't
+# reachable through the session proxy (403), and moonrepo.dev isn't in the default allowlist.
 #
-# This is genuinely optional: .github/AGENTS.md's "Building with Pants" section is explicit that neither
-# service uses Pants as a local dev wrapper - only CI does, via `pants --changed-since=origin/main
-# lint check` / `test package`. Day-to-day work in a session runs `go test`, `npm test`,
-# `buf generate`, `terraform plan`, etc. directly, same as AGENTS.md tells a contributor to. `pants`
-# is only worth having on hand to reproduce a Pants-specific CI failure (a `tailor --check` gap, a
-# BUILD-graph issue) locally, so a failure to install it here shouldn't fail the whole hook.
-if ! command -v pants >/dev/null 2>&1; then
-  if ! ./get-pants.sh; then
-    echo "warning: could not install the pants launcher." \
-      "Not fatal - see the comment above this step in $0." >&2
-  fi
+# This gets the `moon`/`proto` binaries only, deliberately not `proto install`/`moon setup`.
+# Every proto/moon plugin - every toolchain (go, node, npm) *and* every third-party TOML plugin
+# (buf, terraform, see .prototools) - is fetched as an OCI blob from ghcr.io, by way of
+# pkg-containers.githubusercontent.com. That host isn't in the default allowlist either (confirmed:
+# `moon query projects` fails with plugin::loader::registry::load_failure loading
+# ghcr.io/moonrepo/go_toolchain, and `proto install buf` fails the same way loading
+# ghcr.io/moonrepo/schema_tool - the generic loader every TOML plugin needs too, not just the
+# builtin toolchains). So `moon --version` works here, but `moon setup`/`moon run`/`moon ci` and
+# `proto install` do not, until ghcr.io joins the allowlist - a wider version of the
+# registry.terraform.io gap below. buf and Terraform stay hand-installed above for that reason;
+# see AGENTS.md's Commands section for what does and doesn't work in a cloud session.
+if ! "$BIN_DIR/proto" --version 2>/dev/null | grep -qx '0.62.3'; then
+  proto_tmp="$(mktemp -d)"
+  trap 'rm -rf "$proto_tmp"' RETURN
+  proto_asset='proto_cli-x86_64-unknown-linux-gnu.tar.xz'
+  curl -fsSL -o "$proto_tmp/$proto_asset" \
+    "https://github.com/moonrepo/proto/releases/download/v0.62.3/$proto_asset"
+  curl -fsSL -o "$proto_tmp/$proto_asset.sha256" \
+    "https://github.com/moonrepo/proto/releases/download/v0.62.3/$proto_asset.sha256"
+  (cd "$proto_tmp" && sha256sum -c "$proto_asset.sha256")
+  tar -xJf "$proto_tmp/$proto_asset" -C "$proto_tmp"
+  mv "$proto_tmp/proto_cli-x86_64-unknown-linux-gnu/proto" "$BIN_DIR/proto"
+  chmod +x "$BIN_DIR/proto"
+  rm -rf "$proto_tmp"
+  trap - RETURN
+fi
+
+if ! "$BIN_DIR/moon" --version 2>/dev/null | grep -qx '2.5.5'; then
+  moon_tmp="$(mktemp -d)"
+  trap 'rm -rf "$moon_tmp"' RETURN
+  moon_asset='moon_cli-x86_64-unknown-linux-gnu.tar.xz'
+  curl -fsSL -o "$moon_tmp/$moon_asset" \
+    "https://github.com/moonrepo/moon/releases/download/v2.5.5/$moon_asset"
+  curl -fsSL -o "$moon_tmp/$moon_asset.sha256" \
+    "https://github.com/moonrepo/moon/releases/download/v2.5.5/$moon_asset.sha256"
+  (cd "$moon_tmp" && sha256sum -c "$moon_asset.sha256")
+  tar -xJf "$moon_tmp/$moon_asset" -C "$moon_tmp"
+  mv "$moon_tmp/moon_cli-x86_64-unknown-linux-gnu/moon" "$BIN_DIR/moon"
+  chmod +x "$BIN_DIR/moon"
+  rm -rf "$moon_tmp"
+  trap - RETURN
 fi
 
 # --- Go 1.26.0 toolchain -----------------------------------------------------------------------

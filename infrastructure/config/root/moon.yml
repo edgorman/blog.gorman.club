@@ -1,0 +1,27 @@
+$schema: '../../../.moon/cache/schemas/project.json'
+dependsOn: ['infra-root']
+tags: ['deployment']
+
+tasks:
+  # A marker task: 'inputs' is the real point of it, defining exactly what reaches this
+  # environment's plan/apply. Its own plan/apply run in the workflow job with WIF creds, not here.
+  plan:
+    command: 'noop'
+    inputs:
+      - 'terraform.tfbackend'
+      - 'terraform.tfvars'
+      - 'project://infra-root'
+      # gcp-secret-manager is only used by root's jobs (both plan and apply fetch secrets through
+      # it); terraform-pull-request/terraform-push-commit are shared by every environment.
+      - '/.github/actions/gcp-secret-manager/**/*'
+      - '/.github/actions/terraform-pull-request/**/*'
+      - '/.github/actions/terraform-push-commit/**/*'
+      - '/.github/workflows/pull-request.yaml'
+      - '/.github/workflows/push-commit.yaml'
+    options:
+      # Not runInCI: false - a noop task is harmless for moon-ci to actually execute, and
+      # excluding it from CI would also exclude it from moon query affected's CI-mode results
+      # (#198's own moon-changed job needs to see it): moon's AffectedTracker treats
+      # runInCI: false/Skip as "never affected in CI" - a real, confirmed-in-production finding
+      # (crates/affected/src/task_tracker.rs's is_task_affected), not assumed.
+      cache: false

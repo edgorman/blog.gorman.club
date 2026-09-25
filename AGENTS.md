@@ -45,13 +45,18 @@ buf lint && buf format -d --exit-code && buf generate
 # Infrastructure
 terraform fmt -check -recursive infrastructure
 
-# CI parity (repo root) - only to reproduce a Pants-specific CI failure
+# CI parity (repo root) - what pull-request.yaml runs
+moon ci                                   # everything affected vs origin/main
+moon run services/backend:test services/frontend:lint   # specific targets
+moon query affected --base origin/main    # what CI would consider affected
+
+# CI parity, Pants (repo root) - only to reproduce a Pants-specific CI failure
 pants tailor --check :: && pants --changed-since=origin/main lint check
 ```
 
-Never run `terraform apply`, `gcloud run deploy`, `wrangler` or anything else that mutates a real environment by hand: every one of those goes through the workflows described in `.github/AGENTS.md`. `.claude/settings.json` denies them to Claude Code outright.
+Never run `terraform apply`, `gcloud run deploy`, `wrangler` or anything else that mutates a real environment by hand: every one of those goes through the workflows described in `.github/AGENTS.md`. `.claude/settings.json` denies them to Claude Code outright, and no moon task wraps them either.
 
-In a Claude Code cloud session, `.claude/hooks/session-start.sh` installs the pinned toolchain these need. Two of them still depend on the session's network access: `terraform init`/`validate` needs `registry.terraform.io`, and `pants` currently fails to bootstrap because its bundled Python rejects the session proxy's CA certificate. The Go, npm and buf commands work with the default allowlist.
+In a Claude Code cloud session, `.claude/hooks/session-start.sh` installs the pinned toolchain these need, including the `moon`/`proto` binaries themselves (pinned GitHub release downloads, the same pattern buf/terraform use). Three things still depend on the session's network access: `terraform init`/`validate` needs `registry.terraform.io`; `pants` currently fails to bootstrap because its bundled Python rejects the session proxy's CA certificate; and every proto/moon plugin - every toolchain (go, node, npm) *and* every third-party TOML plugin (buf, terraform) - is fetched from `ghcr.io`, which also isn't in the default allowlist. That last one means `moon --version` works in a cloud session, but `moon setup`/`moon run`/`moon ci` don't - go through the language-specific commands above instead. Local macOS/Linux sessions aren't behind this proxy: `proto install && moon ci` is the whole setup there. The Go, npm and buf commands work with the default allowlist regardless.
 
 `.claude/settings.json` also enables the team's Claude Code plugins (`enabledPlugins`, from the marketplaces in `extraKnownMarketplaces`). Locally, Claude Code offers to install them once you trust the folder. A cloud session never installs a repository's plugins itself, so `.claude/hooks/install-plugins.sh` does it, reading the same two keys, in the background at session start. The session has already loaded its plugins by the time the hook runs, so they become active on the next start or resume, or straight away with `/reload-plugins`. To have them from the first message, enable them for your claude.ai account instead, which cloud sessions load as synced plugins.
 

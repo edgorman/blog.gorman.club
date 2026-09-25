@@ -56,6 +56,8 @@ In a Claude Code cloud session, `.claude/hooks/session-start.sh` installs the pi
 
 `.claude/settings.json` also enables the team's Claude Code plugins (`enabledPlugins`, from the marketplaces in `extraKnownMarketplaces`). Locally, Claude Code offers to install them once you trust the folder. A cloud session never installs a repository's plugins itself, so `.claude/hooks/install-plugins.sh` does it, reading the same two keys, in the background at session start. The session has already loaded its plugins by the time the hook runs, so they become active on the next start or resume, or straight away with `/reload-plugins`. To have them from the first message, enable them for your claude.ai account instead, which cloud sessions load as synced plugins.
 
+Two project skills in `.claude/skills/` cover the path from issue to merged PR: `implement-issue` (read an issue and its parent, check its blockers, implement, verify and open the PR, e.g. `/implement-issue 194`) and `steward` (drive that PR to green; see `.github/AGENTS.md`).
+
 ## Rules
 
 Short versions; each links to where the full reasoning lives.

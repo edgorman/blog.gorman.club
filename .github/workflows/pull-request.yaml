@@ -14,14 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # #199: cutover - moon decides which Terraform deployment(s) a diff reaches, replacing Pants'
-  # own target graph (the deleted composite action that used to query it) and the deleted
-  # composite action that used to layer a blanket .github/** glob on top. That blanket glob has no
-  # replacement here because it needs none: every deploy-{root,staging,prod}:plan task's own
-  # `inputs` (#195/#206) already lists the exact composite actions and workflow files that
-  # environment's job depends on, closing the gap a repo-wide fallback used to paper over. #198
-  # proved this job's moon equivalent matches that old combined answer exactly, across every PR in
-  # that soak period and the real push-commit merge that landed it (#212).
+  # moon decides which Terraform deployment(s) a diff reaches via `moon query affected`. There is
+  # no blanket .github/** glob here because none is needed: every deploy-{root,staging,prod}:plan
+  # task's own `inputs` (#195/#206) already lists the exact composite actions and workflow files
+  # that environment's job depends on, so nothing is left for a repo-wide fallback to paper over.
   changed:
     runs-on: ubuntu-latest
     outputs:
@@ -63,10 +59,9 @@ jobs:
             echo "$env=$val" >> "$GITHUB_OUTPUT"
           done
 
-  # Replaces Pants' old changed-since lint/check invocation, its repo-wide tailor check, the direct
-  # `go vet`/oxlint/`npm run build` steps, and the inline Wire Types bash - one `moon ci` invocation
-  # covering every lint/check/format/build task across every project, affected-and-runInCI filtered.
-  # `:taskId` (no project prefix) is moon's "run in every project that has this task" scope
+  # One `moon ci` invocation covering every lint/check/format/build task across every project,
+  # affected-and-runInCI filtered. `:taskId` (no project prefix) is moon's "run in every project
+  # that has this task" scope
   # (https://moonrepo.dev/docs/concepts/target); a project without a given task is silently
   # skipped, not an error. `:format` also reaches infra-root/infra-env's inherited `terraform fmt
   # -check` (.moon/tasks/terraform.yml) - redundant with what infrastructure-*'s own Terraform
@@ -90,7 +85,6 @@ jobs:
         env:
           MOON_BASE: origin/main
 
-  # Replaces Pants' old changed-since, transitive-dependents test/package invocation:
   # `:test` (every project's tests, affected-and-runInCI filtered - a change to a shared package
   # still reaches its dependents via each test task's own `inputs`, e.g. backend/frontend's
   # `project://packages/protos`, #155) plus services/backend:image (the docker_image parity target

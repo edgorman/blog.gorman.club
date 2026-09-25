@@ -1,8 +1,3 @@
-# Pants build metadata, packaged output, and pantsd pid files.
-.pants.d/
-dist/
-.pids/
-
 # moon's local cache and downloaded schemas.
 .moon/cache
 

@@ -146,8 +146,9 @@ npm test          # jest
 npm run build     # tsc -b && vite build
 ```
 
-`npm run dev` starts the Vite dev server directly. CI runs the same checks via Pants
-(`pants --changed-since=origin/main lint check test`, see .github/AGENTS.md's "Building with Pants").
+`npm run dev` starts the Vite dev server directly. CI runs the same checks via moon
+(`lint-check`'s `moon ci :lint :typecheck :build` and `test`'s `moon ci :test`, see .github/AGENTS.md's
+"Building with moon").
 
 CI runs `npm run build` once on merge to `main` (`frontend-build`), then uploads the same `dist/` to
 both environments' buckets under a commit-SHA folder (`frontend-publish`) - so what's live always

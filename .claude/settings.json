@@ -16,7 +16,6 @@
       "Bash(buf lint *)",
       "Bash(buf format *)",
       "Bash(buf generate *)",
-      "Bash(pants *)",
       "Bash(moon run *)",
       "Bash(moon exec *)",
       "Bash(moonx *)",

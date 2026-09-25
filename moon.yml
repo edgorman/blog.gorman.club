@@ -25,11 +25,11 @@ tasks:
       - '/services/frontend/src/lib/api.ts'
       - '/services/backend/internal/service/**/*.go'
 
-  # Replaces `pants tailor --check ::` (#155): a services/* or packages/* folder without its own
-  # moon.yml is exactly the folder services/*/moon.yml and packages/*/moon.yml globs (#191) would
-  # silently skip discovering as a project, so check for the file directly rather than parsing
-  # `moon query projects` output - the two are equivalent (a glob only picks up a folder that has
-  # one) and this needs no JSON parsing or dependency on the query command's shape.
+  # A services/* or packages/* folder without its own moon.yml is exactly the folder
+  # services/*/moon.yml and packages/*/moon.yml globs (#191) would silently skip discovering as a
+  # project, so check for the file directly rather than parsing `moon query projects` output - the
+  # two are equivalent (a glob only picks up a folder that has one) and this needs no JSON parsing
+  # or dependency on the query command's shape.
   projects-covered:
     description: 'Every services/* and packages/* folder is a moon project'
     script: |

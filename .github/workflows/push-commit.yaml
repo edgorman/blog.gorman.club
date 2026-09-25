@@ -65,8 +65,7 @@ jobs:
           # its CI-mode default-branch diff instead. On `main` itself that means comparing against
           # the previous revision (HEAD~1), which is exactly `${{ github.event.before }}` here
           # since every merge to main is a single squash commit (AGENTS.md's Commit Message
-          # Convention) - confirmed against the real push-commit run that merged #212 itself,
-          # where this exact job matched Pants+github-file-diff's answer on every environment.
+          # Convention) - confirmed against the real push-commit run that merged #212 itself.
           #
           # The one case that fallback can't cover: on the very first push to a new ref, `before`
           # is 40 zeros; after a force-push, it can name a commit this history no longer contains

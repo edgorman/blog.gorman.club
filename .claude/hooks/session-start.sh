@@ -4,9 +4,8 @@ set -euo pipefail
 # Installs the exact toolchain versions this repo's CI pins - buf, terraform, and the moon/proto
 # binaries themselves - so a cloud session can run `buf generate` and `terraform plan` against the
 # same binaries CI uses, instead of whatever (if anything) happens to be preinstalled.
-# See "Building with Pants" in .github/AGENTS.md and "Contract Layer" in packages/protos/AGENTS.md for where each version comes
-# from. The Pants launcher is no longer installed here - see the moon/proto block below for why,
-# and .github/AGENTS.md for what pants.toml/get-pants.sh are still needed for until #200.
+# See "Building with moon" in .github/AGENTS.md and "Contract Layer" in packages/protos/AGENTS.md for where each version comes
+# from.
 #
 # Local sessions skip this entirely: contributors manage their own toolchain versions, and this
 # only exists to fill gaps in the cloud session base image (see
@@ -40,9 +39,7 @@ fi
 
 # --- terraform 1.15.8 -------------------------------------------------------------------------
 # Matches infrastructure/env/providers.tf and infrastructure/root/providers.tf's
-# `required_version`, and pants.toml's [download-terraform] (whose known_versions block below
-# quotes the same checksum). Needed for `terraform plan`/`apply` and for Pants' own Terraform
-# backend to invoke the identical binary.
+# `required_version`, and .prototools' own terraform pin. Needed for `terraform plan`/`apply`.
 if ! "$BIN_DIR/terraform" version 2>/dev/null | head -1 | grep -qx 'Terraform v1.15.8'; then
   tf_tmp="$(mktemp -d)"
   trap 'rm -rf "$tf_tmp"' RETURN

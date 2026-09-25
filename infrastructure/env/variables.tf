@@ -61,6 +61,30 @@ variable "alert_latency_threshold_ms" {
   default     = 5000
 }
 
+variable "alert_client_error_count_threshold" {
+  description = "How many 4xx responses in a five minute window the backend may serve before alerting. Deliberately high: 404s from stale or mistyped links are ordinary traffic, so this is meant to catch floods of 401s or 429s, not browsing."
+  type        = number
+  default     = 100
+}
+
+variable "alert_rate_limited_count_threshold" {
+  description = "How many 429 responses in a five minute window the backend may serve before alerting. A 429 is only ever the backend's own rate limiter refusing a caller, so any sustained number of them means someone is calling the API far faster than using the site would."
+  type        = number
+  default     = 20
+}
+
+variable "alert_assistant_turn_threshold" {
+  description = "How many writing assistant turns in an hour, across every caller, before alerting. Sized to one author working steadily with room to spare (the per-account rate limit refills a turn every 30 seconds, so a single caller could reach 120): more than this is several people at once, a scripted client, or a loop."
+  type        = number
+  default     = 60
+}
+
+variable "alert_assistant_error_count_threshold" {
+  description = "How many failed writing assistant turns in a five minute window before alerting. 0 alerts on the first one: a failed turn is a model call that was paid for or refused, and either is worth knowing about on a site this quiet."
+  type        = number
+  default     = 0
+}
+
 variable "backend_registry_keep_count" {
   description = "How many of the most recent Artifact Registry versions the backend repository keeps (each environment's own registry, since every merge writes to both - see Staging Deployments in .github/AGENTS.md); everything older is deleted by the repository's cleanup_policies. See the Artifact Stores section of infrastructure/AGENTS.md for how this number was chosen."
   type        = number

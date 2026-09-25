@@ -3,6 +3,7 @@
 package service
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
@@ -23,6 +24,10 @@ type Config struct {
 	// is entitled to nobody, which is what a deployment with no model configured looks like (see
 	// cmd/backend).
 	AssistantEntitlement entity.AssistantEntitlement
+	// Logger is where the service writes what an operator reads - failures it answers the caller
+	// about only vaguely, and the one line each assistant turn records (see logAssistantTurn). Nil
+	// means slog.Default(), which cmd/backend points at Cloud Logging's JSON shape.
+	Logger *slog.Logger
 }
 
 // Service owns the API's dependencies and serves its routes.
@@ -66,6 +71,14 @@ func New(
 		callerLimiter:    newRateLimiter(requestsPerCaller),
 		assistantLimiter: newRateLimiter(assistantTurnsPerCaller),
 	}
+}
+
+// logger is the configured Logger, or the process default when none was given.
+func (s *Service) logger() *slog.Logger {
+	if s.cfg.Logger != nil {
+		return s.cfg.Logger
+	}
+	return slog.Default()
 }
 
 // Handler returns the fully-wired API, ready to serve.

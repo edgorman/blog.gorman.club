@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"log"
 	"net/http"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -203,7 +202,8 @@ func (s *Service) DeleteComment(w http.ResponseWriter, r *http.Request) {
 	// is logged rather than returned, because the caller asked for the comment to be gone and it
 	// is - reporting a 500 would have them retry a delete that already succeeded.
 	if err := s.reactions.DeleteTarget(r.Context(), entity.CommentReaction(blog.Slug, comment.ID)); err != nil {
-		log.Printf("deleting reactions to comment %q on %q failed: %v", comment.ID, blog.Slug, err)
+		s.logger().ErrorContext(r.Context(), "deleting a comment's reactions failed",
+			"slug", blog.Slug, "comment_id", comment.ID, "error", err)
 	}
 
 	w.WriteHeader(http.StatusNoContent)

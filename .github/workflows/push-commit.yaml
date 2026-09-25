@@ -98,6 +98,11 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
+          # See pull-request.yaml's identical moon-ci step: every observed
+          # `proto-shim: ... Permission denied (os error 13)` failure across #209/#212's early CI
+          # runs happened right after a toolchain cache hit, on a different task each time - the
+          # cache restore is the common thread, not the task. Disabled until that's fixed upstream.
+          cache: false
       - name: moon ci
         shell: bash
         run: |
@@ -124,6 +129,7 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
+          cache: false # see moon-ci's identical setup step above for why
       - id: moon
         name: Compute moon-affected deployments
         shell: bash

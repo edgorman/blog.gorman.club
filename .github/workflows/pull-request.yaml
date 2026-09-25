@@ -292,6 +292,14 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
+          # #212's own first three CI runs each failed a different task (packages/protos:lint,
+          # packages/protos:format, infra-env:format) with the identical
+          # `proto-shim: ... Permission denied (os error 13)` error, and every failure's log shows
+          # a cache hit for the toolchain directory just before it - the shared thread is the
+          # cache restore, not anything about the task itself. Disabling it trades the ~15s
+          # cache-restore savings for not losing proto's shim executable bit on every few runs;
+          # revisit once moonrepo/setup-toolchain's cache restore is confirmed fixed upstream.
+          cache: false
       - name: moon ci
         shell: bash
         run: moon ci
@@ -332,6 +340,7 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
+          cache: false # see moon-ci's identical setup step above for why
       - id: moon
         name: Compute moon-affected deployments
         shell: bash

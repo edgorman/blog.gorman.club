@@ -49,7 +49,7 @@ resource "cloudflare_dns_record" "google_site_verification" {
   count = var.google_site_verification == "" ? 0 : 1
 
   zone_id = data.cloudflare_zone.gorman_club.id
-  name    = "@"
+  name    = data.cloudflare_zone.gorman_club.name
   type    = "TXT"
   content = "\"google-site-verification=${var.google_site_verification}\""
   ttl     = 1

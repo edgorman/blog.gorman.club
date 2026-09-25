@@ -268,3 +268,116 @@ jobs:
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  # #198: moon runs alongside Pants, advisory-only - neither job below is in settings.yml's
+  # required_status_checks, so a moon failure or mismatch never blocks a PR. Both jobs need moon's
+  # own full-history clone (a shallow one makes affected detection "inaccurate or fail entirely",
+  # per https://moonrepo.dev/docs/guides/ci) - the same fetch-depth: 0 convention `changed` already
+  # uses above, plus the blobless-filter speed-up moon's CI guide recommends on top of it.
+  #
+  # moon-ci proves moon's own lint/test/build tasks (backend/frontend/protos/root, #192-#197) catch
+  # the same failures Pants + the direct steps in lint-check/test/protos-drift do. It does NOT cover
+  # the infrastructure-* jobs below - those stay Pants-decided until #199 - and moon.yml's `plan`
+  # tasks are `runInCI: false` (#195/#206) so `moon ci` never touches them either; moon-changed below
+  # is what exercises those.
+  moon-ci:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          filter: 'blob:none'
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+      - name: moon ci
+        shell: bash
+        run: moon ci
+        env:
+          # ci_env's own GitHub Actions auto-detection should already resolve this on a
+          # pull_request event, but pinning it explicitly removes any doubt rather than trusting an
+          # unverified auto-detect (this session can't execute past the ghcr.io toolchain-plugin
+          # gap documented in #197 to confirm it either way).
+          MOON_BASE: origin/main
+
+  # Computes the same three deploy-{root,staging,prod}:plan booleans as the `changed` job above,
+  # from #195/#206's marker tasks, and diffs them against Pants+github-file-diff's combined result -
+  # never fails, only warns, since this is the parity check #198 asks for before anything depends on
+  # moon's answer.
+  #
+  # `moon query affected` (unlike `moon ci`/`moon exec`) has no `--base`/`--head` override at all -
+  # confirmed against its own source (crates/app/src/commands/query/affected.rs's QueryAffectedArgs
+  # has exactly three fields: `by`, `downstream`, `upstream`, no base/head) rather than assumed from
+  # the command's --help, which also lists no such flag. It always delegates to
+  # query_changed_files_for_affected, which in a CI environment (`CI=true`, set automatically here)
+  # diffs against the configured default branch (`vcs.defaultBranch: main`, #191) when the current
+  # ref isn't already that branch - exactly the PR comparison this job wants, with no override
+  # needed. Left at its own defaults (no --upstream/--downstream): #206 deliberately modelled
+  # deploy-staging/deploy-prod's dependsOn on infra-env/deploy-root as apply-ordering only, not an
+  # affectedness edge, so pulling in graph relations here (moon ci's own --upstream=deep
+  # --downstream=direct) would mark them affected via the wrong mechanism - the explicit
+  # project://infra-root / project://infra-env inputs (#195/#206) are the intended signal.
+  moon-changed:
+    needs: changed
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          filter: 'blob:none'
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+      - id: moon
+        name: Compute moon-affected deployments
+        shell: bash
+        run: |
+          moon query affected > affected.json
+          for env in root staging prod; do
+            # .tasks is omitted entirely when nothing is affected (moon's Affected struct skips
+            # empty maps on serialize), so `(.tasks // {})` guards against `has` erroring on null -
+            # a real gap in the issue's own `.tasks | has($t)` sketch, found by reading moon's
+            # source (crates/affected/src/affected.rs) rather than assumed.
+            val=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' affected.json)
+            echo "$env=$val" >> "$GITHUB_OUTPUT"
+          done
+      - name: Compare against Pants
+        shell: bash
+        env:
+          PANTS_ROOT: ${{ needs.changed.outputs.infrastructure-root }}
+          PANTS_STAGING: ${{ needs.changed.outputs.infrastructure-staging }}
+          PANTS_PROD: ${{ needs.changed.outputs.infrastructure-prod }}
+          MOON_ROOT: ${{ steps.moon.outputs.root }}
+          MOON_STAGING: ${{ steps.moon.outputs.staging }}
+          MOON_PROD: ${{ steps.moon.outputs.prod }}
+        run: |
+          {
+            echo '### moon vs Pants: infrastructure affectedness'
+            echo
+            echo '| Environment | Pants (+ github-diff) | moon | Match |'
+            echo '|---|---|---|---|'
+          } >> "$GITHUB_STEP_SUMMARY"
+          mismatch=0
+          for env in root staging prod; do
+            pants_var="PANTS_${env^^}"
+            moon_var="MOON_${env^^}"
+            pants_val="${!pants_var}"
+            moon_val="${!moon_var}"
+            if [ "$pants_val" = "$moon_val" ]; then
+              match='✅'
+            else
+              match='❌'
+              mismatch=1
+              echo "::warning::moon/Pants mismatch for infrastructure-$env: Pants(+github-diff)=$pants_val moon=$moon_val - see #198's parity table for expected divergence (e.g. a .github/** change outside terraform/secret actions or workflows)."
+            fi
+            echo "| infrastructure-$env | $pants_val | $moon_val | $match |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          if [ "$mismatch" = '1' ]; then
+            echo
+            echo '_See #198 for which divergences are expected (moon dropping the blanket `.github/**` glob) vs a real gap to investigate._' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0

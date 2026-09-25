@@ -19,5 +19,9 @@ tasks:
       - '/.github/workflows/pull-request.yaml'
       - '/.github/workflows/push-commit.yaml'
     options:
-      runInCI: false
+      # Not runInCI: false - a noop task is harmless for moon-ci to actually execute, and
+      # excluding it from CI would also exclude it from moon query affected's CI-mode results
+      # (#198's own moon-changed job needs to see it): moon's AffectedTracker treats
+      # runInCI: false/Skip as "never affected in CI" - a real, confirmed-in-production finding
+      # (crates/affected/src/task_tracker.rs's is_task_affected), not assumed.
       cache: false

@@ -21,5 +21,7 @@ tasks:
       - '/.github/workflows/promote-release.yaml'
       - '/.github/workflows/apply-infrastructure-prod.yaml'
     options:
-      runInCI: false
+      # Not runInCI: false - see infrastructure/config/root/moon.yml's comment: a noop task is
+      # harmless for moon-ci to execute, and excluding it from CI also hides it from
+      # moon query affected's CI-mode results, which #198's moon-changed job needs.
       cache: false

@@ -12,6 +12,10 @@ github_repository_name  = "blog.gorman.club"
 # browser's network tab regardless.
 google_client_id = "671777226474-sqa0ceudduou1rg0cloe3q4f46nmelvv.apps.googleusercontent.com"
 
+# From Google Search Console's DNS verification for the gorman.club Domain property (#221). Not a
+# secret - it is published in DNS as a TXT record anyway.
+google_site_verification = "Zp_UP1vLDTpUNWsHeNP3xGScmS8c4q5wJw0SPat6j38"
+
 # the following are sensitive/unknown initially and thus have no defualt
 # github_provider_token
 # cloudflare_account_id

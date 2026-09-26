@@ -126,6 +126,8 @@ describe('Landing', () => {
 
     await screen.findByText('Found')
     expect(listBlogs).toHaveBeenCalledWith({ limit: 10, q: 'firestore' })
+    // A search is ranked by relevance, not time, so the heading says so.
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Best matches for “firestore”')
     // The box shows what the feed is filtered by, so the reader can edit it rather than retype it.
     expect(screen.getByRole('searchbox', { name: /Search posts/ })).toHaveValue('firestore')
   })

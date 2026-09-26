@@ -52,3 +52,24 @@ func TestEmbedRejectsWrongDimension(t *testing.T) {
 		t.Error("want an error for a 1-dimension vector")
 	}
 }
+
+// A post and a search query are embedded as the two halves of retrieval, so they land comparable.
+func TestEmbedTaskTypes(t *testing.T) {
+	var got predictRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"predictions":[{"embeddings":{"values":[0.1]}}]}`))
+	}))
+	defer server.Close()
+
+	e := NewEmbedder(EmbedderConfig{
+		Config:    Config{Model: "m", ProjectID: "p", BaseURL: server.URL, HTTPClient: server.Client()},
+		Dimension: 1,
+	})
+	if _, err := e.Embed(context.Background(), "x"); err != nil || got.Instances[0].TaskType != "RETRIEVAL_DOCUMENT" {
+		t.Errorf("Embed: err = %v, task_type = %q", err, got.Instances[0].TaskType)
+	}
+	if _, err := e.EmbedQuery(context.Background(), "x"); err != nil || got.Instances[0].TaskType != "RETRIEVAL_QUERY" {
+		t.Errorf("EmbedQuery: err = %v, task_type = %q", err, got.Instances[0].TaskType)
+	}
+}

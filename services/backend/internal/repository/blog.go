@@ -27,7 +27,8 @@ type ListParams struct {
 	Tag string
 	// Query, when set, narrows the page to posts whose title or body holds it, ignoring case
 	// (entity.Blog.MatchesQuery). It is a substring test rather than a search index, so a
-	// repository is free to apply it as it walks rather than as a datastore filter.
+	// repository is free to apply it as it walks rather than as a datastore filter. The search
+	// decorator (internal/repository/search) answers it by meaning instead, falling back to this.
 	Query string
 }
 

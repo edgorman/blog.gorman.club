@@ -56,8 +56,8 @@ type predictRequest struct {
 
 type embedInstance struct {
 	Content string `json:"content"`
-	// TaskType is RETRIEVAL_DOCUMENT: a post is what gets found, whether by another post (related
-	// posts) or by a search query embedded as RETRIEVAL_QUERY.
+	// TaskType is RETRIEVAL_DOCUMENT for a post, which is what gets found, whether by another post
+	// (related posts) or by a search query, which EmbedQuery sends as RETRIEVAL_QUERY.
 	TaskType string `json:"task_type"`
 }
 
@@ -76,8 +76,18 @@ type predictResponse struct {
 	} `json:"predictions"`
 }
 
-// Embed returns text's vector.
+// Embed returns the vector of text as a document: a post, to be found.
 func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	return e.embed(ctx, text, "RETRIEVAL_DOCUMENT")
+}
+
+// EmbedQuery returns the vector of text as a search query, comparable with Embed's document vectors
+// of the same model.
+func (e *Embedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	return e.embed(ctx, text, "RETRIEVAL_QUERY")
+}
+
+func (e *Embedder) embed(ctx context.Context, text, taskType string) ([]float32, error) {
 	if !e.Configured() {
 		return nil, fmt.Errorf("embedder is not configured")
 	}
@@ -87,7 +97,7 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	}
 
 	body, err := json.Marshal(predictRequest{
-		Instances:  []embedInstance{{Content: text, TaskType: "RETRIEVAL_DOCUMENT"}},
+		Instances:  []embedInstance{{Content: text, TaskType: taskType}},
 		Parameters: embedParameters{OutputDimensionality: e.cfg.Dimension, AutoTruncate: true},
 	})
 	if err != nil {

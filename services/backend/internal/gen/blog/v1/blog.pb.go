@@ -281,8 +281,12 @@ type ListBlogsParams struct {
 	OwnerId *string `protobuf:"bytes,3,opt,name=owner_id,json=ownerId,proto3,oneof" json:"owner_id,omitempty"`
 	// Narrows to one topic. Any spelling works; the backend normalizes it before matching.
 	Tag *string `protobuf:"bytes,4,opt,name=tag,proto3,oneof" json:"tag,omitempty"`
-	// Narrows to posts holding this term in their title or body, ignoring case. Never widens what
-	// comes back: a post the caller may not read stays hidden however exactly it is named.
+	// Searches for posts about this, by meaning rather than by exact words: the backend embeds it
+	// and answers with the nearest posts, most relevant first. Relevance has no createdAt to page by,
+	// so a search is a single page - the top `limit` results with has_more false - and start_after
+	// with it asks for a page past the end. When the query cannot be embedded, it falls back to posts
+	// holding the term in their title or body, ignoring case, newest first. Either way it never
+	// widens what comes back: a post the caller may not read stays hidden however exactly it is named.
 	Q             *string `protobuf:"bytes,5,opt,name=q,proto3,oneof" json:"q,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

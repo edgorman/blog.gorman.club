@@ -33,7 +33,7 @@ for the ownership and moderation rules.
 
 The feed is reverse-chronological, so `GET /blogs` carries two filters beside
 the `ownerId` a profile feed uses: `tag` narrows to one topic and `q` to a
-case-insensitive substring of a post's title or body. Both narrow the same feed
+search of posts by meaning (below). Both narrow the same feed
 and neither can widen it - each is applied on top of the read rules above, so a
 search can never surface a post the caller could not already have scrolled to,
 and a tag says nothing about who may read a post.
@@ -47,10 +47,26 @@ joins the readability OR the general feed uses - a query may hold only one
 readability falls back to the same in-Go filtering a profile feed already
 relies on.
 
-Search is deliberately a substring scan applied as the feed is walked, not a
-search index: there is no Firestore predicate for it, and at this scale the
-alternative is a service to run, pay for, and keep in step. It is bounded and
-paged, and is the first thing to revisit if the collection outgrows it.
+Search is by meaning. `internal/repository/search` decorates the datastore
+repository: when `q` is set it embeds the query synchronously (the same
+`EMBEDDING_MODEL` and dimension the worker embeds posts with, as
+`RETRIEVAL_QUERY` against the posts' `RETRIEVAL_DOCUMENT`), runs `FindNearest`
+over `embeddings/`, loads each candidate and keeps it only if `CanBeReadBy` the
+caller and it passes `ownerId`/`tag`, and returns them most relevant first. So
+a paraphrase ("deploying containers") finds a post that shares no word with it
+("Shipping to Cloud Run"), and the index still only ranks. Relevance has no
+`createdAt` cursor, so a search is one page: the top `limit` with
+`hasMore: false`.
+
+The substring scan stays as the fallback. When the query can't be embedded or
+the index can't be read, the search is answered by it instead of failing, and
+with no embedding model configured the decorator isn't installed at all. The
+scan is applied as the feed is walked, bounded and paged, newest first.
+
+A search is one paid model call, including for anonymous callers, so `q`
+requests have their own rate-limit bucket (`searchesPerClient` in
+`internal/service/ratelimit.go`, by uid or by IP), and the anonymous cache sits
+in front of the decorator, so a repeated anonymous search costs no model call.
 
 Related posts (`GET /blogs/{slug}/related`) rank by meaning rather than by
 time: the worker embeds every post's title and body into `embeddings/{slug}`,

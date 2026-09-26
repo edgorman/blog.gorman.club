@@ -24,7 +24,7 @@ func newTestLimiter(limit rateLimit, clock *time.Time) *rateLimiter {
 // burst cannot be handed an extra token by the wall clock advancing mid-loop.
 func freezeLimiters(s *Service) {
 	at := time.Now()
-	for _, limiter := range []*rateLimiter{s.ipLimiter, s.callerLimiter, s.assistantLimiter} {
+	for _, limiter := range []*rateLimiter{s.ipLimiter, s.callerLimiter, s.assistantLimiter, s.searchLimiter} {
 		limiter.now = func() time.Time { return at }
 	}
 }
@@ -369,4 +369,38 @@ func TestHandler_LimitsAssistantTurnsPerCaller(t *testing.T) {
 		t.Fatalf("status past the burst = %d, want %d", rec.Result().StatusCode, http.StatusTooManyRequests)
 	}
 	decodeAPIError(t, rec)
+}
+
+// A search calls a paid model, so it has a budget of its own, far inside the per-IP one, while the
+// feed without q is not charged against it.
+func TestHandler_LimitsSearchesPerClient(t *testing.T) {
+	s := newTestService(nil, nil)
+	freezeLimiters(s)
+	handler := s.Handler()
+
+	request := func(target, address string) int {
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req.RemoteAddr = address + ":1234"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec.Result().StatusCode
+	}
+
+	if searchesPerClient.burst >= requestsPerIP.burst {
+		t.Fatalf("search burst %d is not inside the per-IP burst %d", searchesPerClient.burst, requestsPerIP.burst)
+	}
+	for i := range searchesPerClient.burst {
+		if status := request("/blogs?q=go", "203.0.113.7"); status != http.StatusOK {
+			t.Fatalf("search %d: status = %d, want %d", i+1, status, http.StatusOK)
+		}
+	}
+	if status := request("/blogs?q=go", "203.0.113.7"); status != http.StatusTooManyRequests {
+		t.Errorf("status past the search burst = %d, want %d", status, http.StatusTooManyRequests)
+	}
+	if status := request("/blogs", "203.0.113.7"); status != http.StatusOK {
+		t.Errorf("feed without q = %d, want %d - it must not spend the search budget", status, http.StatusOK)
+	}
+	if status := request("/blogs?q=go", "198.51.100.9"); status != http.StatusOK {
+		t.Errorf("search from a second address = %d, want %d", status, http.StatusOK)
+	}
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FeedList } from '../components/FeedList'
+import { PageMeta } from '../components/PageMeta'
 import { useApp } from '../context/AppContext'
 import { errorMessage, type Blog, type ListBlogsParams } from '../lib/api'
 
@@ -99,6 +100,7 @@ export function Landing() {
 
   return (
     <div className="page">
+      <PageMeta path="/" />
       <header className="page-header">
         <span className="page-kicker text-muted">Feed</span>
         <h1 className="title-feed">{tag ? `Posts tagged ${tag}` : 'Recent posts'}</h1>

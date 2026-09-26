@@ -178,8 +178,10 @@ resource "google_eventarc_trigger" "worker" {
     operator  = "match-path-pattern"
   }
 
-  # JSON rather than the default protobuf, so the worker decodes the event with encoding/json.
-  event_data_content_type = "application/json"
+  # Firestore events are only offered as protobuf, and it must be said explicitly: the provider
+  # sends an unset value as "", which the API rejects rather than defaulting. The worker reads the
+  # event from its headers, not its body, so the encoding doesn't matter to it.
+  event_data_content_type = "application/protobuf"
   service_account         = google_service_account.worker_trigger.email
 
   destination {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Comments } from '../components/Comments'
 import { FeedList } from '../components/FeedList'
+import { PageMeta } from '../components/PageMeta'
 import { ReactionBar } from '../components/ReactionBar'
 import { TagList } from '../components/TagList'
 import { useApp } from '../context/AppContext'
@@ -9,6 +10,7 @@ import { useReactions } from '../hooks/useReactions'
 import { ApiError, postPath, userPath, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
 import { renderMarkdown } from '../lib/markdown'
+import { excerpt } from '../lib/seo'
 
 type State =
   | { phase: 'unconfigured' }
@@ -111,6 +113,7 @@ export function Post() {
 
   return (
     <div className="page">
+      <PageMeta title={post.title || '(untitled)'} description={excerpt(post.content)} path={href} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
         {authorHref ? (
           <Link to={authorHref} className="text-muted back-link">

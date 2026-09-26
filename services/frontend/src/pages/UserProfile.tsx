@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { FeedList } from '../components/FeedList'
+import { PageMeta } from '../components/PageMeta'
 import { useApp } from '../context/AppContext'
-import { errorMessage, type Blog } from '../lib/api'
+import { errorMessage, userPath, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
 
 interface ProfileInfo {
@@ -125,6 +126,7 @@ export function UserProfile() {
 
   return (
     <div className="page">
+      {profile && <PageMeta title={profile.username} description={profile.bio || undefined} path={userPath(profile.username) ?? '/'} />}
       <header className="profile-header">
         <div className="profile-identity">
           <div className="profile-avatar">{(profile?.username ?? '?').charAt(0).toUpperCase()}</div>

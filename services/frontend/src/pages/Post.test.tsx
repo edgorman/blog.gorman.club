@@ -1,6 +1,9 @@
-import { screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
+import { AppContext } from '../context/AppContext'
 import { ApiError, type Api, type Blog } from '../lib/api'
-import { renderWithApp } from '../testUtils'
+import { fakeAppContext, renderWithApp } from '../testUtils'
 import { Post } from './Post'
 
 const blog: Blog = {
@@ -38,6 +41,34 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
 }
 
 describe('Post', () => {
+  // What search engines and link previews read when they run the page's JavaScript (#221): each
+  // post's own title, description and canonical link, swapped as the reader moves between posts.
+  it('updates the document title, description and canonical link when navigating between posts', async () => {
+    const second: Blog = { ...blog, slug: 'second-post', title: 'Second post', content: 'Another **bold** body.' }
+    const api = fakeApi({ getBlog: jest.fn((slug: string) => Promise.resolve(slug === second.slug ? second : blog)) })
+    render(
+      <MemoryRouter initialEntries={['/post/hello-world']}>
+        <AppContext.Provider value={fakeAppContext({ api })}>
+          <Link to="/post/second-post">next</Link>
+          <Routes>
+            <Route path="/post/:slug" element={<Post />} />
+          </Routes>
+        </AppContext.Provider>
+      </MemoryRouter>,
+    )
+    const description = () => document.querySelector('meta[name="description"]')?.getAttribute('content')
+    const canonical = () => document.querySelector('link[rel="canonical"]')?.getAttribute('href')
+
+    await waitFor(() => expect(document.title).toBe('Hello world · Gorman Club'))
+    expect(description()).toBe('Hi Body text.')
+    expect(canonical()).toBe('https://blog.gorman.club/post/hello-world')
+
+    await userEvent.click(screen.getByRole('link', { name: 'next' }))
+    await waitFor(() => expect(document.title).toBe('Second post · Gorman Club'))
+    expect(description()).toBe('Another bold body.')
+    expect(canonical()).toBe('https://blog.gorman.club/post/second-post')
+  })
+
   it('renders the fetched post, with its markdown rendered to HTML', async () => {
     renderWithApp(<Post />, { context: { api: fakeApi() }, route: '/post/hello-world', path: '/post/:slug' })
 

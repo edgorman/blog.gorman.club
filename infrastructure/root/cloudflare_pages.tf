@@ -42,3 +42,26 @@ resource "cloudflare_dns_record" "frontend" {
   proxied = true
   ttl     = 1
 }
+
+# Proves ownership of gorman.club to Google Search Console (a Domain property), so the blog can be
+# submitted for indexing (#221). Search Console created this record itself when the property was
+# verified, so it is imported rather than created; the import is a no-op once it is in state.
+data "cloudflare_dns_records" "google_site_verification" {
+  zone_id = data.cloudflare_zone.gorman_club.id
+  type    = "TXT"
+  name    = { exact = data.cloudflare_zone.gorman_club.name }
+  content = { contains = var.google_site_verification }
+}
+
+import {
+  to = cloudflare_dns_record.google_site_verification
+  id = "${data.cloudflare_zone.gorman_club.id}/${one(data.cloudflare_dns_records.google_site_verification.result).id}"
+}
+
+resource "cloudflare_dns_record" "google_site_verification" {
+  zone_id = data.cloudflare_zone.gorman_club.id
+  name    = data.cloudflare_zone.gorman_club.name
+  type    = "TXT"
+  content = "\"google-site-verification=${var.google_site_verification}\""
+  ttl     = 3600
+}

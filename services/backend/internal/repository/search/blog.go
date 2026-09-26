@@ -16,8 +16,14 @@ const (
 	// maxResults caps a search, as maxBlogListPageSize caps a feed page.
 	maxResults = 50
 	// candidatesPerResult is how many neighbours are asked of the index per result wanted: more
-	// than are returned, since some are posts the caller cannot read or that another filter drops.
+	// than are returned, since some are posts the caller cannot read.
 	candidatesPerResult = 3
+	// filteredCandidates is how many are asked for when a tag or an owner also narrows the search,
+	// the most FindNearest returns: those filters can drop most of the nearest posts, and asking for
+	// too few would answer "nothing matches" when the posts are there, just further down.
+	// ponytail: fine while the collection is a few hundred posts; past that, prefilter the
+	// FindNearest by ownerId/tags instead.
+	filteredCandidates = 1000
 )
 
 // QueryEmbedder turns a search query into a vector comparable with the stored post embeddings.
@@ -47,18 +53,16 @@ func NewBlogRepository(inner repository.BlogRepository, embeddings repository.Em
 // List answers a search with the posts nearest in meaning to the query, most relevant first.
 //
 // Relevance has no createdAt to continue from, so a search is one page: the top Limit results and
-// hasMore false, and a StartAfter asks for a page past the end, which is empty. The index only
+// hasMore false. A StartAfter can therefore only be continuing a page the fallback below served,
+// so it goes to the fallback too. The index only
 // ranks - every candidate is loaded and kept only if uid may read it and it passes the owner and tag
 // filters, exactly as a feed page is filtered - so a search still never widens what a caller sees.
 //
 // If the query cannot be embedded, or the index cannot be read, the search falls back to the inner
 // repository's substring scan rather than failing: a worse answer beats none.
 func (r *BlogRepository) List(ctx context.Context, uid string, params repository.ListParams) ([]entity.Blog, bool, error) {
-	if params.Query == "" {
+	if params.Query == "" || !params.StartAfter.IsZero() {
 		return r.BlogRepository.List(ctx, uid, params)
-	}
-	if !params.StartAfter.IsZero() {
-		return []entity.Blog{}, false, nil
 	}
 	limit := params.Limit
 	if limit <= 0 || limit > maxResults {
@@ -70,7 +74,11 @@ func (r *BlogRepository) List(ctx context.Context, uid string, params repository
 		r.logger.Warn("search fell back to substring scan: embedding the query failed", "error", err)
 		return r.BlogRepository.List(ctx, uid, params)
 	}
-	slugs, err := r.embeddings.Nearest(ctx, vector, candidatesPerResult*limit)
+	candidates := candidatesPerResult * limit
+	if params.Tag != "" || params.OwnerUID != "" {
+		candidates = filteredCandidates
+	}
+	slugs, err := r.embeddings.Nearest(ctx, vector, candidates)
 	if err != nil {
 		r.logger.Warn("search fell back to substring scan: nearest-neighbour query failed", "error", err)
 		return r.BlogRepository.List(ctx, uid, params)

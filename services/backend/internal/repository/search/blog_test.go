@@ -161,3 +161,11 @@ func TestFeedWithoutQueryIsUnchanged(t *testing.T) {
 		t.Errorf("feed was not passed through: listed=%v err=%v", inner.listed, err)
 	}
 }
+
+// A search is one page, so a StartAfter can only be continuing a fallback page, and is sent there.
+func TestSearchContinuesFallbackPage(t *testing.T) {
+	repo, inner := fixture(nil, nil)
+	if _, _, err := repo.List(context.Background(), "", repository.ListParams{Query: "sourdough", StartAfter: time.Now()}); err != nil || !inner.listed {
+		t.Errorf("continuation was not passed to the substring scan: listed=%v err=%v", inner.listed, err)
+	}
+}

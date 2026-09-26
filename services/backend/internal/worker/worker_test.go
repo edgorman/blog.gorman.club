@@ -32,9 +32,9 @@ func TestServeStatusMapping(t *testing.T) {
 		body    string
 		want    int
 	}{
-		{"handled", ok, `{"value":{"name":"projects/p/databases/(default)/documents/blogs/hello-world"}}`, http.StatusNoContent},
-		{"retryable failure", fail, `{}`, http.StatusInternalServerError},
-		{"undecodable body is dropped, not retried", fail, `not json`, http.StatusNoContent},
+		// The body is protobuf in production and never read, so any bytes stand in for it.
+		{"handled", ok, "\x0a\x02pb", http.StatusNoContent},
+		{"retryable failure", fail, "\x0a\x02pb", http.StatusInternalServerError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := post(serve(quiet, tc.handler), "/", tc.body).Code; got != tc.want {
@@ -47,13 +47,10 @@ func TestServeStatusMapping(t *testing.T) {
 func TestServeDecodesEvent(t *testing.T) {
 	var got Event
 	h := serve(slog.New(slog.NewTextHandler(io.Discard, nil)), func(_ context.Context, e Event) error { got = e; return nil })
-	post(h, "/", `{"oldValue":{"name":"old"},"value":{"name":"new"}}`)
+	post(h, "/", "\x0a\x02pb")
 
 	if got.Type != "google.cloud.firestore.document.v1.written" || got.Document != "blogs/hello-world" {
 		t.Errorf("attributes = %q %q", got.Type, got.Document)
-	}
-	if got.Value == nil || got.Value.Name != "new" || got.OldValue == nil || got.OldValue.Name != "old" {
-		t.Errorf("data = %+v %+v", got.Value, got.OldValue)
 	}
 }
 

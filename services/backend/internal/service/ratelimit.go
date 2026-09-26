@@ -31,6 +31,11 @@ var (
 	// iterating on a paragraph; the refill rate is what an author writing, rather than hammering,
 	// will never notice.
 	assistantTurnsPerCaller = rateLimit{burst: 5, every: 30 * time.Second}
+	// searchesPerClient bounds `GET /blogs?q=`, which embeds the query with a paid model on every
+	// request that misses the anonymous cache - including from callers who never signed in. It is
+	// far looser than the assistant's, since a search is one cheap call rather than a long turn,
+	// and far tighter than the per-IP budget, which is sized for page loads rather than model calls.
+	searchesPerClient = rateLimit{burst: 10, every: 6 * time.Second}
 )
 
 // rateLimitSweepInterval is how often idle buckets are dropped. See rateLimiter.sweep.
@@ -149,6 +154,28 @@ func rateLimited(limiter *rateLimiter, key func(*http.Request) string, next http
 // through the way it can rotate through addresses.
 func callerKey(r *http.Request) string {
 	return uidFromContext(r.Context())
+}
+
+// searchLimited meters a search against its own budget and passes every other request through
+// untouched. It must sit inside optionalAuth, so a signed-in caller is metered by account.
+func searchLimited(limiter *rateLimiter, next http.HandlerFunc) http.HandlerFunc {
+	limited := rateLimited(limiter, searchKey, next)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if strings.TrimSpace(r.URL.Query().Get("q")) == "" {
+			next(w, r)
+			return
+		}
+		limited(w, r)
+	}
+}
+
+// searchKey is the account for a signed-in caller and the address otherwise, prefixed so an
+// address can never name the same bucket as a uid.
+func searchKey(r *http.Request) string {
+	if uid := uidFromContext(r.Context()); uid != "" {
+		return "uid:" + uid
+	}
+	return "ip:" + clientIP(r)
 }
 
 // clientIP is the address the request arrived from, for metering callers who have not signed in.

@@ -107,8 +107,12 @@ export interface ListBlogsParams {
     | string
     | undefined;
   /**
-   * Narrows to posts holding this term in their title or body, ignoring case. Never widens what
-   * comes back: a post the caller may not read stays hidden however exactly it is named.
+   * Searches for posts about this, by meaning rather than by exact words: the backend embeds it
+   * and answers with the nearest posts, most relevant first. Relevance has no createdAt to page by,
+   * so a search is a single page - the top `limit` results with has_more false. When the query
+   * cannot be embedded, it falls back to posts holding the term in their title or body, ignoring
+   * case, newest first and paged by start_after as the feed is. Either way it never
+   * widens what comes back: a post the caller may not read stays hidden however exactly it is named.
    */
   q?: string | undefined;
 }

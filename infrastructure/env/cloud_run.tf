@@ -85,6 +85,23 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "ASSISTANT_LOCATION"
         value = var.assistant_location
       }
+
+      # A search query is embedded with the same model and vector size the worker embeds posts
+      # with (worker.tf), since vectors from different models are not comparable.
+      env {
+        name  = "EMBEDDING_MODEL"
+        value = var.embedding_model
+      }
+
+      env {
+        name  = "EMBEDDING_LOCATION"
+        value = var.embedding_location
+      }
+
+      env {
+        name  = "EMBEDDING_DIMENSION"
+        value = tostring(var.embedding_dimension)
+      }
     }
   }
 

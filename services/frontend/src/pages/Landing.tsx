@@ -103,7 +103,9 @@ export function Landing() {
       <PageMeta path="/" />
       <header className="page-header">
         <span className="page-kicker text-muted">Feed</span>
-        <h1 className="title-feed">{tag ? `Posts tagged ${tag}` : 'Recent posts'}</h1>
+        <h1 className="title-feed">
+          {query ? `Best matches for “${query}”` : tag ? `Posts tagged ${tag}` : 'Recent posts'}
+        </h1>
       </header>
 
       <form

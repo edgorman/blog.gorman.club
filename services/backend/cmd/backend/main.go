@@ -11,16 +11,19 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	fs "cloud.google.com/go/firestore"
 
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/logging"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/cache"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/firestore"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/gemini"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/google"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/search"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/service"
 )
 
@@ -83,7 +86,28 @@ func run() error {
 	// knows it is there, and removing it is deleting this line. It caches only the anonymous
 	// listing - the highest-traffic, most repeated read in the service, and the one read whose
 	// answer is identical for every caller (see internal/repository/cache).
-	blogs := cache.NewBlogRepository(firestore.NewBlogRepository(client))
+	//
+	// Beneath the cache, a search (`q`) is answered by meaning when there is an embedding model to
+	// embed the query with - the same model and vector size the worker embeds posts with - and by
+	// the datastore's substring scan otherwise. The cache sits in front of both, so a repeated
+	// anonymous search costs no model call.
+	var blogs repository.BlogRepository = firestore.NewBlogRepository(client)
+	dimension, _ := strconv.Atoi(os.Getenv("EMBEDDING_DIMENSION"))
+	embedder := gemini.NewEmbedder(gemini.EmbedderConfig{
+		Config: gemini.Config{
+			Model:     os.Getenv("EMBEDDING_MODEL"),
+			ProjectID: os.Getenv("GCP_PROJECT_ID"),
+			Location:  os.Getenv("EMBEDDING_LOCATION"),
+		},
+		Dimension: dimension,
+	})
+	embeddings := firestore.NewEmbeddingRepository(client)
+	if embedder.Configured() {
+		blogs = search.NewBlogRepository(blogs, embeddings, embedder, slog.Default())
+	} else {
+		slog.Warn("EMBEDDING_MODEL, EMBEDDING_DIMENSION or GCP_PROJECT_ID is unset, so search is a substring scan")
+	}
+	blogs = cache.NewBlogRepository(blogs)
 
 	api := service.New(
 		service.Config{
@@ -97,7 +121,7 @@ func run() error {
 		firestore.NewChatRepository(client),
 		firestore.NewCommentRepository(client),
 		firestore.NewReactionRepository(client),
-		firestore.NewEmbeddingRepository(client),
+		embeddings,
 		google.NewTokenVerifier(googleClientID),
 		assistant,
 	)

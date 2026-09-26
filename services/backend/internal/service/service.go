@@ -48,6 +48,7 @@ type Service struct {
 	ipLimiter        *rateLimiter
 	callerLimiter    *rateLimiter
 	assistantLimiter *rateLimiter
+	searchLimiter    *rateLimiter
 }
 
 func New(
@@ -74,6 +75,7 @@ func New(
 		ipLimiter:        newRateLimiter(requestsPerIP),
 		callerLimiter:    newRateLimiter(requestsPerCaller),
 		assistantLimiter: newRateLimiter(assistantTurnsPerCaller),
+		searchLimiter:    newRateLimiter(searchesPerClient),
 	}
 }
 
@@ -108,7 +110,9 @@ func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.Debug)
 	mux.HandleFunc("/debug", s.Debug)
-	mux.Handle("GET /blogs", optional(s.ListBlogs))
+	// A search calls a paid embedding model (see internal/repository/search), so it is metered on
+	// its own budget as well, by account or by address for a caller who is not signed in.
+	mux.Handle("GET /blogs", optional(searchLimited(s.searchLimiter, s.ListBlogs)))
 	// A post is addressed by its slug alone, since slugs are unique across every author rather than
 	// only within one: "hello-world" names at most one post anywhere, and the second post under
 	// that title takes a suffixed slug instead (see entity.NewBlogSlug). The author is reported as

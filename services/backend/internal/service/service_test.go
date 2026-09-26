@@ -546,7 +546,7 @@ func newFullService(
 			// Quiet by default; a test asserting on what is logged points this at a buffer.
 			Logger: slog.New(slog.DiscardHandler),
 		},
-		blogs, users, chats, comments, reactions, fakeVerifier{uid: "caller"}, assistant,
+		blogs, users, chats, comments, reactions, newFakeEmbeddingRepository(), fakeVerifier{uid: "caller"}, assistant,
 	)
 }
 

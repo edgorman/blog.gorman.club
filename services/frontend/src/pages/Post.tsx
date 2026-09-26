@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Comments } from '../components/Comments'
+import { FeedList } from '../components/FeedList'
 import { PageMeta } from '../components/PageMeta'
 import { ReactionBar } from '../components/ReactionBar'
 import { TagList } from '../components/TagList'
@@ -28,6 +29,7 @@ export function Post() {
   // Loaded for the whole page at once - the post's reactions and every comment's come back
   // together - so this lives here rather than inside the two components that draw them.
   const reactions = useReactions(slug ?? '')
+  const [related, setRelated] = useState<Blog[]>([])
 
   useEffect(() => {
     if (!api || !slug) return
@@ -39,6 +41,22 @@ export function Post() {
         if (e instanceof ApiError && e.status === 404) return setState({ phase: 'not-found' })
         setState({ phase: 'error', message: e instanceof Error ? e.message : 'Failed to load post' })
       })
+  }, [api, slug])
+
+  // Loaded beside the post rather than after it, and never an error of the page's own: a post with
+  // no neighbours yet, or a failed lookup, simply shows no section.
+  useEffect(() => {
+    setRelated([])
+    if (!api || !slug) return
+    // A slower answer for the post the reader just left must not land under this one.
+    let current = true
+    api
+      .getRelatedBlogs(slug)
+      .then((posts) => current && setRelated(posts))
+      .catch(() => {})
+    return () => {
+      current = false
+    }
   }, [api, slug])
 
   useEffect(() => {
@@ -147,6 +165,13 @@ export function Post() {
       {/* The thread is as visible as the post: this only renders for a post the caller could read
           in the first place, and the backend applies the same rule to the comments themselves. */}
       <Comments slug={post.slug} ownerId={post.ownerId} reactions={reactions} />
+      {related.length > 0 && (
+        <section aria-labelledby="related-heading">
+          <hr className="hr" />
+          <h2 id="related-heading">Related posts</h2>
+          <FeedList posts={related} />
+        </section>
+      )}
     </div>
   )
 }

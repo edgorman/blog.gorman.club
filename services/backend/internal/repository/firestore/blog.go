@@ -286,6 +286,21 @@ func (r *BlogRepository) Update(ctx context.Context, blog entity.Blog) (entity.B
 	return blog, nil
 }
 
+// Slugs lists every post's slug, soft-deleted ones included, whoever may read them. It is for the
+// worker's backfill, which must see every post, and is deliberately not on
+// repository.BlogRepository: nothing that answers a request may list posts without read rules.
+func (r *BlogRepository) Slugs(ctx context.Context) ([]string, error) {
+	refs, err := r.blogs.DocumentRefs(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	slugs := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		slugs = append(slugs, ref.ID)
+	}
+	return slugs, nil
+}
+
 // Delete soft-deletes a post by stamping DeletedAt rather than removing its document: the
 // collection never loses a post, it is only marked gone. It is a single targeted field write
 // rather than a read-modify-write, so it costs no more than the hard delete it replaces.

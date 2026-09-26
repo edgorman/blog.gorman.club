@@ -48,6 +48,13 @@ message BlogPage {
   bool has_more = 2;
 }
 
+// RelatedPosts is what `GET /blogs/{slug}/related` answers with: the posts nearest in meaning to
+// one post, closest first, already narrowed to what the caller may read. It is not a BlogPage
+// because there is no next page to offer - the list is a fixed handful, not a feed.
+message RelatedPosts {
+  repeated Blog posts = 1;
+}
+
 // ListBlogsParams is what `GET /blogs` pages and scopes by, all optional so the bare call still
 // means "the feed".
 //

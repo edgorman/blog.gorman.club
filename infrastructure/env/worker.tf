@@ -91,6 +91,28 @@ resource "google_cloud_run_v2_service" "worker" {
         name  = "ENVIRONMENT"
         value = var.environment
       }
+
+      # Posts are embedded as the runtime service account (aiplatform.user above), billed to this
+      # project, with the model and vector size the index in firestore.tf is declared for.
+      env {
+        name  = "GCP_PROJECT_ID"
+        value = var.gcp_project_id
+      }
+
+      env {
+        name  = "EMBEDDING_MODEL"
+        value = var.embedding_model
+      }
+
+      env {
+        name  = "EMBEDDING_LOCATION"
+        value = var.embedding_location
+      }
+
+      env {
+        name  = "EMBEDDING_DIMENSION"
+        value = tostring(var.embedding_dimension)
+      }
     }
   }
 

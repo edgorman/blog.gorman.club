@@ -52,6 +52,14 @@ search index: there is no Firestore predicate for it, and at this scale the
 alternative is a service to run, pay for, and keep in step. It is bounded and
 paged, and is the first thing to revisit if the collection outgrows it.
 
+Related posts (`GET /blogs/{slug}/related`) rank by meaning rather than by
+time: the worker embeds every post's title and body into `embeddings/{slug}`,
+and the route runs a Firestore `FindNearest` (cosine) over that collection from
+the post's own vector. The index only ranks - every candidate is loaded and kept
+only if `CanBeReadBy` the caller, and the post's own read rule is asked first -
+so it inherits the same guarantee as `q` and `tag`. A post with no embedding yet
+has no related posts rather than an error.
+
 ## Caching
 
 `GET /blogs` is the highest-traffic and most repeated read in the service - the
@@ -90,4 +98,6 @@ The backend's container image is a `services/backend:image` moon task (`services
 - **Status codes decide retries.** Eventarc redelivers anything non-2xx. A handler returns an error only when trying again could succeed (answered 500); a handled or deliberately ignored event is answered 204. Handlers must be idempotent and a no-op when nothing they care about changed, since the worker's own writes can fire its triggers again.
 - **Not public.** `ingress = INGRESS_TRAFFIC_INTERNAL_ONLY` and no `allUsers` invoker: only the `worker-trigger` service account holds `run.invoker`. It runs as `worker-runtime` (`datastore.user`, `aiplatform.user`).
 - **Logs** are one JSON line per event on stdout, keyed `message`/`severity` so Cloud Logging parses them. The `worker-<env> is failing events` alert fires on a run of 500s.
+- **Embeddings.** `POST /events/blog` re-reads the post and writes `embeddings/{slug}` (vector, `contentHash`, model, `ownerId`) with the Agent Platform's `:predict` on `EMBEDDING_MODEL` (Terraform `embedding_model`, `embedding_location`, `embedding_dimension`; the last also sizes the vector index in `firestore.tf`). A write whose title and body hash, and model, match what is stored makes no model call; a missing or soft-deleted post has its embedding deleted. They live in their own collection so the worker never writes `blogs/`, which would fire its own trigger.
+- **Backfill.** On every start, before it listens, the worker syncs every post (bounded to two minutes, failures logged rather than fatal). A deploy always starts an instance, so posts written before embeddings existed are covered by the first deploy, with no hand-run step; posts already in step cost two reads each and no model call.
 - **Build and deploy.** The Dockerfile's `CMD` build arg picks the binary (`backend` by default). The `worker` moon project (`cmd/worker/moon.yml`) has only `worker:image`; formatting, vet and tests stay with `services/backend`'s `./...` tasks. On merge, `push-commit.yaml`'s `services-worker` publishes `backend/worker:<sha>` to both registries through `backend-deploy` and deploys `worker-stag`, and `promote-release.yaml` deploys that same image to `worker-prod`. It shares the `backend` repository's per-package keep-count retention.

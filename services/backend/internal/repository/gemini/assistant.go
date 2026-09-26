@@ -109,37 +109,43 @@ func (a *Assistant) Configured() bool {
 // httpClient resolves Application Default Credentials once and reuses the client after, so a token
 // is fetched from the metadata server and refreshed by the transport rather than per request.
 func (a *Assistant) httpClient(ctx context.Context) (*http.Client, error) {
-	a.once.Do(func() {
-		if a.cfg.HTTPClient != nil {
-			a.client = a.cfg.HTTPClient
-			return
-		}
-
-		source, err := google.DefaultTokenSource(ctx, cloudPlatformScope)
-		if err != nil {
-			a.err = fmt.Errorf("resolve application default credentials: %w", err)
-			return
-		}
-		client := oauth2.NewClient(context.WithoutCancel(ctx), source)
-		client.Timeout = requestTimeout
-		a.client = client
-	})
+	a.once.Do(func() { a.client, a.err = adcClient(ctx, a.cfg.HTTPClient) })
 	return a.client, a.err
+}
+
+// adcClient is override if set, and otherwise a client that authenticates as Application Default
+// Credentials with the cloud-platform scope.
+func adcClient(ctx context.Context, override *http.Client) (*http.Client, error) {
+	if override != nil {
+		return override, nil
+	}
+	source, err := google.DefaultTokenSource(ctx, cloudPlatformScope)
+	if err != nil {
+		return nil, fmt.Errorf("resolve application default credentials: %w", err)
+	}
+	client := oauth2.NewClient(context.WithoutCancel(ctx), source)
+	client.Timeout = requestTimeout
+	return client, nil
 }
 
 // endpoint is the generateContent URL for the configured model. The global endpoint is not
 // prefixed with its location, unlike every regional one.
 func (a *Assistant) endpoint() string {
-	base := a.cfg.BaseURL
+	return a.cfg.modelURL("generateContent")
+}
+
+// modelURL is the URL of method on the configured model.
+func (cfg Config) modelURL(method string) string {
+	base := cfg.BaseURL
 	if base == "" {
 		base = "https://aiplatform.googleapis.com"
-		if a.cfg.Location != "global" {
-			base = fmt.Sprintf("https://%s-aiplatform.googleapis.com", a.cfg.Location)
+		if cfg.Location != "global" {
+			base = fmt.Sprintf("https://%s-aiplatform.googleapis.com", cfg.Location)
 		}
 	}
 
-	return fmt.Sprintf("%s/%s/projects/%s/locations/%s/publishers/google/models/%s:generateContent",
-		strings.TrimSuffix(base, "/"), apiVersion, a.cfg.ProjectID, a.cfg.Location, a.cfg.Model)
+	return fmt.Sprintf("%s/%s/projects/%s/locations/%s/publishers/google/models/%s:%s",
+		strings.TrimSuffix(base, "/"), apiVersion, cfg.ProjectID, cfg.Location, cfg.Model, method)
 }
 
 // Reply runs one turn of the conversation, including however many rounds of tool calls the model

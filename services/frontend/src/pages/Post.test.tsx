@@ -23,6 +23,7 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
     listBlogs: jest.fn(),
     getBlog: jest.fn().mockResolvedValue(blog),
+    getRelatedBlogs: jest.fn().mockResolvedValue([]),
     createBlog: jest.fn(),
     updateBlog: jest.fn(),
     deleteBlog: jest.fn(),
@@ -91,6 +92,30 @@ describe('Post', () => {
 
     await screen.findByText('Hello world')
     expect(screen.queryByRole('list', { name: 'Tags' })).not.toBeInTheDocument()
+  })
+
+  it('lists related posts at the foot of the post, each linking to it', async () => {
+    const neighbour: Blog = { ...blog, slug: 'goodbye-world', title: 'Goodbye world', content: 'Farewell.' }
+    const api = fakeApi({ getRelatedBlogs: jest.fn().mockResolvedValue([neighbour]) })
+    renderWithApp(<Post />, { context: { api }, route: '/post/hello-world', path: '/post/:slug' })
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Related posts' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Goodbye world/ })).toHaveAttribute('href', '/post/goodbye-world')
+    expect(api.getRelatedBlogs).toHaveBeenCalledWith('hello-world')
+  })
+
+  // No embedding yet (or a failed lookup) is not the page's problem: the section is just absent.
+  it.each([
+    ['no related posts', jest.fn().mockResolvedValue([])],
+    ['a failed lookup', jest.fn().mockRejectedValue(new Error('boom'))],
+  ])('hides the related section for %s', async (_, getRelatedBlogs) => {
+    const api = fakeApi({ getRelatedBlogs })
+    renderWithApp(<Post />, { context: { api }, route: '/post/hello-world', path: '/post/:slug' })
+
+    await screen.findByText('Hello world')
+    await waitFor(() => expect(getRelatedBlogs).toHaveBeenCalled())
+    expect(screen.queryByRole('heading', { name: 'Related posts' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shows a not-found message for a missing post', async () => {

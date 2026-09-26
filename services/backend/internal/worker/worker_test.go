@@ -56,7 +56,7 @@ func TestServeDecodesEvent(t *testing.T) {
 
 func TestRoutes(t *testing.T) {
 	var logged strings.Builder
-	h := New(slog.New(slog.NewTextHandler(&logged, nil)))
+	h := New(slog.New(slog.NewTextHandler(&logged, nil)), nil)
 
 	for _, path := range []string{"/events/blog", "/events/comment"} {
 		if got := post(h, path, `{}`).Code; got != http.StatusNoContent {

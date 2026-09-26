@@ -27,10 +27,14 @@ type Event struct {
 // Handler handles one event. A returned error means the event should be delivered again.
 type Handler func(context.Context, Event) error
 
-// New returns the worker's routes, one per trigger.
-func New(log *slog.Logger) http.Handler {
+// New returns the worker's routes, one per trigger. A nil blog handler only logs, for a
+// deployment with no embedding model configured.
+func New(log *slog.Logger, blog Handler) http.Handler {
+	if blog == nil {
+		blog = logOnly(log)
+	}
 	mux := http.NewServeMux()
-	mux.Handle("POST /events/blog", serve(log, logOnly(log)))
+	mux.Handle("POST /events/blog", serve(log, blog))
 	mux.Handle("POST /events/comment", serve(log, logOnly(log)))
 	return mux
 }

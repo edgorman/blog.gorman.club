@@ -38,8 +38,10 @@ type Service struct {
 	chats     repository.ChatRepository
 	comments  repository.CommentRepository
 	reactions repository.ReactionRepository
-	verifier  repository.TokenVerifier
-	assistant repository.Assistant
+	// embeddings is only read: the worker writes it (see internal/worker).
+	embeddings repository.EmbeddingRepository
+	verifier   repository.TokenVerifier
+	assistant  repository.Assistant
 	// The rate limiters live on the Service rather than being built in Handler(), so a budget is
 	// spent by the service that served the request rather than by the handler tree - two calls to
 	// Handler() must not hand a caller two budgets. See ratelimit.go for what each one bounds.
@@ -55,6 +57,7 @@ func New(
 	chats repository.ChatRepository,
 	comments repository.CommentRepository,
 	reactions repository.ReactionRepository,
+	embeddings repository.EmbeddingRepository,
 	verifier repository.TokenVerifier,
 	assistant repository.Assistant,
 ) *Service {
@@ -65,6 +68,7 @@ func New(
 		chats:            chats,
 		comments:         comments,
 		reactions:        reactions,
+		embeddings:       embeddings,
 		verifier:         verifier,
 		assistant:        assistant,
 		ipLimiter:        newRateLimiter(requestsPerIP),
@@ -111,6 +115,8 @@ func (s *Service) Handler() http.Handler {
 	// a field on the response rather than as part of the address - the uid a post records its owner
 	// by is never public, and now nothing has to resolve one to reach a post.
 	mux.Handle("GET /blogs/{slug}", optional(s.GetBlog))
+	// Related posts are read like the post they hang under: anonymous callers get the public ones.
+	mux.Handle("GET /blogs/{slug}/related", optional(s.RelatedBlogs))
 	mux.Handle("POST /blogs", authed(s.CreateBlog))
 	mux.Handle("PUT /blogs/{slug}", authed(s.UpdateBlog))
 	mux.Handle("DELETE /blogs/{slug}", authed(s.DeleteBlog))

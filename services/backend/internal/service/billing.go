@@ -3,7 +3,6 @@ package service
 import (
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -82,7 +81,7 @@ func (s *Service) CreateCheckout(w http.ResponseWriter, r *http.Request) {
 		CancelURL:  s.profileURL(user),
 	})
 	if err != nil {
-		log.Printf("billing: checkout for %s: %v", user.ID, err)
+		s.logger().ErrorContext(r.Context(), "opening a checkout failed", "uid", user.ID, "error", err)
 		writeError(w, http.StatusBadGateway, "payment provider unavailable")
 		return
 	}
@@ -103,7 +102,7 @@ func (s *Service) CreatePortal(w http.ResponseWriter, r *http.Request) {
 
 	portal, err := s.payments.PortalURL(r.Context(), user.StripeCustomerID, s.profileURL(user))
 	if err != nil {
-		log.Printf("billing: portal for %s: %v", user.ID, err)
+		s.logger().ErrorContext(r.Context(), "opening the billing portal failed", "uid", user.ID, "error", err)
 		writeError(w, http.StatusBadGateway, "payment provider unavailable")
 		return
 	}
@@ -145,7 +144,7 @@ func (s *Service) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 
 	sub, err := s.payments.Subscription(r.Context(), event.SubscriptionID)
 	if err != nil {
-		log.Printf("billing: fetch subscription %s: %v", event.SubscriptionID, err)
+		s.logger().ErrorContext(r.Context(), "fetching a subscription failed", "subscription_id", event.SubscriptionID, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -172,7 +171,7 @@ func (s *Service) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		log.Printf("billing: write subscription for %s: %v", user.ID, err)
+		s.logger().ErrorContext(r.Context(), "writing a subscription failed", "uid", user.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

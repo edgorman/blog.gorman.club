@@ -92,8 +92,9 @@ resource "google_cloud_run_v2_service" "worker" {
         value = var.environment
       }
 
-      # Posts are embedded as the runtime service account (aiplatform.user above), billed to this
-      # project, with the model and vector size the index in firestore.tf is declared for.
+      # Posts are embedded and comments moderated as the runtime service account (aiplatform.user
+      # above), billed to this project; the embedding model and vector size match the index in
+      # firestore.tf.
       env {
         name  = "GCP_PROJECT_ID"
         value = var.gcp_project_id
@@ -112,6 +113,16 @@ resource "google_cloud_run_v2_service" "worker" {
       env {
         name  = "EMBEDDING_DIMENSION"
         value = tostring(var.embedding_dimension)
+      }
+
+      env {
+        name  = "MODERATION_MODEL"
+        value = var.moderation_model
+      }
+
+      env {
+        name  = "MODERATION_LOCATION"
+        value = var.moderation_location
       }
     }
   }

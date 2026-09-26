@@ -11,7 +11,8 @@ import (
 // hangs off.
 //
 // There is no Update, for the same reason entity.Comment has no setter a client can reach: a
-// comment is written and removed, never rewritten. Reads are unfiltered - callers decide access
+// comment is written and removed, never rewritten. Its moderation is the one thing written after
+// it, and never its body. Reads are unfiltered - callers decide access
 // through the post, via entity.Blog.CanBeReadBy, and deletion through entity.Comment.Permission.
 type CommentRepository interface {
 	// List returns the comments on blogSlug, oldest first, so a client renders them in the order
@@ -26,6 +27,10 @@ type CommentRepository interface {
 	// CreatedAt, and returns it with both filled in. It rejects a comment that fails
 	// entity.Comment.Validate without writing anything.
 	Create(ctx context.Context, comment entity.Comment) (entity.Comment, error)
+	// SetModeration records the screening result on a comment, replacing any earlier one. It
+	// returns ErrNotFound if the comment no longer exists, which for the worker means it was
+	// deleted before it was screened.
+	SetModeration(ctx context.Context, blogSlug, id string, moderation entity.Moderation) error
 	// Delete removes the comment. Unlike a post it is erased rather than marked gone: a post is a
 	// published thing whose absence would be a hole in the record, while a comment being taken
 	// down - by whoever wrote it or by the author moderating their own post - has to actually

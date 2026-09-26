@@ -44,6 +44,8 @@ type Comment struct {
 	AuthorID  string    `json:"authorId"`
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"createdAt"`
+	// Moderation is nil until the worker has screened the comment (see moderation.go).
+	Moderation *Moderation `json:"moderation,omitempty"`
 }
 
 // NewComment builds a validated comment on blogSlug, stamping the time it was written. The id is

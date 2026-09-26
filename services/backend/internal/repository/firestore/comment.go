@@ -30,14 +30,38 @@ type commentDocument struct {
 	AuthorID  string    `firestore:"authorId"`
 	Body      string    `firestore:"body"`
 	CreatedAt time.Time `firestore:"createdAt"`
+	// Moderation is absent until the worker has screened the comment.
+	Moderation *moderationDocument `firestore:"moderation,omitempty"`
+}
+
+type moderationDocument struct {
+	Status   string    `firestore:"status"`
+	Category string    `firestore:"category"`
+	Model    string    `firestore:"model"`
+	At       time.Time `firestore:"at"`
+}
+
+func moderationToDocument(m *entity.Moderation) *moderationDocument {
+	if m == nil {
+		return nil
+	}
+	return &moderationDocument{Status: string(m.Status), Category: m.Category, Model: m.Model, At: m.At}
+}
+
+func documentToModeration(d *moderationDocument) *entity.Moderation {
+	if d == nil {
+		return nil
+	}
+	return &entity.Moderation{Status: entity.ModerationStatus(d.Status), Category: d.Category, Model: d.Model, At: d.At}
 }
 
 func commentToDocument(comment entity.Comment) commentDocument {
 	return commentDocument{
-		BlogSlug:  comment.BlogSlug,
-		AuthorID:  comment.AuthorID,
-		Body:      comment.Body,
-		CreatedAt: comment.CreatedAt,
+		BlogSlug:   comment.BlogSlug,
+		AuthorID:   comment.AuthorID,
+		Body:       comment.Body,
+		CreatedAt:  comment.CreatedAt,
+		Moderation: moderationToDocument(comment.Moderation),
 	}
 }
 
@@ -50,11 +74,12 @@ func documentToComment(doc *fs.DocumentSnapshot) (entity.Comment, error) {
 		return entity.Comment{}, err
 	}
 	return entity.Comment{
-		ID:        doc.Ref.ID,
-		BlogSlug:  stored.BlogSlug,
-		AuthorID:  stored.AuthorID,
-		Body:      stored.Body,
-		CreatedAt: stored.CreatedAt,
+		ID:         doc.Ref.ID,
+		BlogSlug:   stored.BlogSlug,
+		AuthorID:   stored.AuthorID,
+		Body:       stored.Body,
+		CreatedAt:  stored.CreatedAt,
+		Moderation: documentToModeration(stored.Moderation),
 	}, nil
 }
 
@@ -164,6 +189,25 @@ func (r *CommentRepository) Create(ctx context.Context, comment entity.Comment) 
 		return entity.Comment{}, err
 	}
 	return comment, nil
+}
+
+// SetModeration replaces the comment's moderation field alone. Update, unlike Set, refuses a
+// document that does not exist, so a comment deleted before it was screened is not recreated.
+func (r *CommentRepository) SetModeration(ctx context.Context, blogSlug, id string, moderation entity.Moderation) error {
+	var candidate entity.Comment
+	if err := candidate.SetID(id); err != nil {
+		return repository.ErrNotFound
+	}
+	thread, err := r.commentsFor(blogSlug)
+	if err != nil {
+		return repository.ErrNotFound
+	}
+
+	_, err = thread.Doc(candidate.ID).Update(ctx, []fs.Update{{Path: "moderation", Value: moderationToDocument(&moderation)}})
+	if status.Code(err) == codes.NotFound {
+		return repository.ErrNotFound
+	}
+	return err
 }
 
 // Delete erases the comment. Firestore deletes are idempotent, so removing one that is already

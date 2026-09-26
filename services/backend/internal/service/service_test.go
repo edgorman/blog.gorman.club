@@ -326,6 +326,16 @@ func (r *fakeCommentRepository) Create(_ context.Context, comment entity.Comment
 	return comment, nil
 }
 
+func (r *fakeCommentRepository) SetModeration(_ context.Context, blogSlug, id string, moderation entity.Moderation) error {
+	for i, comment := range r.threads[blogSlug] {
+		if comment.ID == id {
+			r.threads[blogSlug][i].Moderation = &moderation
+			return nil
+		}
+	}
+	return repository.ErrNotFound
+}
+
 func (r *fakeCommentRepository) Delete(_ context.Context, blogSlug, id string) error {
 	r.threads[blogSlug] = slices.DeleteFunc(r.threads[blogSlug], func(comment entity.Comment) bool {
 		return comment.ID == id

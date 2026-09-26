@@ -42,7 +42,25 @@ export interface Comment {
    */
   authorUsername: string;
   body: string;
-  createdAt?: string | undefined;
+  createdAt?:
+    | string
+    | undefined;
+  /**
+   * The screening result, set only for the post's owner, who decides what to do with a flagged
+   * comment. Everybody else - the comment's author included - gets it absent, so an author whose
+   * comment was flagged sees nothing different. Absent for the owner too until it is screened.
+   */
+  moderation?: CommentModeration | undefined;
+}
+
+/**
+ * CommentModeration is what screening decided about a comment. status is "approved" or "flagged";
+ * category is why ("spam", "harassment", "hate", "sexual", "dangerous", or "none"). Plain strings
+ * rather than enums for the reasons blog.proto's Blog.visibility gives.
+ */
+export interface CommentModeration {
+  status: string;
+  category: string;
 }
 
 /**
@@ -66,7 +84,15 @@ export interface CommentThread {
 }
 
 function createBaseComment(): Comment {
-  return { id: "", blogSlug: "", authorId: "", authorUsername: "", body: "", createdAt: undefined };
+  return {
+    id: "",
+    blogSlug: "",
+    authorId: "",
+    authorUsername: "",
+    body: "",
+    createdAt: undefined,
+    moderation: undefined,
+  };
 }
 
 export const Comment: MessageFns<Comment> = {
@@ -88,6 +114,9 @@ export const Comment: MessageFns<Comment> = {
     }
     if (message.createdAt !== undefined) {
       Timestamp.encode(toTimestamp(message.createdAt), writer.uint32(50).fork()).join();
+    }
+    if (message.moderation !== undefined) {
+      CommentModeration.encode(message.moderation, writer.uint32(58).fork()).join();
     }
     return writer;
   },
@@ -153,6 +182,14 @@ export const Comment: MessageFns<Comment> = {
             message.createdAt = fromTimestamp(Timestamp.decode(reader, reader.uint32()));
             continue;
           }
+          case 7: {
+            if (tag !== 58) {
+              break;
+            }
+
+            message.moderation = CommentModeration.decode(reader, reader.uint32());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -189,6 +226,7 @@ export const Comment: MessageFns<Comment> = {
         : isSet(object.created_at)
         ? globalThis.String(object.created_at)
         : undefined,
+      moderation: isSet(object.moderation) ? CommentModeration.fromJSON(object.moderation) : undefined,
     };
   },
 
@@ -212,6 +250,9 @@ export const Comment: MessageFns<Comment> = {
     if (message.createdAt !== undefined) {
       obj.createdAt = message.createdAt;
     }
+    if (message.moderation !== undefined) {
+      obj.moderation = CommentModeration.toJSON(message.moderation);
+    }
     return obj;
   },
 
@@ -226,6 +267,94 @@ export const Comment: MessageFns<Comment> = {
     message.authorUsername = object.authorUsername ?? "";
     message.body = object.body ?? "";
     message.createdAt = object.createdAt ?? undefined;
+    message.moderation = (object.moderation !== undefined && object.moderation !== null)
+      ? CommentModeration.fromPartial(object.moderation)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseCommentModeration(): CommentModeration {
+  return { status: "", category: "" };
+}
+
+export const CommentModeration: MessageFns<CommentModeration> = {
+  encode(message: CommentModeration, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.status !== "") {
+      writer.uint32(10).string(message.status);
+    }
+    if (message.category !== "") {
+      writer.uint32(18).string(message.category);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CommentModeration {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCommentModeration();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.status = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.category = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CommentModeration {
+    return {
+      status: isSet(object.status) ? globalThis.String(object.status) : "",
+      category: isSet(object.category) ? globalThis.String(object.category) : "",
+    };
+  },
+
+  toJSON(message: CommentModeration): unknown {
+    const obj: any = {};
+    if (message.status !== "") {
+      obj.status = message.status;
+    }
+    if (message.category !== "") {
+      obj.category = message.category;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CommentModeration>, I>>(base?: I): CommentModeration {
+    return CommentModeration.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CommentModeration>, I>>(object: I): CommentModeration {
+    const message = createBaseCommentModeration();
+    message.status = object.status ?? "";
+    message.category = object.category ?? "";
     return message;
   },
 };

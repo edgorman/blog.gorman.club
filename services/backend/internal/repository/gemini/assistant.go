@@ -235,6 +235,24 @@ func (a *Assistant) generate(ctx context.Context, client *http.Client, system st
 		return generateResponse{}, err
 	}
 
+	decoded, err := a.call(ctx, client, body)
+	if err != nil {
+		return generateResponse{}, err
+	}
+	if len(decoded.Candidates) == 0 {
+		// No candidate at all means the request or the answer was refused outright, which is the
+		// one failure worth naming: it is the model declining rather than anything being broken.
+		if reason := decoded.blockReason(); reason != "" {
+			return generateResponse{}, fmt.Errorf("gemini returned no candidates (%s)", reason)
+		}
+		return generateResponse{}, fmt.Errorf("gemini returned no candidates")
+	}
+	return decoded, nil
+}
+
+// call posts one encoded generateContent request and decodes the answer, turning an error status
+// into an *repository.AssistantStatusError.
+func (a *Assistant) call(ctx context.Context, client *http.Client, body []byte) (generateResponse, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint(), bytes.NewReader(body))
 	if err != nil {
 		return generateResponse{}, err
@@ -269,14 +287,6 @@ func (a *Assistant) generate(ctx context.Context, client *http.Client, system st
 	var decoded generateResponse
 	if err := json.Unmarshal(payload, &decoded); err != nil {
 		return generateResponse{}, fmt.Errorf("decode gemini response: %w", err)
-	}
-	if len(decoded.Candidates) == 0 {
-		// No candidate at all means the request or the answer was refused outright, which is the
-		// one failure worth naming: it is the model declining rather than anything being broken.
-		if reason := decoded.blockReason(); reason != "" {
-			return generateResponse{}, fmt.Errorf("gemini returned no candidates (%s)", reason)
-		}
-		return generateResponse{}, fmt.Errorf("gemini returned no candidates")
 	}
 	return decoded, nil
 }

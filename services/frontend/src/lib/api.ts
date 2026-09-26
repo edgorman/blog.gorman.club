@@ -185,6 +185,9 @@ export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
     // own post; the backend decides, and answers a 403 for anybody else.
     deleteComment: (slug: string, id: string) =>
       request<void>(baseUrl, authHeaders, 'DELETE', `${commentsPath(slug)}/${encodeURIComponent(id)}`),
+    // Approving overrules the classifier on a flagged comment, which only the post's owner may.
+    approveComment: (slug: string, id: string) =>
+      request<Comment>(baseUrl, authHeaders, 'PUT', `${commentsPath(slug)}/${encodeURIComponent(id)}/moderation`),
 
     // Reactions are read for the whole page at once and written one at a time. A write is
     // addressed rather than toggled - PUT puts the reaction there, DELETE takes it back - so a

@@ -11,13 +11,21 @@ import (
 	"testing"
 )
 
-func post(h http.Handler, path, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
-	req.Header.Set("Ce-Type", "google.cloud.firestore.document.v1.written")
-	req.Header.Set("Ce-Document", "blogs/hello-world")
+func httpRequest(path, body string) *http.Request {
+	return httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+}
+
+func serveRequest(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec
+}
+
+func post(h http.Handler, path, body string) *httptest.ResponseRecorder {
+	req := httpRequest(path, body)
+	req.Header.Set("Ce-Type", "google.cloud.firestore.document.v1.written")
+	req.Header.Set("Ce-Document", "blogs/hello-world")
+	return serveRequest(h, req)
 }
 
 // Eventarc retries exactly the non-2xx answers, so this mapping is what decides redelivery.
@@ -56,7 +64,7 @@ func TestServeDecodesEvent(t *testing.T) {
 
 func TestRoutes(t *testing.T) {
 	var logged strings.Builder
-	h := New(slog.New(slog.NewTextHandler(&logged, nil)), nil)
+	h := New(slog.New(slog.NewTextHandler(&logged, nil)), nil, nil)
 
 	for _, path := range []string{"/events/blog", "/events/comment"} {
 		if got := post(h, path, `{}`).Code; got != http.StatusNoContent {

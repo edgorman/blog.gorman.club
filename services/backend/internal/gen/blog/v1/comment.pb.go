@@ -48,8 +48,12 @@ type Comment struct {
 	AuthorUsername string                 `protobuf:"bytes,4,opt,name=author_username,json=authorUsername,proto3" json:"author_username,omitempty"`
 	Body           string                 `protobuf:"bytes,5,opt,name=body,proto3" json:"body,omitempty"`
 	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// The screening result, set only for the post's owner, who decides what to do with a flagged
+	// comment. Everybody else - the comment's author included - gets it absent, so an author whose
+	// comment was flagged sees nothing different. Absent for the owner too until it is screened.
+	Moderation    *CommentModeration `protobuf:"bytes,7,opt,name=moderation,proto3" json:"moderation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Comment) Reset() {
@@ -124,6 +128,68 @@ func (x *Comment) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Comment) GetModeration() *CommentModeration {
+	if x != nil {
+		return x.Moderation
+	}
+	return nil
+}
+
+// CommentModeration is what screening decided about a comment. status is "approved" or "flagged";
+// category is why ("spam", "harassment", "hate", "sexual", "dangerous", or "none"). Plain strings
+// rather than enums for the reasons blog.proto's Blog.visibility gives.
+type CommentModeration struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	Category      string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommentModeration) Reset() {
+	*x = CommentModeration{}
+	mi := &file_blog_v1_comment_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommentModeration) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommentModeration) ProtoMessage() {}
+
+func (x *CommentModeration) ProtoReflect() protoreflect.Message {
+	mi := &file_blog_v1_comment_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommentModeration.ProtoReflect.Descriptor instead.
+func (*CommentModeration) Descriptor() ([]byte, []int) {
+	return file_blog_v1_comment_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *CommentModeration) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *CommentModeration) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
 // CreateCommentRequest is the body of `POST /blogs/{slug}/comments` - the client-settable half of a
 // comment. The post it is on comes from the URL, its author from the credential, and its id and
 // timestamp from the server, so none of them are here.
@@ -136,7 +202,7 @@ type CreateCommentRequest struct {
 
 func (x *CreateCommentRequest) Reset() {
 	*x = CreateCommentRequest{}
-	mi := &file_blog_v1_comment_proto_msgTypes[1]
+	mi := &file_blog_v1_comment_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -148,7 +214,7 @@ func (x *CreateCommentRequest) String() string {
 func (*CreateCommentRequest) ProtoMessage() {}
 
 func (x *CreateCommentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_blog_v1_comment_proto_msgTypes[1]
+	mi := &file_blog_v1_comment_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -161,7 +227,7 @@ func (x *CreateCommentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateCommentRequest.ProtoReflect.Descriptor instead.
 func (*CreateCommentRequest) Descriptor() ([]byte, []int) {
-	return file_blog_v1_comment_proto_rawDescGZIP(), []int{1}
+	return file_blog_v1_comment_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *CreateCommentRequest) GetBody() string {
@@ -185,7 +251,7 @@ type CommentThread struct {
 
 func (x *CommentThread) Reset() {
 	*x = CommentThread{}
-	mi := &file_blog_v1_comment_proto_msgTypes[2]
+	mi := &file_blog_v1_comment_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -197,7 +263,7 @@ func (x *CommentThread) String() string {
 func (*CommentThread) ProtoMessage() {}
 
 func (x *CommentThread) ProtoReflect() protoreflect.Message {
-	mi := &file_blog_v1_comment_proto_msgTypes[2]
+	mi := &file_blog_v1_comment_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -210,7 +276,7 @@ func (x *CommentThread) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommentThread.ProtoReflect.Descriptor instead.
 func (*CommentThread) Descriptor() ([]byte, []int) {
-	return file_blog_v1_comment_proto_rawDescGZIP(), []int{2}
+	return file_blog_v1_comment_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CommentThread) GetComments() []*Comment {
@@ -224,7 +290,7 @@ var File_blog_v1_comment_proto protoreflect.FileDescriptor
 
 const file_blog_v1_comment_proto_rawDesc = "" +
 	"\n" +
-	"\x15blog/v1/comment.proto\x12\ablog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xcb\x01\n" +
+	"\x15blog/v1/comment.proto\x12\ablog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x87\x02\n" +
 	"\aComment\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tblog_slug\x18\x02 \x01(\tR\bblogSlug\x12\x1b\n" +
@@ -232,7 +298,13 @@ const file_blog_v1_comment_proto_rawDesc = "" +
 	"\x0fauthor_username\x18\x04 \x01(\tR\x0eauthorUsername\x12\x12\n" +
 	"\x04body\x18\x05 \x01(\tR\x04body\x129\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"*\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12:\n" +
+	"\n" +
+	"moderation\x18\a \x01(\v2\x1a.blog.v1.CommentModerationR\n" +
+	"moderation\"G\n" +
+	"\x11CommentModeration\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12\x1a\n" +
+	"\bcategory\x18\x02 \x01(\tR\bcategory\"*\n" +
 	"\x14CreateCommentRequest\x12\x12\n" +
 	"\x04body\x18\x01 \x01(\tR\x04body\"=\n" +
 	"\rCommentThread\x12,\n" +
@@ -250,21 +322,23 @@ func file_blog_v1_comment_proto_rawDescGZIP() []byte {
 	return file_blog_v1_comment_proto_rawDescData
 }
 
-var file_blog_v1_comment_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_blog_v1_comment_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_blog_v1_comment_proto_goTypes = []any{
 	(*Comment)(nil),               // 0: blog.v1.Comment
-	(*CreateCommentRequest)(nil),  // 1: blog.v1.CreateCommentRequest
-	(*CommentThread)(nil),         // 2: blog.v1.CommentThread
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(*CommentModeration)(nil),     // 1: blog.v1.CommentModeration
+	(*CreateCommentRequest)(nil),  // 2: blog.v1.CreateCommentRequest
+	(*CommentThread)(nil),         // 3: blog.v1.CommentThread
+	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
 }
 var file_blog_v1_comment_proto_depIdxs = []int32{
-	3, // 0: blog.v1.Comment.created_at:type_name -> google.protobuf.Timestamp
-	0, // 1: blog.v1.CommentThread.comments:type_name -> blog.v1.Comment
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	4, // 0: blog.v1.Comment.created_at:type_name -> google.protobuf.Timestamp
+	1, // 1: blog.v1.Comment.moderation:type_name -> blog.v1.CommentModeration
+	0, // 2: blog.v1.CommentThread.comments:type_name -> blog.v1.Comment
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_blog_v1_comment_proto_init() }
@@ -278,7 +352,7 @@ func file_blog_v1_comment_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_blog_v1_comment_proto_rawDesc), len(file_blog_v1_comment_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

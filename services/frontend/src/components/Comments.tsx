@@ -89,6 +89,16 @@ export function Comments({ slug, ownerId, reactions }: Props) {
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to delete the comment')))
   }
 
+  const approve = (comment: Comment) => {
+    if (!api) return
+
+    setError(null)
+    api
+      .approveComment(slug, comment.id)
+      .then((approved) => setComments((thread) => thread.map((each) => (each.id === approved.id ? approved : each))))
+      .catch((e: unknown) => setError(errorMessage(e, 'Failed to approve the comment')))
+  }
+
   return (
     <section className="comments" aria-label="Comments">
       <h2 className="comments-title">
@@ -106,6 +116,8 @@ export function Comments({ slug, ownerId, reactions }: Props) {
           const name = comment.authorUsername || 'an unnamed reader'
           const href = userPath(comment.authorUsername)
           const deletable = !!user && (user.id === comment.authorId || user.id === ownerId)
+          // Only the post's owner is sent a comment's moderation; its author sees it as normal.
+          const flagged = comment.moderation?.status === 'flagged'
 
           return (
             <li key={comment.id} className="comment">
@@ -121,6 +133,14 @@ export function Comments({ slug, ownerId, reactions }: Props) {
                     protojson may omit a message field even though the server always sets one. */}
                 {comment.createdAt && (
                   <span className="text-muted comment-date">{formatDate(comment.createdAt)}</span>
+                )}
+                {flagged && (
+                  <>
+                    <span className="comment-flagged">Flagged: {comment.moderation?.category}</span>
+                    <button type="button" className="btn btn-ghost comment-approve" onClick={() => approve(comment)}>
+                      Approve
+                    </button>
+                  </>
                 )}
                 {deletable && (
                   <button

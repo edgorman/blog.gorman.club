@@ -150,6 +150,8 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("GET /blogs/{slug}/comments", optional(s.ListComments))
 	mux.Handle("POST /blogs/{slug}/comments", authed(s.CreateComment))
 	mux.Handle("DELETE /blogs/{slug}/comments/{id}", authed(s.DeleteComment))
+	// The post's owner overrules the classifier here; see ApproveComment.
+	mux.Handle("PUT /blogs/{slug}/comments/{id}/moderation", authed(s.ApproveComment))
 	// Reactions to a post and to its comments are read together, because they are stored together
 	// and a reader opening a post wants the whole page's worth: one route answers what would
 	// otherwise be a field on the post plus a field on every comment.

@@ -33,6 +33,8 @@ const (
 	ResourceBlog     Resource = "blog"
 	ResourceComment  Resource = "comment"
 	ResourceReaction Resource = "reaction"
+	// ResourceModeration is the screening result on a comment, which the post's owner can overrule.
+	ResourceModeration Resource = "moderation"
 	// ResourceAssistant is the AI writing assistant. It is a feature rather than something stored,
 	// which is exactly why it is in the same table as the rest: a gated feature that is not a
 	// resource is how the assistant ended up with a bespoke email allowlist bolted onto the config.
@@ -111,6 +113,13 @@ var policy = map[Resource]map[Action]Access{
 		ActionRead:   AccessPublic,
 		ActionCreate: AccessPrivate,
 		ActionDelete: AccessWhitelist,
+	},
+	// A comment's moderation is the post owner's to see and to overrule, and nobody else's - not
+	// even the comment's author, who sees a flagged comment of theirs as if nothing happened.
+	// Approving a flagged comment is update; deleting one is the comment's own delete above.
+	ResourceModeration: {
+		ActionRead:   AccessPrivate,
+		ActionUpdate: AccessPrivate,
 	},
 	// A reaction is public to read as a count, and private to write: the row a reader writes is
 	// keyed by that reader, so there is no other reader's reaction to reach.

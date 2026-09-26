@@ -180,6 +180,9 @@ func TestCommentMappingRoundTrip(t *testing.T) {
 		AuthorID:  "reader",
 		Body:      "nicely put",
 		CreatedAt: created,
+		Moderation: &entity.Moderation{
+			Status: entity.ModerationFlagged, Category: "spam", Model: "gemini", At: created,
+		},
 	}
 
 	stored := commentToDocument(comment)
@@ -189,7 +192,10 @@ func TestCommentMappingRoundTrip(t *testing.T) {
 
 	// documentToComment reads the id back off the key, which is the one thing a snapshot supplies
 	// that the body does not - so it is filled in here as Firestore would.
-	got := entity.Comment{ID: comment.ID, BlogSlug: stored.BlogSlug, AuthorID: stored.AuthorID, Body: stored.Body, CreatedAt: stored.CreatedAt}
+	got := entity.Comment{
+		ID: comment.ID, BlogSlug: stored.BlogSlug, AuthorID: stored.AuthorID, Body: stored.Body,
+		CreatedAt: stored.CreatedAt, Moderation: documentToModeration(stored.Moderation),
+	}
 	if !reflect.DeepEqual(got, comment) {
 		t.Errorf("round trip = %+v, want %+v", got, comment)
 	}

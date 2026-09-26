@@ -107,6 +107,7 @@ describe('createApi', () => {
     await api.listComments('hello-world')
     await api.createComment('hello-world', 'Nicely put.')
     await api.deleteComment('hello-world', 'cmt1')
+    await api.approveComment('hello-world', 'cmt1')
 
     const calls = fetchMock.mock.calls as [string, RequestInit][]
     expect(calls[0][0]).toBe('https://api.example.com/blogs/hello-world/comments')
@@ -115,6 +116,8 @@ describe('createApi', () => {
     expect(calls[1][1].body).toBe(JSON.stringify({ body: 'Nicely put.' }))
     expect(calls[2][0]).toBe('https://api.example.com/blogs/hello-world/comments/cmt1')
     expect(calls[2][1].method).toBe('DELETE')
+    expect(calls[3][0]).toBe('https://api.example.com/blogs/hello-world/comments/cmt1/moderation')
+    expect(calls[3][1].method).toBe('PUT')
   })
 
   // A reaction is addressed by what it is on and the emoji itself, and the emoji is escaped like

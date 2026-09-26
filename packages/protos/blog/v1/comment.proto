@@ -31,6 +31,18 @@ message Comment {
   string author_username = 4;
   string body = 5;
   google.protobuf.Timestamp created_at = 6;
+  // The screening result, set only for the post's owner, who decides what to do with a flagged
+  // comment. Everybody else - the comment's author included - gets it absent, so an author whose
+  // comment was flagged sees nothing different. Absent for the owner too until it is screened.
+  CommentModeration moderation = 7;
+}
+
+// CommentModeration is what screening decided about a comment. status is "approved" or "flagged";
+// category is why ("spam", "harassment", "hate", "sexual", "dangerous", or "none"). Plain strings
+// rather than enums for the reasons blog.proto's Blog.visibility gives.
+message CommentModeration {
+  string status = 1;
+  string category = 2;
 }
 
 // CreateCommentRequest is the body of `POST /blogs/{slug}/comments` - the client-settable half of a

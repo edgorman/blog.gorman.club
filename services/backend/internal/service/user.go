@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -66,6 +67,7 @@ func (s *Service) currentUser(user entity.User) *blogv1.CurrentUser {
 		CreatedAt:        timestamppb.New(user.CreatedAt),
 		UpdatedAt:        timestamppb.New(user.UpdatedAt),
 		AssistantEnabled: s.cfg.AssistantEntitlement.Permission(entity.ActionUpdate, user).Allows(user.ID),
+		BillingEnabled:   s.billingEnabled(),
 	}
 	// Left nil for an account that has never subscribed, so the field stays absent from the body
 	// rather than arriving as null - which is what it does today and what EmitDefaultValues
@@ -197,11 +199,18 @@ func (s *Service) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 	// Firestore deletes are idempotent, so a missing profile is looked up first to give the same
 	// 404 a client gets from GET.
-	if _, err := s.users.Get(r.Context(), id); errors.Is(err, repository.ErrNotFound) {
+	user, err := s.users.Get(r.Context(), id)
+	if errors.Is(err, repository.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	// Stripe would go on billing an account that no longer exists, so a live subscription has to
+	// end (cancelled in the portal, then run out) before the account can go.
+	if user.Subscribed(time.Now()) {
+		writeError(w, http.StatusConflict, "an active subscription must end before the account can be deleted")
 		return
 	}
 

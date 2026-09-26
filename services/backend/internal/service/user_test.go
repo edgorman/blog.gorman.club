@@ -776,8 +776,87 @@ func TestGetCurrentUser_WireBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.GetCurrentUser(rec, selfHTTPRequest(http.MethodGet, "caller", nil))
 
-	want := `{"id":"caller","username":"calm-smiling-kestrel","bio":"","createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z","assistantEnabled":false}`
+	want := `{"id":"caller","username":"calm-smiling-kestrel","bio":"","createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z","assistantEnabled":false,"billingEnabled":false}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// A profile write can never grant access: whatever the body claims, the stored subscription and
+// customer are what remain, including for an account that never subscribed.
+func TestPutUser_BodyCannotChangeTheSubscription(t *testing.T) {
+	until := time.Now().UTC().Add(time.Hour)
+	for _, seeded := range []*time.Time{nil, &until} {
+		users := newFakeUserRepository()
+		users.seed(entity.User{ID: "caller", Username: "calm-smiling-kestrel", SubscribedUntil: seeded})
+		s := newTestService(nil, users)
+
+		body := []byte(`{"bio":"hello","subscribedUntil":"2099-01-01T00:00:00Z","subscribed_until":"2099-01-01T00:00:00Z","stripeCustomerId":"cus_forged","assistantEnabled":true}`)
+		rec := httptest.NewRecorder()
+		s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
+
+		if rec.Result().StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+		}
+		stored := users.users["caller"]
+		if (seeded == nil) != (stored.SubscribedUntil == nil) || (seeded != nil && !stored.SubscribedUntil.Equal(*seeded)) {
+			t.Errorf("stored subscribedUntil = %v, want %v", stored.SubscribedUntil, seeded)
+		}
+		if stored.StripeCustomerID != "" {
+			t.Errorf("stored customer = %q, want none", stored.StripeCustomerID)
+		}
+	}
+}
+
+func TestDeleteUser_RefusedWhileSubscribed(t *testing.T) {
+	until := time.Now().UTC().Add(time.Hour)
+	users := newFakeUserRepository()
+	users.seed(entity.User{ID: "caller", Username: "calm-smiling-kestrel", SubscribedUntil: &until})
+	s := newTestService(nil, users)
+
+	rec := httptest.NewRecorder()
+	s.DeleteUser(rec, selfHTTPRequest(http.MethodDelete, "caller", nil))
+
+	if rec.Result().StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusConflict)
+	}
+	decodeAPIError(t, rec)
+	if _, ok := users.users["caller"]; !ok {
+		t.Error("profile was deleted")
+	}
+}
+
+// A lapsed subscription no longer holds the account back.
+func TestDeleteUser_AllowedOnceTheSubscriptionHasRunOut(t *testing.T) {
+	until := time.Now().UTC().Add(-time.Hour)
+	users := newFakeUserRepository()
+	users.seed(entity.User{ID: "caller", Username: "calm-smiling-kestrel", SubscribedUntil: &until})
+	s := newTestService(nil, users)
+
+	rec := httptest.NewRecorder()
+	s.DeleteUser(rec, selfHTTPRequest(http.MethodDelete, "caller", nil))
+
+	if rec.Result().StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
+	}
+}
+
+func TestGetCurrentUser_ReportsBilling(t *testing.T) {
+	for _, configured := range []bool{false, true} {
+		users := subscriber(nil)
+		s := newBillingService(users, &fakePayments{configured: configured})
+
+		rec := httptest.NewRecorder()
+		s.GetCurrentUser(rec, selfHTTPRequest(http.MethodGet, "caller", nil))
+
+		var body struct {
+			BillingEnabled bool `json:"billingEnabled"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if body.BillingEnabled != configured {
+			t.Errorf("configured=%v: billingEnabled = %v", configured, body.BillingEnabled)
+		}
 	}
 }

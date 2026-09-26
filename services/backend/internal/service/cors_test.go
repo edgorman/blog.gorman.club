@@ -58,7 +58,7 @@ func TestWithCORS_Preflight(t *testing.T) {
 func TestHandler_PreflightAgainstMethodSpecificMux(t *testing.T) {
 	s := New(Config{AllowedOrigin: testOrigin}, newFakeBlogRepository(), newFakeUserRepository(),
 		newFakeChatRepository(), newFakeCommentRepository(), newFakeReactionRepository(), newFakeEmbeddingRepository(),
-		fakeVerifier{uid: "caller"}, &fakeAssistant{})
+		fakeVerifier{uid: "caller"}, &fakeAssistant{}, &fakePayments{})
 
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodOptions, "/blogs", nil))

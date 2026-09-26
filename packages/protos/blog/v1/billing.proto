@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package blog.v1;
+
+option go_package = "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1;blogv1";
+
+// BillingSessionResponse is what `POST /billing/checkout` and `POST /billing/portal` answer with:
+// the Stripe-hosted page to send the browser to. Neither route reads a body - the account is the
+// credential and there is one tier to buy - so there is no request message.
+//
+// The webhook Stripe calls (`POST /billing/webhook`) is not modeled here: its body is Stripe's
+// contract, not this service's, for the same reason internal/repository/gemini's wire types stay
+// out of this package.
+message BillingSessionResponse {
+  string url = 1;
+}

@@ -43,14 +43,18 @@ type User struct {
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	// SubscribedUntil is when this account's paid access runs out, and is nil for an account that
-	// has never subscribed. It is the seam the payment provider writes to: nothing in this service
-	// sets it yet, and everything that asks whether an account has paid asks it (see Subscribed and
-	// AssistantEntitlement), so wiring a checkout up means writing this field and nothing else.
+	// has never subscribed. The billing webhook is the only thing that writes it (see
+	// repository.UserRepository.SetSubscription), and everything that asks whether an account has
+	// paid asks it (see Subscribed and AssistantEntitlement).
 	//
 	// It carries no json tag because a profile is public and who is paying is nobody else's
 	// business: it is reported only to the account itself, by the service's /users/me response,
 	// and never by a lookup of somebody else's name.
 	SubscribedUntil *time.Time `json:"-"`
+	// StripeCustomerID is the Stripe customer paying for SubscribedUntil, empty until a first
+	// checkout completes. It is kept so a later checkout reuses the customer and the portal can be
+	// opened for it; nothing else about the billing relationship is stored.
+	StripeCustomerID string `json:"-"`
 }
 
 // Subscribed reports whether the account's paid access is live at now. An account that never

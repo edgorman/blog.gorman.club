@@ -20,9 +20,10 @@ type userDocument struct {
 	// SubscribedUntil is omitted rather than stored as the zero time for an account that never
 	// subscribed, so "has never paid" is an absent field rather than a date in 1 AD - which a
 	// query for live subscriptions would otherwise have to know to exclude.
-	SubscribedUntil *time.Time `firestore:"subscribedUntil,omitempty"`
-	CreatedAt       time.Time  `firestore:"createdAt"`
-	UpdatedAt       time.Time  `firestore:"updatedAt"`
+	SubscribedUntil  *time.Time `firestore:"subscribedUntil,omitempty"`
+	StripeCustomerID string     `firestore:"stripeCustomerId,omitempty"`
+	CreatedAt        time.Time  `firestore:"createdAt"`
+	UpdatedAt        time.Time  `firestore:"updatedAt"`
 }
 
 // usernameDocument is a claim on one username, keyed by entity.User.UsernameKey. Uniqueness is a
@@ -34,23 +35,25 @@ type usernameDocument struct {
 
 func userToDocument(user entity.User) userDocument {
 	return userDocument{
-		Username:        user.Username,
-		Bio:             user.Bio,
-		SubscribedUntil: user.SubscribedUntil,
-		CreatedAt:       user.CreatedAt,
-		UpdatedAt:       user.UpdatedAt,
+		Username:         user.Username,
+		Bio:              user.Bio,
+		SubscribedUntil:  user.SubscribedUntil,
+		StripeCustomerID: user.StripeCustomerID,
+		CreatedAt:        user.CreatedAt,
+		UpdatedAt:        user.UpdatedAt,
 	}
 }
 
 // toEntity rebuilds a profile from its stored fields; id is the document key.
 func (d userDocument) toEntity(id string) entity.User {
 	return entity.User{
-		ID:              id,
-		Username:        d.Username,
-		Bio:             d.Bio,
-		SubscribedUntil: d.SubscribedUntil,
-		CreatedAt:       d.CreatedAt,
-		UpdatedAt:       d.UpdatedAt,
+		ID:               id,
+		Username:         d.Username,
+		Bio:              d.Bio,
+		SubscribedUntil:  d.SubscribedUntil,
+		StripeCustomerID: d.StripeCustomerID,
+		CreatedAt:        d.CreatedAt,
+		UpdatedAt:        d.UpdatedAt,
 	}
 }
 
@@ -173,6 +176,11 @@ func (r *UserRepository) Put(ctx context.Context, user entity.User) (entity.User
 			user.CreatedAt = now
 		}
 		user.UpdatedAt = now
+		// The billing fields come from the stored profile too, read in this same transaction, so a
+		// profile write racing the webhook cannot put back a subscription it has just changed - and
+		// no caller can grant one by assembling a profile that carries it.
+		user.SubscribedUntil = current.SubscribedUntil
+		user.StripeCustomerID = current.StripeCustomerID
 
 		if claiming {
 			if err := tx.Set(r.usernames.Doc(key), usernameDocument{UserID: user.ID}); err != nil {
@@ -190,6 +198,24 @@ func (r *UserRepository) Put(ctx context.Context, user entity.User) (entity.User
 		return entity.User{}, err
 	}
 	return user, nil
+}
+
+// SetSubscription updates only the billing fields, so it cannot disturb a profile edit made at the
+// same time. Update rather than Set is what makes it fail on a missing profile instead of creating
+// a nameless one.
+func (r *UserRepository) SetSubscription(ctx context.Context, id, customerID string, until *time.Time) error {
+	var subscribedUntil any = fs.Delete
+	if until != nil {
+		subscribedUntil = *until
+	}
+	_, err := r.users.Doc(id).Update(ctx, []fs.Update{
+		{Path: "subscribedUntil", Value: subscribedUntil},
+		{Path: "stripeCustomerId", Value: customerID},
+	})
+	if status.Code(err) == codes.NotFound {
+		return repository.ErrNotFound
+	}
+	return err
 }
 
 // Delete removes the profile and the reservation together. Dropping only the profile would leave

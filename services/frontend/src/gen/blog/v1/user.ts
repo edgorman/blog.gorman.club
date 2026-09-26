@@ -54,11 +54,18 @@ export interface CurrentUser {
    */
   assistantEnabled: boolean;
   /**
-   * When this account's paid access runs out, absent for an account that has never subscribed -
-   * which is every account until a checkout writes one. A message field, so proto3 gives it
-   * presence without the `optional` keyword.
+   * When this account's paid access runs out, absent for an account that has never subscribed.
+   * Only the billing webhook writes it. A message field, so proto3 gives it presence without the
+   * `optional` keyword.
    */
-  subscribedUntil?: string | undefined;
+  subscribedUntil?:
+    | string
+    | undefined;
+  /**
+   * Whether this deployment sells a subscription at all, so a client offers Subscribe or Manage
+   * subscription only where `POST /billing/checkout` and `POST /billing/portal` exist.
+   */
+  billingEnabled: boolean;
 }
 
 /**
@@ -225,6 +232,7 @@ function createBaseCurrentUser(): CurrentUser {
     updatedAt: undefined,
     assistantEnabled: false,
     subscribedUntil: undefined,
+    billingEnabled: false,
   };
 }
 
@@ -250,6 +258,9 @@ export const CurrentUser: MessageFns<CurrentUser> = {
     }
     if (message.subscribedUntil !== undefined) {
       Timestamp.encode(toTimestamp(message.subscribedUntil), writer.uint32(58).fork()).join();
+    }
+    if (message.billingEnabled !== false) {
+      writer.uint32(64).bool(message.billingEnabled);
     }
     return writer;
   },
@@ -323,6 +334,14 @@ export const CurrentUser: MessageFns<CurrentUser> = {
             message.subscribedUntil = fromTimestamp(Timestamp.decode(reader, reader.uint32()));
             continue;
           }
+          case 8: {
+            if (tag !== 64) {
+              break;
+            }
+
+            message.billingEnabled = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -360,6 +379,11 @@ export const CurrentUser: MessageFns<CurrentUser> = {
         : isSet(object.subscribed_until)
         ? globalThis.String(object.subscribed_until)
         : undefined,
+      billingEnabled: isSet(object.billingEnabled)
+        ? globalThis.Boolean(object.billingEnabled)
+        : isSet(object.billing_enabled)
+        ? globalThis.Boolean(object.billing_enabled)
+        : false,
     };
   },
 
@@ -386,6 +410,9 @@ export const CurrentUser: MessageFns<CurrentUser> = {
     if (message.subscribedUntil !== undefined) {
       obj.subscribedUntil = message.subscribedUntil;
     }
+    if (message.billingEnabled !== false) {
+      obj.billingEnabled = message.billingEnabled;
+    }
     return obj;
   },
 
@@ -401,6 +428,7 @@ export const CurrentUser: MessageFns<CurrentUser> = {
     message.updatedAt = object.updatedAt ?? undefined;
     message.assistantEnabled = object.assistantEnabled ?? false;
     message.subscribedUntil = object.subscribedUntil ?? undefined;
+    message.billingEnabled = object.billingEnabled ?? false;
     return message;
   },
 };

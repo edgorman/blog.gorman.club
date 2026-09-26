@@ -30,6 +30,8 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
     getUser: jest.fn(),
     putUser: jest.fn(),
     deleteUser: jest.fn(),
+    createCheckout: jest.fn(),
+    createPortal: jest.fn(),
     listComments: jest.fn().mockResolvedValue([]),
     getReactions: jest.fn().mockResolvedValue({ post: [], comments: {} }),
     addReaction: jest.fn(),

@@ -24,6 +24,7 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/gemini"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/google"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/search"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/stripe"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/service"
 )
 
@@ -124,6 +125,13 @@ func run() error {
 		embeddings,
 		google.NewTokenVerifier(googleClientID),
 		assistant,
+		// Billing is off unless all three are set: Terraform mounts the two secrets and the price
+		// only once stripe_price_id is filled in (see infrastructure/env/cloud_run.tf).
+		stripe.NewPayments(stripe.Config{
+			SecretKey:     os.Getenv("STRIPE_SECRET_KEY"),
+			WebhookSecret: os.Getenv("STRIPE_WEBHOOK_SECRET"),
+			PriceID:       os.Getenv("STRIPE_PRICE_ID"),
+		}),
 	)
 
 	// The server is built explicitly rather than handed to http.ListenAndServe, which supplies a

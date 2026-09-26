@@ -27,6 +27,7 @@ const profile: CurrentUser = {
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   assistantEnabled: true,
+  billingEnabled: false,
 }
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
@@ -39,6 +40,8 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
     getUser: jest.fn(),
     putUser: jest.fn(),
     deleteUser: jest.fn(),
+    createCheckout: jest.fn(),
+    createPortal: jest.fn(),
     getChat: jest.fn().mockResolvedValue({ messages: [] }),
     sendChatMessage: jest.fn(),
     clearChat: jest.fn(),

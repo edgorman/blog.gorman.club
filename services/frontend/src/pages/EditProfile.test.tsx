@@ -26,6 +26,8 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
     getCurrentUser: jest.fn().mockResolvedValue(profile),
     putUser: jest.fn().mockResolvedValue(profile),
     deleteUser: jest.fn(),
+    createCheckout: jest.fn(),
+    createPortal: jest.fn(),
     ...overrides,
   } as unknown as Api
 }

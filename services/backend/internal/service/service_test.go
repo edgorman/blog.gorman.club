@@ -144,6 +144,10 @@ type fakeUserRepository struct {
 	// getErr fails a lookup by id the in-memory state would otherwise answer, for a test asserting
 	// that a handler which needs the caller's own profile does not carry on without it.
 	getErr error
+	// setSubscriptionErr fails the webhook's write, and subscriptionWrites counts the ones that
+	// landed, for a test asserting an ignored event wrote nothing.
+	setSubscriptionErr error
+	subscriptionWrites int
 }
 
 func newFakeUserRepository() *fakeUserRepository {
@@ -200,8 +204,11 @@ func (r *fakeUserRepository) Put(_ context.Context, user entity.User) (entity.Us
 	}
 
 	now := time.Now().UTC()
+	// Like the real repository, the billing fields are kept as stored whatever the write carries.
+	user.SubscribedUntil, user.StripeCustomerID = nil, ""
 	if previous, ok := r.users[user.ID]; ok {
 		user.CreatedAt = previous.CreatedAt
+		user.SubscribedUntil, user.StripeCustomerID = previous.SubscribedUntil, previous.StripeCustomerID
 		delete(r.usernames, previous.UsernameKey())
 	}
 	if user.CreatedAt.IsZero() {
@@ -212,6 +219,20 @@ func (r *fakeUserRepository) Put(_ context.Context, user entity.User) (entity.Us
 	r.users[user.ID] = user
 	r.usernames[key] = user.ID
 	return user, nil
+}
+
+func (r *fakeUserRepository) SetSubscription(_ context.Context, id, customerID string, until *time.Time) error {
+	if r.setSubscriptionErr != nil {
+		return r.setSubscriptionErr
+	}
+	user, ok := r.users[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	user.StripeCustomerID, user.SubscribedUntil = customerID, until
+	r.users[id] = user
+	r.subscriptionWrites++
+	return nil
 }
 
 func (r *fakeUserRepository) Delete(_ context.Context, id string) error {
@@ -519,6 +540,14 @@ func newAssistantService(
 	return newFullService(blogs, users, chats, nil, nil, assistant)
 }
 
+// newBillingService builds a Service with billing configured, over the given payments fake.
+func newBillingService(users repository.UserRepository, payments repository.Payments) *Service {
+	s := newFullService(nil, users, nil, nil, nil, nil)
+	s.payments = payments
+	s.cfg.AllowedOrigin = "https://blog.example"
+	return s
+}
+
 // newFullService is what the helpers above narrow: it fills in whichever fakes a test did not
 // supply, so each of them names only the repositories its routes actually touch.
 func newFullService(
@@ -556,7 +585,7 @@ func newFullService(
 			// Quiet by default; a test asserting on what is logged points this at a buffer.
 			Logger: slog.New(slog.DiscardHandler),
 		},
-		blogs, users, chats, comments, reactions, newFakeEmbeddingRepository(), fakeVerifier{uid: "caller"}, assistant,
+		blogs, users, chats, comments, reactions, newFakeEmbeddingRepository(), fakeVerifier{uid: "caller"}, assistant, &fakePayments{},
 	)
 }
 

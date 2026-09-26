@@ -39,10 +39,13 @@ message CurrentUser {
   // Whether this account may use the AI writing assistant. The routes enforce it either way; this
   // only keeps a button off the screen for somebody who would be told no.
   bool assistant_enabled = 6;
-  // When this account's paid access runs out, absent for an account that has never subscribed -
-  // which is every account until a checkout writes one. A message field, so proto3 gives it
-  // presence without the `optional` keyword.
+  // When this account's paid access runs out, absent for an account that has never subscribed.
+  // Only the billing webhook writes it. A message field, so proto3 gives it presence without the
+  // `optional` keyword.
   google.protobuf.Timestamp subscribed_until = 7;
+  // Whether this deployment sells a subscription at all, so a client offers Subscribe or Manage
+  // subscription only where `POST /billing/checkout` and `POST /billing/portal` exist.
+  bool billing_enabled = 8;
 }
 
 // UpdateCurrentUserRequest is the body of `PUT /users/me` - the client-settable half of a profile.

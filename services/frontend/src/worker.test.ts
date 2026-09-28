@@ -110,6 +110,8 @@ describe('_worker.js', () => {
       [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+        '  <url><loc>https://blog.gorman.club/privacy</loc></url>',
+        '  <url><loc>https://blog.gorman.club/terms</loc></url>',
         '  <url><loc>https://blog.gorman.club/post/hello-world</loc><lastmod>2026-08-02T00:00:00Z</lastmod></url>',
         '  <url><loc>https://blog.gorman.club/post/older</loc><lastmod>2026-07-01T00:00:00Z</lastmod></url>',
         '</urlset>',

@@ -16,6 +16,8 @@ const PROD_HOSTNAME = new URL(SITE_URL).hostname
 // ponytail: stops the sitemap at 50 pages of 100 posts; move to a dedicated backend route if the
 // blog ever outgrows that.
 const SITEMAP_MAX_PAGES = 50
+// The SPA's routes that aren't posts or profiles but are worth indexing.
+const STATIC_PAGES = ['/privacy', '/terms']
 
 export default {
   async fetch(request, env) {
@@ -73,7 +75,7 @@ async function fetchPost(env, url, encodedSlug) {
 async function sitemap(env, url) {
   const backend = await backendUrl(env, url)
   if (!backend) return new Response('No backend configured\n', { status: 404 })
-  const entries = []
+  const entries = STATIC_PAGES.map((path) => `  <url><loc>${SITE_URL}${path}</loc></url>`)
   try {
     let startAfter = ''
     for (let i = 0; i < SITEMAP_MAX_PAGES; i++) {

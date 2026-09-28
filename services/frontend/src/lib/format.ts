@@ -25,7 +25,7 @@ export function snippetFrom(content: string): string {
   return `${plain.slice(0, SNIPPET_LENGTH).trimEnd()}…`
 }
 
-const GITHUB_REPO = 'edgorman/blog.gorman.club'
+export const GITHUB_REPO = 'edgorman/blog.gorman.club'
 
 /**
  * Links a release tag (e.g. "v1.2.3", written into config.json by the deploy pipeline - see

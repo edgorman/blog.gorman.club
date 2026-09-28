@@ -76,6 +76,13 @@ export function AccountPanel({ onClose }: Props) {
           <>
             <p className="text-muted">Sign in to publish and manage your posts.</p>
             {authError ? <p role="alert">{authError}</p> : <GoogleSignInButton ready={authReady} onRender={renderSignInButton} />}
+            {/* Signing in is what creates the account (AppProvider's first PUT /users/me), so this
+                is where the terms are agreed to (#239). */}
+            <p className="text-muted panel-terms">
+              By creating an account you agree to the{' '}
+              <Link to="/terms" onClick={onClose}>Terms</Link> and{' '}
+              <Link to="/privacy" onClick={onClose}>Privacy Policy</Link>.
+            </p>
           </>
         )}
 

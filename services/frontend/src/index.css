@@ -983,3 +983,21 @@ a.tag-topic:hover {
   margin: 0;
   font-size: 13px;
 }
+
+/* — site footer and legal links (#239) — */
+.site-footer {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-4) var(--space-8);
+  display: flex;
+  gap: var(--space-4);
+  font-size: 13px;
+}
+.site-footer a,
+.panel-terms a {
+  color: inherit;
+}
+.panel-terms {
+  font-size: 12px;
+  margin-top: var(--space-3);
+}

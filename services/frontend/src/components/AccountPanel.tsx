@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { userPath } from '../lib/api'
 import { releaseUrl } from '../lib/format'
 import { GoogleSignInButton } from './GoogleSignInButton'
+import { SubscriptionStatus } from './SubscriptionStatus'
 
 const CloseIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -53,6 +54,7 @@ export function AccountPanel({ onClose }: Props) {
                 <div className="text-muted panel-identity-email">{user.email}</div>
               </div>
             </div>
+            <SubscriptionStatus />
             <Link to="/post/new" className="btn btn-primary btn-block" onClick={onClose}>
               New post
             </Link>

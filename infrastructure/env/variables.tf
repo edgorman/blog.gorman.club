@@ -132,3 +132,9 @@ variable "worker_max_instances" {
   type        = number
   default     = 3
 }
+
+variable "stripe_price_id" {
+  description = "The Stripe recurring Price the AI assistant subscription is sold at (price_...). Empty leaves billing off: Cloud Run gets no Stripe env vars and the backend serves no billing routes. Set it only after both Stripe secrets in billing.tf hold a version, since Cloud Run refuses to start a revision whose secret has none."
+  type        = string
+  default     = ""
+}

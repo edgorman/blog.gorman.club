@@ -13,7 +13,7 @@ const user: User = {
 }
 // The caller's own profile carries what their account may do as well as who they are; a public
 // profile (`user` above) deliberately does not.
-const profile: CurrentUser = { ...user, assistantEnabled: false }
+const profile: CurrentUser = { ...user, assistantEnabled: false, billingEnabled: false }
 const mine: Blog = {
   slug: 'mine',
   ownerId: 'uid-1',
@@ -60,6 +60,8 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
     getCurrentUser: jest.fn(),
     putUser: jest.fn(),
     deleteUser: jest.fn(),
+    createCheckout: jest.fn(),
+    createPortal: jest.fn(),
     ...overrides,
   } as unknown as Api
 }
@@ -155,5 +157,47 @@ describe('UserProfile', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: /Load more/ })).not.toBeInTheDocument(),
     )
+  })
+
+  describe('subscription', () => {
+    const subscribed: CurrentUser = { ...profile, subscribedUntil: '2099-03-01T00:00:00Z', billingEnabled: true }
+
+    it("shows the owner their own subscription and when it runs out", async () => {
+      renderWithApp(<UserProfile />, {
+        context: { api: fakeApi(), profile: subscribed },
+        route: '/user/calm-smiling-kestrel',
+        path: '/user/:username',
+      })
+
+      expect(await screen.findByText('Subscribed until Mar 1, 2099')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Manage subscription' })).toBeInTheDocument()
+    })
+
+    // The signed-in caller's subscription is theirs alone: another author's page shows none of it.
+    it("shows nothing about subscriptions on somebody else's profile", async () => {
+      const someoneElse: CurrentUser = { ...subscribed, id: 'uid-2', username: 'bold-leaping-lynx' }
+      renderWithApp(<UserProfile />, {
+        context: { api: fakeApi(), profile: someoneElse },
+        route: '/user/calm-smiling-kestrel',
+        path: '/user/:username',
+      })
+
+      expect(await screen.findByRole('heading', { name: 'calm-smiling-kestrel' })).toBeInTheDocument()
+      expect(screen.queryByText(/Subscribed until/)).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /subscri/i })).not.toBeInTheDocument()
+    })
+
+    it('says the subscription is on its way after checkout and reads the profile again', async () => {
+      const refreshProfile = jest.fn()
+      renderWithApp(<UserProfile />, {
+        context: { api: fakeApi(), profile: { ...profile, billingEnabled: true }, refreshProfile },
+        route: '/user/calm-smiling-kestrel?checkout=success',
+        path: '/user/:username',
+      })
+
+      expect(await screen.findByText(/will appear here shortly/)).toBeInTheDocument()
+      expect(screen.getByText('Not subscribed')).toBeInTheDocument()
+      expect(refreshProfile).toHaveBeenCalled()
+    })
   })
 })

@@ -124,12 +124,15 @@ type CurrentUser struct {
 	// Whether this account may use the AI writing assistant. The routes enforce it either way; this
 	// only keeps a button off the screen for somebody who would be told no.
 	AssistantEnabled bool `protobuf:"varint,6,opt,name=assistant_enabled,json=assistantEnabled,proto3" json:"assistant_enabled,omitempty"`
-	// When this account's paid access runs out, absent for an account that has never subscribed -
-	// which is every account until a checkout writes one. A message field, so proto3 gives it
-	// presence without the `optional` keyword.
+	// When this account's paid access runs out, absent for an account that has never subscribed.
+	// Only the billing webhook writes it. A message field, so proto3 gives it presence without the
+	// `optional` keyword.
 	SubscribedUntil *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=subscribed_until,json=subscribedUntil,proto3" json:"subscribed_until,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Whether this deployment sells a subscription at all, so a client offers Subscribe or Manage
+	// subscription only where `POST /billing/checkout` and `POST /billing/portal` exist.
+	BillingEnabled bool `protobuf:"varint,8,opt,name=billing_enabled,json=billingEnabled,proto3" json:"billing_enabled,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CurrentUser) Reset() {
@@ -211,6 +214,13 @@ func (x *CurrentUser) GetSubscribedUntil() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *CurrentUser) GetBillingEnabled() bool {
+	if x != nil {
+		return x.BillingEnabled
+	}
+	return false
+}
+
 // UpdateCurrentUserRequest is the body of `PUT /users/me` - the client-settable half of a profile.
 // The id comes from the verified token and the timestamps from the server, so neither is here.
 type UpdateCurrentUserRequest struct {
@@ -280,7 +290,7 @@ const file_blog_v1_user_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xb5\x02\n" +
+	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xde\x02\n" +
 	"\vCurrentUser\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12\x10\n" +
@@ -290,7 +300,8 @@ const file_blog_v1_user_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12+\n" +
 	"\x11assistant_enabled\x18\x06 \x01(\bR\x10assistantEnabled\x12E\n" +
-	"\x10subscribed_until\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x0fsubscribedUntil\"Z\n" +
+	"\x10subscribed_until\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x0fsubscribedUntil\x12'\n" +
+	"\x0fbilling_enabled\x18\b \x01(\bR\x0ebillingEnabled\"Z\n" +
 	"\x18UpdateCurrentUserRequest\x12\x1f\n" +
 	"\busername\x18\x01 \x01(\tH\x00R\busername\x88\x01\x01\x12\x10\n" +
 	"\x03bio\x18\x02 \x01(\tR\x03bioB\v\n" +

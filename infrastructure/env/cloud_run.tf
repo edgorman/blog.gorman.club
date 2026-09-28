@@ -32,7 +32,12 @@ resource "google_service_account_iam_member" "backend_runtime_actas" {
 }
 
 resource "google_cloud_run_v2_service" "backend" {
-  depends_on = [google_project_service.run, google_project_service.agent_platform]
+  depends_on = [
+    google_project_service.run,
+    google_project_service.agent_platform,
+    # A revision that mounts a secret fails to start unless it may read it.
+    google_secret_manager_secret_iam_member.backend_runtime_stripe,
+  ]
 
   project  = var.gcp_project_id
   name     = "backend-${var.environment}"
@@ -101,6 +106,30 @@ resource "google_cloud_run_v2_service" "backend" {
       env {
         name  = "EMBEDDING_DIMENSION"
         value = tostring(var.embedding_dimension)
+      }
+
+      # Billing, mounted only once stripe_price_id is set, so an environment without it deploys
+      # exactly as before. The keys come from Secret Manager (billing.tf) rather than a variable, so
+      # neither ever appears in a plan.
+      dynamic "env" {
+        for_each = { for key, secret in google_secret_manager_secret.stripe : key => secret.secret_id if var.stripe_price_id != "" }
+        content {
+          name = upper(env.key)
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
+          }
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.stripe_price_id == "" ? [] : [var.stripe_price_id]
+        content {
+          name  = "STRIPE_PRICE_ID"
+          value = env.value
+        }
       }
     }
   }

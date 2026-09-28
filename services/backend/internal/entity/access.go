@@ -42,6 +42,9 @@ const (
 	// ResourceRelated is the list of posts nearest in meaning to one post. It is derived rather than
 	// stored, and every post in it has already passed its own read rule.
 	ResourceRelated Resource = "related"
+	// ResourceBilling is the caller's own subscription: a checkout to buy one and a portal to
+	// manage it.
+	ResourceBilling Resource = "billing"
 )
 
 // Action is one thing that can be done to a resource. These four are the whole vocabulary, and
@@ -142,6 +145,15 @@ var policy = map[Resource]map[Action]Access{
 	// listed is filtered by its own read rule: ranking by meaning never widens who sees what.
 	ResourceRelated: {
 		ActionRead: AccessPublic,
+	},
+	// Billing is private: a checkout or portal session is only ever opened for the caller's own
+	// account, which the routes take from the credential. Creating one is the only action.
+	//
+	// The Stripe webhook is deliberately absent. It is the one route with no caller at all - it is
+	// authenticated by the Stripe-Signature HMAC over its body instead (see the service's
+	// StripeWebhook), so there is no uid for this table to answer about.
+	ResourceBilling: {
+		ActionCreate: AccessPrivate,
 	},
 }
 

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { FeedList } from '../components/FeedList'
 import { PageMeta } from '../components/PageMeta'
+import { SubscriptionStatus } from '../components/SubscriptionStatus'
 import { useApp } from '../context/AppContext'
 import { errorMessage, userPath, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
@@ -28,10 +29,18 @@ type PostsState =
 
 const FEED_SIZE = 10
 
+/** How long after returning from Checkout the profile is read again, for a webhook that lands late. */
+const CHECKOUT_REFETCH_MS = 5000
+
 /** A single author's recent posts, with as much of their profile as the caller is allowed to see. */
 export function UserProfile() {
   const { username } = useParams<{ username: string }>()
-  const { api } = useApp()
+  const { api, profile: ownProfile, refreshProfile } = useApp()
+  const [searchParams] = useSearchParams()
+  // Stripe sends the browser back here after Checkout. Being redirected is not proof of payment -
+  // only the webhook grants access - so this says the subscription is on its way and reads the
+  // caller's profile again, now and once more shortly after.
+  const returnedFromCheckout = searchParams.get('checkout') === 'success'
   const [profile, setProfile] = useState<ProfileInfo | null>(null)
   const [missing, setMissing] = useState(false)
   const [postsState, setPostsState] = useState<PostsState>(
@@ -61,6 +70,13 @@ export function UserProfile() {
       cancelled = true
     }
   }, [api, username])
+
+  useEffect(() => {
+    if (!returnedFromCheckout) return
+    refreshProfile()
+    const timer = setTimeout(refreshProfile, CHECKOUT_REFETCH_MS)
+    return () => clearTimeout(timer)
+  }, [returnedFromCheckout, refreshProfile])
 
   useEffect(() => {
     // Posts are fetched by the profile's uid, once it resolves, rather than filtered client-side
@@ -107,6 +123,9 @@ export function UserProfile() {
       })
   }
 
+  const isOwn = profile !== null && ownProfile?.id === profile.id
+  const subscribed = !!ownProfile?.subscribedUntil && new Date(ownProfile.subscribedUntil) > new Date()
+
   if (postsState.phase === 'unconfigured') {
     return (
       <div className="page">
@@ -140,6 +159,16 @@ export function UserProfile() {
           </div>
         </div>
         {profile?.bio && <p className="profile-bio text-muted">{profile.bio}</p>}
+        {/* The subscription is the owner's business alone: it comes from their own /users/me, never
+            from the public profile this page fetched, and only shows on their own page. */}
+        {isOwn && (
+          <>
+            {returnedFromCheckout && !subscribed && (
+              <p className="text-muted">Thanks! Your subscription will appear here shortly.</p>
+            )}
+            <SubscriptionStatus />
+          </>
+        )}
       </header>
 
       {postsState.phase === 'loading' && <p className="text-muted center-note">Loading…</p>}

@@ -28,4 +28,12 @@ describe('AccountPanel', () => {
     expect(screen.queryByText('staging')).not.toBeInTheDocument()
     expect(screen.queryByText('production')).not.toBeInTheDocument()
   })
+
+  // Signing in creates the account, so the signed-out panel is where the terms are agreed to (#239).
+  it('links the terms and privacy policy from the sign-in step', () => {
+    renderWithApp(<AccountPanel onClose={() => {}} />)
+    expect(screen.getByText(/By creating an account you agree to the/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms')
+    expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', '/privacy')
+  })
 })

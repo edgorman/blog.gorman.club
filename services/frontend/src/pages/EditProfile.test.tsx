@@ -143,4 +143,31 @@ describe('EditProfile', () => {
 
     expect(screen.getByText('Sign in to edit your profile.')).toBeInTheDocument()
   })
+
+  // The confirmation has to say that deleting the account takes its content with it, and signing
+  // out afterwards is what stops the app recreating an empty profile for the still-signed-in user.
+  it('deletes the account and signs out once the user confirms', async () => {
+    const api = fakeApi({ deleteUser: jest.fn().mockResolvedValue(undefined) })
+    const signOut = jest.fn()
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true)
+    renderEditor({ api, user: me, signOut })
+
+    await screen.findByDisplayValue('calm-smiling-kestrel')
+    await userEvent.click(screen.getByRole('button', { name: 'Delete account' }))
+
+    expect(confirm.mock.calls[0][0]).toMatch(/posts, comments and reactions/)
+    expect(api.deleteUser).toHaveBeenCalled()
+    expect(signOut).toHaveBeenCalled()
+  })
+
+  it('keeps the account when the user declines the confirmation', async () => {
+    const api = fakeApi()
+    jest.spyOn(window, 'confirm').mockReturnValue(false)
+    renderEditor({ api, user: me })
+
+    await screen.findByDisplayValue('calm-smiling-kestrel')
+    await userEvent.click(screen.getByRole('button', { name: 'Delete account' }))
+
+    expect(api.deleteUser).not.toHaveBeenCalled()
+  })
 })

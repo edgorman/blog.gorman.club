@@ -190,8 +190,17 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 	writeProto(w, status, s.currentUser(saved))
 }
 
-// DeleteUser removes the caller's own profile, addressed as /users/me for the same reason PutUser
-// is: the owner comes from the credential, so only the owner can ever be the target.
+// DeleteUser erases the caller's account: every post it wrote (with the comments, reactions and
+// assistant chat on them), every comment and reaction it left on anybody else's post, and then the
+// profile. It is addressed as /users/me for the same reason PutUser is: the owner comes from the
+// credential, so only the owner can ever be the target.
+//
+// The erasure runs in the request rather than in the worker. An account here holds tens of posts,
+// not millions, so it fits comfortably inside one request, and the caller learns it is done rather
+// than being told it has started. Every step is idempotent and the profile goes last, so a request
+// that fails partway is finished by sending it again: the profile is still there to be found, and
+// whatever was already erased is simply not found twice. Post embeddings are the worker's to erase,
+// which it does when a post's document is deleted (see internal/worker).
 func (s *Service) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := uidFromContext(r.Context())
 
@@ -205,10 +214,48 @@ func (s *Service) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := s.eraseContent(r.Context(), id); err != nil {
+		s.logger().Error("erasing account content failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	if err := s.users.Delete(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// eraseContent removes everything uid created apart from the profile itself.
+func (s *Service) eraseContent(ctx context.Context, uid string) error {
+	slugs, err := s.blogs.Owned(ctx, uid)
+	if err != nil {
+		return err
+	}
+	for _, slug := range slugs {
+		if err := s.chats.Delete(ctx, slug); err != nil {
+			return err
+		}
+		if err := s.blogs.Purge(ctx, slug); err != nil {
+			return err
+		}
+	}
+
+	comments, err := s.comments.ListByAuthor(ctx, uid)
+	if err != nil {
+		return err
+	}
+	for _, comment := range comments {
+		// Other readers' reactions to the comment go with it, as they do when it is deleted alone.
+		target := entity.ReactionTarget{BlogSlug: comment.BlogSlug, CommentID: comment.ID}
+		if err := s.reactions.DeleteTarget(ctx, target); err != nil {
+			return err
+		}
+		if err := s.comments.Delete(ctx, comment.BlogSlug, comment.ID); err != nil {
+			return err
+		}
+	}
+
+	return s.reactions.DeleteByUser(ctx, uid)
 }

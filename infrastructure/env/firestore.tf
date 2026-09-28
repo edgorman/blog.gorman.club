@@ -146,3 +146,51 @@ resource "google_firestore_index" "embeddings_by_vector" {
     }
   }
 }
+
+# Erasing an account (`DELETE /users/me`) finds the account's comments and reactions on every post
+# with collection group queries on comments.authorId and reactions.uid. Firestore builds
+# single-field indexes for collection scope only, so each field gets a collection group index here;
+# the collection-scope ones are listed too because declaring a field's indexes replaces its defaults.
+resource "google_firestore_field" "comments_author_id" {
+  project    = var.gcp_project_id
+  database   = google_firestore_database.database.name
+  collection = "comments"
+  field      = "authorId"
+
+  index_config {
+    indexes {
+      order       = "ASCENDING"
+      query_scope = "COLLECTION"
+    }
+    indexes {
+      order       = "DESCENDING"
+      query_scope = "COLLECTION"
+    }
+    indexes {
+      order       = "ASCENDING"
+      query_scope = "COLLECTION_GROUP"
+    }
+  }
+}
+
+resource "google_firestore_field" "reactions_uid" {
+  project    = var.gcp_project_id
+  database   = google_firestore_database.database.name
+  collection = "reactions"
+  field      = "uid"
+
+  index_config {
+    indexes {
+      order       = "ASCENDING"
+      query_scope = "COLLECTION"
+    }
+    indexes {
+      order       = "DESCENDING"
+      query_scope = "COLLECTION"
+    }
+    indexes {
+      order       = "ASCENDING"
+      query_scope = "COLLECTION_GROUP"
+    }
+  }
+}

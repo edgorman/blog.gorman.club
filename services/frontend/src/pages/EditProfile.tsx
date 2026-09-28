@@ -10,7 +10,7 @@ export function EditProfile() {
   // only ever a claim about which profile the visitor meant - checked below against the one they
   // actually hold, never trusted as authority to edit it.
   const { username: routeUsername } = useParams<{ username: string }>()
-  const { api, user, refreshProfile } = useApp()
+  const { api, user, refreshProfile, signOut } = useApp()
   // The name as saved, which is where Cancel and the post-save redirect point. `draft` is what the
   // field holds, so an unsaved edit never changes where they go.
   const [username, setUsername] = useState<string | null>(null)
@@ -21,6 +21,8 @@ export function EditProfile() {
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleted, setDeleted] = useState(false)
 
   useEffect(() => {
     if (!api || !user) return
@@ -61,6 +63,32 @@ export function EditProfile() {
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to save')))
       .finally(() => setSaving(false))
   }
+
+  // Signing out once the account is gone is what stops AppProvider recreating an empty profile for
+  // the still-signed-in visitor, as it does for any signed-in user without one.
+  const deleteAccount = () => {
+    if (!api) return
+    if (
+      !window.confirm(
+        'Delete your account? Your profile, posts, comments and reactions are all deleted with it. This cannot be undone.',
+      )
+    )
+      return
+    setDeleting(true)
+    setError(null)
+    api
+      .deleteUser()
+      .then(() => {
+        signOut()
+        setDeleted(true)
+      })
+      .catch((e: unknown) => {
+        setError(errorMessage(e, 'Failed to delete your account'))
+        setDeleting(false)
+      })
+  }
+
+  if (deleted) return <Navigate to="/" replace />
 
   if (!api) {
     return (
@@ -154,6 +182,14 @@ export function EditProfile() {
             <Link to={(username && userPath(username)) || '/'} className="btn btn-secondary">
               Cancel
             </Link>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={deleteAccount}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting…' : 'Delete account'}
+            </button>
           </div>
         </>
       )}

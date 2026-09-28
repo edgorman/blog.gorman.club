@@ -316,7 +316,7 @@ Adding another provider means extending `authProvider` and the switch in
 | GET    | `/users/{username}` | Fetch a profile by username. No credential required. A 404 doubles as the availability check. |
 | GET    | `/users/me`   | Fetch your own profile, including the username you were assigned.      |
 | PUT    | `/users/me`   | Create or replace your own profile. An omitted `username` keeps the one you hold; a taken one is a `409`. |
-| DELETE | `/users/me`   | Delete your own profile, releasing its username.                       |
+| DELETE | `/users/me`   | Delete your account: your posts (with their comments, reactions and chats), your comments and reactions elsewhere, then the profile, releasing its username. A retry after a failure finishes the job. |
 | GET    | `/blogs/{slug}/chat` | Fetch the assistant conversation about a post. A post nobody has discussed is an empty conversation, not a `404`. |
 | POST   | `/blogs/{slug}/chat` | Send the assistant a message. Applies whatever it edits to the post and answers with the exchange plus the post as it now stands. |
 | DELETE | `/blogs/{slug}/chat` | Throw the conversation away. The post, edits included, is untouched. |

@@ -75,6 +75,14 @@ func (r *fakeBlogRepository) Delete(context.Context, string) error {
 	return r.writeErr
 }
 
+func (r *fakeBlogRepository) Owned(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+
+func (r *fakeBlogRepository) Purge(context.Context, string) error {
+	return r.writeErr
+}
+
 // newTestCache wires a cache over inner with a clock the test drives, so an entry can be expired
 // without waiting out the real TTL.
 func newTestCache(inner *fakeBlogRepository) (*BlogRepository, *time.Time) {
@@ -301,6 +309,9 @@ func TestWrites_InvalidateTheCache(t *testing.T) {
 		},
 		"delete": func(cached *BlogRepository) error {
 			return cached.Delete(context.Background(), blog.Slug)
+		},
+		"purge": func(cached *BlogRepository) error {
+			return cached.Purge(context.Background(), blog.Slug)
 		},
 	}
 

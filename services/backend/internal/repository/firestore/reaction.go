@@ -197,15 +197,28 @@ func (r *ReactionRepository) DeleteTarget(ctx context.Context, target entity.Rea
 		return err
 	}
 
+	refs := make([]*fs.DocumentRef, 0, len(docs))
+	for _, doc := range docs {
+		refs = append(refs, doc.Ref)
+	}
 	// Deleted in one batch: a comment being moderated away should not leave half its reactions
 	// behind because the request was cut off partway down the list.
-	batch := r.client.BulkWriter(ctx)
-	for _, doc := range docs {
-		if _, err := batch.Delete(doc.Ref); err != nil {
-			return err
-		}
-	}
-	batch.End()
+	return deleteAll(ctx, r.client, refs)
+}
 
-	return nil
+// DeleteByUser is a collection group query, since a reader's reactions sit beneath every post
+// they reacted to. It needs the collection group index on "uid" in infrastructure/env/firestore.tf.
+func (r *ReactionRepository) DeleteByUser(ctx context.Context, uid string) error {
+	if uid == "" {
+		return nil
+	}
+	docs, err := r.client.CollectionGroup("reactions").Where("uid", "==", uid).Select().Documents(ctx).GetAll()
+	if err != nil {
+		return err
+	}
+	refs := make([]*fs.DocumentRef, 0, len(docs))
+	for _, doc := range docs {
+		refs = append(refs, doc.Ref)
+	}
+	return deleteAll(ctx, r.client, refs)
 }

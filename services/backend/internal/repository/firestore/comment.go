@@ -96,14 +96,15 @@ var _ repository.CommentRepository = (*CommentRepository)(nil)
 // the path parsable, and entity.Comment.SetID does the same for the leaf. Every method here
 // refuses an empty or malformed pair rather than asking Firestore about a path it cannot parse.
 type CommentRepository struct {
-	blogs *fs.CollectionRef
+	client *fs.Client
+	blogs  *fs.CollectionRef
 }
 
 // NewCommentRepository returns a repository.CommentRepository backed by the "comments"
 // subcollection beneath each post. It holds the "blogs" collection rather than a collection of its
 // own, since that is where the threads live.
 func NewCommentRepository(client *fs.Client) *CommentRepository {
-	return &CommentRepository{blogs: client.Collection("blogs")}
+	return &CommentRepository{client: client, blogs: client.Collection("blogs")}
 }
 
 // commentsFor resolves the thread beneath one post, validating the slug first: Doc panics on an
@@ -225,4 +226,26 @@ func (r *CommentRepository) Delete(ctx context.Context, blogSlug, id string) err
 
 	_, err = thread.Doc(candidate.ID).Delete(ctx)
 	return err
+}
+
+// ListByAuthor is a collection group query, since an author's comments sit beneath every post
+// they commented on. It needs the collection group index on "authorId" in
+// infrastructure/env/firestore.tf.
+func (r *CommentRepository) ListByAuthor(ctx context.Context, authorID string) ([]entity.Comment, error) {
+	if authorID == "" {
+		return nil, nil
+	}
+	docs, err := r.client.CollectionGroup("comments").Where("authorId", "==", authorID).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	comments := make([]entity.Comment, 0, len(docs))
+	for _, doc := range docs {
+		comment, err := documentToComment(doc)
+		if err != nil {
+			return nil, err
+		}
+		comments = append(comments, comment)
+	}
+	return comments, nil
 }

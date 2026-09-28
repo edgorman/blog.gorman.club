@@ -240,3 +240,17 @@ func (r *BlogRepository) Delete(ctx context.Context, slug string) error {
 	r.invalidate()
 	return nil
 }
+
+// Owned is not cached: it is read only when an account is erased.
+func (r *BlogRepository) Owned(ctx context.Context, ownerID string) ([]string, error) {
+	return r.inner.Owned(ctx, ownerID)
+}
+
+// Purge writes through and drops the cache, so an erased account's posts stop being listed at once.
+func (r *BlogRepository) Purge(ctx context.Context, slug string) error {
+	if err := r.inner.Purge(ctx, slug); err != nil {
+		return err
+	}
+	r.invalidate()
+	return nil
+}

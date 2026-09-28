@@ -55,4 +55,10 @@ type BlogRepository interface {
 	// Delete soft-deletes the post at slug by stamping entity.Blog.DeletedAt - the document itself
 	// is never removed from Firestore. It returns ErrNotFound if no undeleted post holds slug.
 	Delete(ctx context.Context, slug string) error
+	// Owned lists the slug of every post ownerID holds, soft-deleted ones included, whoever may
+	// read them. It is for erasing an account, which must find everything the account wrote.
+	Owned(ctx context.Context, ownerID string) ([]string, error)
+	// Purge erases the post at slug outright, with the comments and reactions stored beneath it.
+	// Unlike Delete it leaves nothing behind, and erasing a post that is already gone succeeds.
+	Purge(ctx context.Context, slug string) error
 }

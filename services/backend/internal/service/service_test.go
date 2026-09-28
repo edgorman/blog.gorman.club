@@ -24,6 +24,8 @@ type fakeBlogRepository struct {
 	// beforeCreate lets a test fail a write the in-memory state would otherwise allow, which is
 	// the only way to provoke a collision against a slug that carries a random suffix.
 	beforeCreate func(entity.Blog) error
+	// purgeErr fails the next Purge, and is cleared by it, so a test can cut an erasure off partway.
+	purgeErr error
 }
 
 func newFakeBlogRepository() *fakeBlogRepository {
@@ -128,6 +130,28 @@ func (r *fakeBlogRepository) Delete(_ context.Context, slug string) error {
 	now := time.Now().UTC()
 	blog.DeletedAt = &now
 	r.seed(blog)
+	return nil
+}
+
+func (r *fakeBlogRepository) Owned(_ context.Context, ownerID string) ([]string, error) {
+	var slugs []string
+	for slug, blog := range r.blogs {
+		if blog.OwnerID == ownerID {
+			slugs = append(slugs, slug)
+		}
+	}
+	slices.Sort(slugs)
+	return slugs, nil
+}
+
+// Purge erases the post alone: the comments and reactions the real repository takes with it live
+// in the other fakes, which a test checks through the routes that serve them.
+func (r *fakeBlogRepository) Purge(_ context.Context, slug string) error {
+	if err := r.purgeErr; err != nil {
+		r.purgeErr = nil
+		return err
+	}
+	delete(r.blogs, slug)
 	return nil
 }
 
@@ -343,6 +367,18 @@ func (r *fakeCommentRepository) Delete(_ context.Context, blogSlug, id string) e
 	return nil
 }
 
+func (r *fakeCommentRepository) ListByAuthor(_ context.Context, authorID string) ([]entity.Comment, error) {
+	var authored []entity.Comment
+	for _, thread := range r.threads {
+		for _, comment := range thread {
+			if comment.AuthorID == authorID {
+				authored = append(authored, comment)
+			}
+		}
+	}
+	return authored, nil
+}
+
 // fakeReactionRepository is an in-memory repository.ReactionRepository. Like the real one it keys
 // a reader's reactions by the target and the reader together, keeps the post's and its comments'
 // in one place, and erases a reader who has nothing left rather than storing an empty row.
@@ -439,6 +475,15 @@ func (r *fakeReactionRepository) DeleteTarget(_ context.Context, target entity.R
 	r.deletedTargets = append(r.deletedTargets, target)
 	for key, reaction := range r.reactions {
 		if reaction.Target == target {
+			delete(r.reactions, key)
+		}
+	}
+	return nil
+}
+
+func (r *fakeReactionRepository) DeleteByUser(_ context.Context, uid string) error {
+	for key, reaction := range r.reactions {
+		if reaction.UID == uid {
 			delete(r.reactions, key)
 		}
 	}

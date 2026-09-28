@@ -2,7 +2,9 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -780,4 +782,137 @@ func TestGetCurrentUser_WireBody(t *testing.T) {
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}
+}
+
+// eraseFixture is an account ("caller") with a post, an old soft-deleted post, a comment and
+// reactions on someone else's post, and other readers' comments and reactions on its own post and
+// comment - everything DeleteUser has to find.
+type eraseFixture struct {
+	s         *Service
+	blogs     *fakeBlogRepository
+	users     *fakeUserRepository
+	chats     *fakeChatRepository
+	comments  *fakeCommentRepository
+	reactions *fakeReactionRepository
+}
+
+func newEraseFixture() eraseFixture {
+	f := eraseFixture{
+		blogs:     newFakeBlogRepository(),
+		users:     newFakeUserRepository(),
+		chats:     newFakeChatRepository(),
+		comments:  newFakeCommentRepository(),
+		reactions: newFakeReactionRepository(),
+	}
+	f.users.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey"})
+	f.users.seed(entity.User{ID: "other", Username: "bold-leaping-lynx"})
+
+	now := time.Now().UTC()
+	f.blogs.seed(
+		entity.Blog{Slug: "mine", OwnerID: "caller", Title: "Mine", Content: "Body", Visibility: entity.VisibilityPublic, CreatedAt: now},
+		entity.Blog{Slug: "mine-deleted", OwnerID: "caller", Title: "Gone", Content: "Body", Visibility: entity.VisibilityPublic, CreatedAt: now, DeletedAt: &now},
+		entity.Blog{Slug: "theirs", OwnerID: "other", Title: "Theirs", Content: "Body", Visibility: entity.VisibilityPublic, CreatedAt: now},
+	)
+	f.chats.seed(entity.Chat{BlogSlug: "mine", OwnerID: "caller"})
+	f.comments.seed(
+		entity.Comment{ID: "c1", BlogSlug: "theirs", AuthorID: "caller", Body: "callers comment", CreatedAt: now},
+		entity.Comment{ID: "c2", BlogSlug: "theirs", AuthorID: "other", Body: "others comment", CreatedAt: now},
+		entity.Comment{ID: "c3", BlogSlug: "mine", AuthorID: "other", Body: "reply on mine", CreatedAt: now},
+	)
+	f.reactions.seed(
+		entity.Reaction{Target: entity.ReactionTarget{BlogSlug: "theirs"}, UID: "caller", Emojis: []string{"👍"}},
+		entity.Reaction{Target: entity.ReactionTarget{BlogSlug: "theirs", CommentID: "c2"}, UID: "caller", Emojis: []string{"🎉"}},
+		entity.Reaction{Target: entity.ReactionTarget{BlogSlug: "theirs", CommentID: "c1"}, UID: "other", Emojis: []string{"❤️"}},
+		entity.Reaction{Target: entity.ReactionTarget{BlogSlug: "theirs"}, UID: "other", Emojis: []string{"👍"}},
+	)
+
+	f.s = newFullService(f.blogs, f.users, f.chats, f.comments, f.reactions, nil)
+	return f
+}
+
+func (f eraseFixture) deleteAccount(t *testing.T, want int) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	f.s.DeleteUser(rec, selfHTTPRequest(http.MethodDelete, "caller", nil))
+	if rec.Result().StatusCode != want {
+		t.Fatalf("DELETE /users/me status = %d, want %d", rec.Result().StatusCode, want)
+	}
+}
+
+// get serves path anonymously through the router, as a stranger landing on the site would.
+func (f eraseFixture) get(path string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	f.s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	return rec
+}
+
+func (f eraseFixture) assertErased(t *testing.T) {
+	t.Helper()
+
+	if _, ok := f.users.users["caller"]; ok {
+		t.Error("profile still stored")
+	}
+	for _, slug := range []string{"mine", "mine-deleted"} {
+		if _, ok := f.blogs.stored(slug); ok {
+			t.Errorf("post %q still stored", slug)
+		}
+	}
+	if _, ok := f.chats.chats["mine"]; ok {
+		t.Error("chat on the erased post still stored")
+	}
+	if authored, _ := f.comments.ListByAuthor(context.Background(), "caller"); len(authored) != 0 {
+		t.Errorf("%d comments by the account still stored", len(authored))
+	}
+	for _, reaction := range f.reactions.reactions {
+		if reaction.UID == "caller" {
+			t.Errorf("reaction by the account still stored: %+v", reaction)
+		}
+		if reaction.Target.CommentID == "c1" {
+			t.Errorf("reaction to the account's comment still stored: %+v", reaction)
+		}
+	}
+
+	if rec := f.get("/blogs"); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), `"mine`) {
+		t.Errorf("GET /blogs = %d %s, want the erased posts gone", rec.Code, rec.Body)
+	}
+	if rec := f.get("/blogs/mine"); rec.Code != http.StatusNotFound {
+		t.Errorf("GET /blogs/mine = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+	if rec := f.get("/blogs/mine/comments"); rec.Code != http.StatusNotFound {
+		t.Errorf("GET /blogs/mine/comments = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+	rec := f.get("/blogs/theirs/comments")
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "callers comment") {
+		t.Errorf("GET /blogs/theirs/comments = %d %s, want the account's comment gone", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "others comment") {
+		t.Error("another account's comment was erased too")
+	}
+	if _, ok := f.users.users["other"]; !ok {
+		t.Error("another account's profile was erased too")
+	}
+	if _, ok := f.blogs.stored("theirs"); !ok {
+		t.Error("another account's post was erased too")
+	}
+}
+
+func TestDeleteUser_ErasesEverythingTheAccountCreated(t *testing.T) {
+	f := newEraseFixture()
+	f.deleteAccount(t, http.StatusNoContent)
+	f.assertErased(t)
+}
+
+// A deletion cut off partway leaves the profile in place, so sending it again finds the account and
+// finishes the job rather than answering 404 over half-erased content.
+func TestDeleteUser_RetryFinishesAPartialErasure(t *testing.T) {
+	f := newEraseFixture()
+	f.blogs.purgeErr = errors.New("firestore unavailable")
+
+	f.deleteAccount(t, http.StatusInternalServerError)
+	if _, ok := f.users.users["caller"]; !ok {
+		t.Fatal("profile deleted although its content was not")
+	}
+
+	f.deleteAccount(t, http.StatusNoContent)
+	f.assertErased(t)
 }

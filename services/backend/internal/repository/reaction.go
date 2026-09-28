@@ -29,4 +29,7 @@ type ReactionRepository interface {
 	// with it: reactions to something that no longer exists would be counted by nothing and shown
 	// nowhere, and leaving them would let a moderated comment survive as a row of numbers.
 	DeleteTarget(ctx context.Context, target entity.ReactionTarget) error
+	// DeleteByUser removes every reaction uid made, on any post or comment. It is for erasing an
+	// account.
+	DeleteByUser(ctx context.Context, uid string) error
 }

@@ -36,4 +36,7 @@ type CommentRepository interface {
 	// down - by whoever wrote it or by the author moderating their own post - has to actually
 	// remove what was said.
 	Delete(ctx context.Context, blogSlug, id string) error
+	// ListByAuthor returns every comment authorID wrote, on any post, in no particular order. It
+	// is for erasing an account, and is not bounded the way List is.
+	ListByAuthor(ctx context.Context, authorID string) ([]entity.Comment, error)
 }

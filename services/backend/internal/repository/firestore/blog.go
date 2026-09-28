@@ -79,12 +79,14 @@ var _ repository.BlogRepository = (*BlogRepository)(nil)
 // entity.Blog.SetSlug is what keeps a slug usable as a key: it admits only lowercase letters,
 // digits, and single hyphens, which excludes every form Firestore refuses in a document path.
 type BlogRepository struct {
-	blogs *fs.CollectionRef
+	client *fs.Client
+	blogs  *fs.CollectionRef
 }
 
-// NewBlogRepository returns a repository.BlogRepository backed by the "blogs" collection.
+// NewBlogRepository returns a repository.BlogRepository backed by the "blogs" collection. The
+// client is kept because Purge deletes in bulk.
 func NewBlogRepository(client *fs.Client) *BlogRepository {
-	return &BlogRepository{blogs: client.Collection("blogs")}
+	return &BlogRepository{client: client, blogs: client.Collection("blogs")}
 }
 
 // Get resolves a post by the slug that names it. A slug is required: an empty one would ask
@@ -315,4 +317,66 @@ func (r *BlogRepository) Delete(ctx context.Context, slug string) error {
 		return repository.ErrNotFound
 	}
 	return err
+}
+
+// Owned asks only for the keys: the slug is the document key, so no field needs to be read.
+func (r *BlogRepository) Owned(ctx context.Context, ownerID string) ([]string, error) {
+	docs, err := r.blogs.Where("ownerId", "==", ownerID).Select().Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	slugs := make([]string, 0, len(docs))
+	for _, doc := range docs {
+		slugs = append(slugs, doc.Ref.ID)
+	}
+	return slugs, nil
+}
+
+// Purge deletes the post's comments and reactions before the post itself. Firestore does not
+// delete a document's subcollections with it, and deleting the post last keeps it findable by
+// Owned, so a purge cut off partway is finished by running it again.
+func (r *BlogRepository) Purge(ctx context.Context, slug string) error {
+	var post entity.Blog
+	if err := post.SetSlug(slug); err != nil {
+		return repository.ErrNotFound
+	}
+	doc := r.blogs.Doc(post.Slug)
+
+	for _, sub := range []string{"comments", "reactions"} {
+		refs, err := doc.Collection(sub).DocumentRefs(ctx).GetAll()
+		if err != nil {
+			return err
+		}
+		if err := deleteAll(ctx, r.client, refs); err != nil {
+			return err
+		}
+	}
+	_, err := doc.Delete(ctx)
+	return err
+}
+
+// deleteAll deletes refs through a BulkWriter and reports the first delete that failed. A
+// BulkWriter's End does not return errors itself, so each job is asked for its result.
+func deleteAll(ctx context.Context, client *fs.Client, refs []*fs.DocumentRef) error {
+	if len(refs) == 0 {
+		return nil
+	}
+	batch := client.BulkWriter(ctx)
+	jobs := make([]*fs.BulkWriterJob, 0, len(refs))
+	for _, ref := range refs {
+		job, err := batch.Delete(ref)
+		if err != nil {
+			batch.End()
+			return err
+		}
+		jobs = append(jobs, job)
+	}
+	batch.End()
+
+	for _, job := range jobs {
+		if _, err := job.Results(); err != nil {
+			return err
+		}
+	}
+	return nil
 }

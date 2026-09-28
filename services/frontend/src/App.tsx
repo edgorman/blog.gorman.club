@@ -6,6 +6,7 @@ import { EditProfile } from './pages/EditProfile'
 import { Landing } from './pages/Landing'
 import { NewPost } from './pages/NewPost'
 import { Post } from './pages/Post'
+import { Terms } from './pages/Terms'
 import { UserProfile } from './pages/UserProfile'
 
 function NotFound() {
@@ -42,8 +43,12 @@ function App({
             a segment after a username rather than a name competing with one. */}
         <Route path="/user/:username" element={<UserProfile />} />
         <Route path="/user/:username/edit" element={<EditProfile />} />
+        <Route path="/terms" element={<Terms />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
+      <footer className="site-footer text-muted">
+        <Link to="/terms">Terms</Link>
+      </footer>
     </AppProvider>
   )
 }

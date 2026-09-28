@@ -48,3 +48,9 @@ moon project services/backend                   # list a project's tasks
 
 Each project's tasks live in its `moon.yml` (e.g. `services/backend/moon.yml`). If you change a `.proto`, regenerate with `buf generate` in `packages/protos` and commit the output alongside it.
 
+
+## Contributing and licence
+
+See [`CONTRIBUTING.md`](.github/CONTRIBUTING.md) and the [code of conduct](.github/CODE_OF_CONDUCT.md).
+
+The code in this repository is [MIT-licensed](LICENSE). That covers the code only, not the posts and comments users publish on the site, which fall under the site's terms of service.

@@ -41,6 +41,8 @@ type CheckoutRequest struct {
 	// SuccessURL and CancelURL are where the provider sends the browser back to.
 	SuccessURL string
 	CancelURL  string
+	// TermsURL is the terms of service the buyer must accept before paying.
+	TermsURL string
 }
 
 // Subscription is a subscription as the provider currently has it.

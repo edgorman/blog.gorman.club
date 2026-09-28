@@ -79,6 +79,7 @@ func (s *Service) CreateCheckout(w http.ResponseWriter, r *http.Request) {
 		CustomerID: user.StripeCustomerID,
 		SuccessURL: s.profileURL(user) + "?checkout=success",
 		CancelURL:  s.profileURL(user),
+		TermsURL:   s.cfg.AllowedOrigin + "/terms",
 	})
 	if err != nil {
 		s.logger().ErrorContext(r.Context(), "opening a checkout failed", "uid", user.ID, "error", err)

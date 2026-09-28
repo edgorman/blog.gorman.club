@@ -126,12 +126,14 @@ func TestCheckoutURL(t *testing.T) {
 			t.Errorf("path = %s", r.URL.Path)
 		}
 		want := map[string]string{
-			"mode":                             "subscription",
-			"line_items[0][price]":             "price_1",
-			"client_reference_id":              "uid-1",
-			"subscription_data[metadata][uid]": "uid-1",
-			"customer":                         "cus_1",
-			"success_url":                      "https://blog.example/ok",
+			"mode":                                 "subscription",
+			"line_items[0][price]":                 "price_1",
+			"client_reference_id":                  "uid-1",
+			"subscription_data[metadata][uid]":     "uid-1",
+			"customer":                             "cus_1",
+			"success_url":                          "https://blog.example/ok",
+			"consent_collection[terms_of_service]": "required",
+			"custom_text[terms_of_service_acceptance][message]": "I agree to the [Terms of Service](https://blog.example/terms) and ask for access to start immediately. I understand that I lose my 14-day right to cancel once it does.",
 		}
 		for key, value := range want {
 			if got := form.Get(key); got != value {
@@ -143,6 +145,7 @@ func TestCheckoutURL(t *testing.T) {
 
 	got, err := payments.CheckoutURL(context.Background(), repository.CheckoutRequest{
 		UID: "uid-1", CustomerID: "cus_1", SuccessURL: "https://blog.example/ok", CancelURL: "https://blog.example/",
+		TermsURL: "https://blog.example/terms",
 	})
 	if err != nil || got != "https://checkout.stripe.com/c/1" {
 		t.Errorf("CheckoutURL = %q, %v", got, err)

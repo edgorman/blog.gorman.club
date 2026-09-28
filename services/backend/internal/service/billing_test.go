@@ -237,6 +237,7 @@ func TestCreateCheckout(t *testing.T) {
 		CustomerID: "cus_1",
 		SuccessURL: "https://blog.example/user/calm-smiling-kestrel?checkout=success",
 		CancelURL:  "https://blog.example/user/calm-smiling-kestrel",
+		TermsURL:   "https://blog.example/terms",
 	}
 	if len(payments.checkouts) != 1 || payments.checkouts[0] != want {
 		t.Errorf("checkouts = %+v, want [%+v]", payments.checkouts, want)

@@ -87,6 +87,11 @@ func (p *Payments) CheckoutURL(ctx context.Context, req repository.CheckoutReque
 	if req.CustomerID != "" {
 		form.Set("customer", req.CustomerID)
 	}
+	// The buyer must tick the terms box before paying, and the box's text is also their express
+	// request for access to start at once - which is what waives the UK/EU 14-day right to cancel a
+	// digital service, and is only valid if asked for before the service begins.
+	form.Set("consent_collection[terms_of_service]", "required")
+	form.Set("custom_text[terms_of_service_acceptance][message]", termsMessage(req.TermsURL))
 
 	var session sessionResponse
 	if err := p.call(ctx, http.MethodPost, "/v1/checkout/sessions", form, &session); err != nil {
@@ -103,6 +108,12 @@ func (p *Payments) PortalURL(ctx context.Context, customerID, returnURL string) 
 		return "", err
 	}
 	return session.URL, nil
+}
+
+// termsMessage is the text beside Checkout's terms checkbox. Stripe renders its Markdown links.
+func termsMessage(termsURL string) string {
+	return "I agree to the [Terms of Service](" + termsURL + ") and ask for access to start immediately. " +
+		"I understand that I lose my 14-day right to cancel once it does."
 }
 
 // subscriptionResponse is the part of a Subscription object this reads.

@@ -163,8 +163,13 @@ func (s *Service) ensureAuthor(ctx context.Context, uid string) error {
 		return err
 	}
 
-	// The profile is created with no username of its own, which is what has saveUser name it.
-	_, err = s.saveUser(ctx, entity.User{ID: uid})
+	// The profile is created with no username of its own, which is what has saveUser name it. It is
+	// created rather than put, so a profile the client wrote since the lookup above - its first
+	// sign-in racing this post - keeps the name and bio it chose.
+	_, err = s.saveUser(ctx, entity.User{ID: uid}, s.users.Create)
+	if errors.Is(err, repository.ErrUserExists) {
+		return nil
+	}
 	return err
 }
 
@@ -199,8 +204,7 @@ func applyBlogRequest(req *blogv1.BlogRequest, blog *entity.Blog) error {
 // returning false if it's malformed.
 func decodeBlogRequest(w http.ResponseWriter, r *http.Request, blog *entity.Blog) bool {
 	var body blogv1.BlogRequest
-	if err := readProto(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !readProto(w, r, &body) {
 		return false
 	}
 	if err := applyBlogRequest(&body, blog); err != nil {
@@ -420,7 +424,7 @@ func (s *Service) UpdateBlog(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := s.blogs.Update(r.Context(), blog)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		writeUpdateError(w, err)
 		return
 	}
 
@@ -431,6 +435,20 @@ func (s *Service) UpdateBlog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeProto(w, http.StatusOK, blogMessage(response))
+}
+
+// writeUpdateError answers a failed BlogRepository.Update: a post deleted since it was read is gone
+// as far as the caller is concerned, and one written since is a conflict to reload and retry,
+// rather than something to overwrite.
+func writeUpdateError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, repository.ErrNotFound):
+		writeError(w, http.StatusNotFound, "blog not found")
+	case errors.Is(err, repository.ErrPostChanged):
+		writeError(w, http.StatusConflict, "the post was changed elsewhere; reload it and try again")
+	default:
+		writeError(w, http.StatusInternalServerError, "internal error")
+	}
 }
 
 // DeleteBlog removes a blog. Only the owner may delete it.

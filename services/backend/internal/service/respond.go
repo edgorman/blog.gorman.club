@@ -67,18 +67,31 @@ func writeProto(w http.ResponseWriter, status int, message proto.Message) {
 // is also what makes an additive proto change safe to deploy before the client that sends it.
 var protoJSONUnmarshal = protojson.UnmarshalOptions{DiscardUnknown: true}
 
-// readProto decodes a request body into a generated message, the counterpart to writeProto.
+// maxRequestBody caps every body readProto reads. The largest legitimate one is a post at
+// entity.MaxContentLength runes, which even at the 6 bytes a JSON-escaped control character takes
+// stays well under this.
+const maxRequestBody = 1 << 20
+
+// readProto decodes a request body into a generated message, the counterpart to writeProto,
+// writing the error response and returning false if it is too large or malformed.
 //
-// It reads the body whole because protojson has no streaming decoder, where encoding/json did.
-// That is not a new exposure in practice - decoding into a struct buffers the same bytes either
-// way, and no route caps its body today - but a cap belongs here if one is ever wanted, rather
-// than at each call site.
-func readProto(r *http.Request, message proto.Message) error {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		return err
+// It reads the body whole because protojson has no streaming decoder, so the cap is what stops a
+// caller making a write route buffer whatever it sends.
+func readProto(w http.ResponseWriter, r *http.Request, message proto.Message) bool {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+		return false
 	}
-	return protoJSONUnmarshal.Unmarshal(body, message)
+	if err == nil {
+		err = protoJSONUnmarshal.Unmarshal(body, message)
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return false
+	}
+	return true
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

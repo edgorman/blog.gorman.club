@@ -84,7 +84,7 @@ type BlogRepository struct {
 }
 
 // NewBlogRepository returns a repository.BlogRepository backed by the "blogs" collection. The
-// client is kept because Purge deletes in bulk.
+// client is kept because Purge deletes in bulk and Update runs in a transaction.
 func NewBlogRepository(client *fs.Client) *BlogRepository {
 	return &BlogRepository{client: client, blogs: client.Collection("blogs")}
 }
@@ -275,14 +275,40 @@ func (r *BlogRepository) Create(ctx context.Context, blog entity.Blog) (entity.B
 // Update overwrites the post in place, slug included - which is to say the post never moves.
 // Deriving a fresh slug from an edited title would break every link to the post and leave the old
 // one free for another post to take, so it stays as it was assigned at creation.
+//
+// The stored post is re-read in the same transaction as the write, so a write landing between the
+// check and the Set re-runs the transaction rather than being overwritten.
 func (r *BlogRepository) Update(ctx context.Context, blog entity.Blog) (entity.Blog, error) {
 	if err := blog.Validate(); err != nil {
 		return entity.Blog{}, err
 	}
 
-	blog.UpdatedAt = time.Now().UTC()
+	read := blog.UpdatedAt
+	err := r.client.RunTransaction(ctx, func(ctx context.Context, tx *fs.Transaction) error {
+		doc, err := tx.Get(r.blogs.Doc(blog.Slug))
+		if status.Code(err) == codes.NotFound {
+			return repository.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		stored, err := documentToBlog(doc)
+		if err != nil {
+			return err
+		}
+		if stored.IsDeleted() {
+			return repository.ErrNotFound
+		}
+		// Firestore keeps microseconds, so a time that has not been through it is compared at the
+		// precision it will be stored at.
+		if !stored.UpdatedAt.Truncate(time.Microsecond).Equal(read.Truncate(time.Microsecond)) {
+			return repository.ErrPostChanged
+		}
 
-	if _, err := r.blogs.Doc(blog.Slug).Set(ctx, blogToDocument(blog)); err != nil {
+		blog.UpdatedAt = time.Now().UTC()
+		return tx.Set(r.blogs.Doc(blog.Slug), blogToDocument(blog))
+	})
+	if err != nil {
 		return entity.Blog{}, err
 	}
 	return blog, nil

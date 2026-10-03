@@ -311,6 +311,47 @@ func TestSendChatMessage_ProviderFailureStoresNothing(t *testing.T) {
 	}
 }
 
+// A turn holds the post it read for as long as the model takes. Whatever the author did to the post
+// meanwhile must survive the turn's write-back rather than be reverted by it.
+func TestSendChatMessage_DoesNotRevertAWriteMadeDuringTheTurn(t *testing.T) {
+	for name, meanwhile := range map[string]func(*chatFixture){
+		"made private": func(f *chatFixture) {
+			blog, _ := f.blogs.stored(chatSlug)
+			blog.Visibility = entity.VisibilityPrivate
+			blog.UpdatedAt = blog.UpdatedAt.Add(time.Second)
+			f.blogs.seed(blog)
+		},
+		"deleted": func(f *chatFixture) {
+			if err := f.blogs.Delete(t.Context(), chatSlug); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newChatFixture(t)
+			f.assistant.reply = func(req repository.AssistantRequest) (repository.AssistantReply, error) {
+				meanwhile(f)
+				draft := req.Draft
+				draft.Content = "the dog sat"
+				return repository.AssistantReply{Draft: draft, Edits: []entity.ChatEdit{{Tool: "replace_text"}}}, nil
+			}
+
+			rec := f.send(t, &blogv1.ChatRequest{Message: "say dog instead"})
+
+			if code := rec.Result().StatusCode; code != http.StatusConflict && code != http.StatusNotFound {
+				t.Fatalf("status = %d, want 409 or 404", code)
+			}
+			stored, _ := f.blogs.stored(chatSlug)
+			if stored.Content != "the cat sat" || (name == "made private" && stored.Visibility != entity.VisibilityPrivate) || (name == "deleted" && !stored.IsDeleted()) {
+				t.Errorf("stored = %+v, want the write made during the turn kept", stored)
+			}
+			if _, err := f.chats.Get(t.Context(), chatSlug); !errors.Is(err, repository.ErrNotFound) {
+				t.Error("a chat was stored for a turn whose edit was refused")
+			}
+		})
+	}
+}
+
 // A deployment with no model says so, rather than failing as though the provider were down.
 func TestSendChatMessage_Unconfigured(t *testing.T) {
 	f := newChatFixture(t)

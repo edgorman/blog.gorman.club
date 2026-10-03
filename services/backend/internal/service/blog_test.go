@@ -610,6 +610,33 @@ func TestCreateBlog_NamesAnAuthorWhoHasNoProfile(t *testing.T) {
 	}
 }
 
+// The client's first-sign-in PUT /users/me can land between ensureAuthor's lookup and its write;
+// the profile it chose must survive rather than be replaced by a generated one.
+func TestCreateBlog_KeepsAProfileWrittenMeanwhile(t *testing.T) {
+	blogs := newFakeBlogRepository()
+	users := newFakeUserRepository()
+	users.beforePut = func(entity.User) error {
+		users.beforePut = nil
+		users.seed(entity.User{ID: "caller", Username: "chosen-name", Bio: "mine"})
+		return nil
+	}
+	s := newTestService(blogs, users)
+
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello world", Visibility: string(entity.VisibilityPublic)})
+	rec := httptest.NewRecorder()
+	s.CreateBlog(rec, withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller"))
+
+	if rec.Result().StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
+	}
+	if got := users.users["caller"]; got.Username != "chosen-name" || got.Bio != "mine" {
+		t.Errorf("profile = %+v, want the one the client wrote", got)
+	}
+	if got := decodeBlog(t, rec).AuthorUsername; got != "chosen-name" {
+		t.Errorf("AuthorUsername = %q, want %q", got, "chosen-name")
+	}
+}
+
 func TestCreateBlog_RejectsInvalidVisibility(t *testing.T) {
 	s := newTestService(nil, nil)
 

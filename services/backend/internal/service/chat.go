@@ -187,8 +187,7 @@ func (s *Service) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body blogv1.ChatRequest
-	if err := readProto(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !readProto(w, r, &body) {
 		return
 	}
 
@@ -237,8 +236,10 @@ func (s *Service) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 			writeValidationError(w, err)
 			return
 		}
+		// The post was read before the model was asked, so the write is refused if anything -
+		// a privacy change, a delete, an edit in another tab - landed while it was answering.
 		if blog, err = s.blogs.Update(r.Context(), blog); err != nil {
-			writeError(w, http.StatusInternalServerError, "internal error")
+			writeUpdateError(w, err)
 			return
 		}
 	}

@@ -68,7 +68,14 @@ export function Post() {
     if (state.phase !== 'ready') return
     const hash = window.location.hash.slice(1)
     if (!hash) return
-    const target = decodeURIComponent(hash)
+    // A pasted or truncated link can carry a malformed escape (`#%`), which must not take the page
+    // down - the raw hash is still worth trying as an id.
+    let target = hash
+    try {
+      target = decodeURIComponent(hash)
+    } catch {
+      // Keep the raw hash.
+    }
     const timeoutId = window.setTimeout(() => {
       // Some markdown sources target legacy `<a name="...">` anchors rather than an element id.
       const el = document.getElementById(target) ?? document.getElementsByName(target)[0]

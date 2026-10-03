@@ -48,7 +48,33 @@ function backend(pages: object[] = [{ posts: [publicPost], hasMore: false }]) {
 
 const get = (url: string, e = env()) => worker.fetch(new Request(url), e)
 
+// Cloudflare's caches.default, which Node doesn't have: a Map keyed by URL.
+function cache() {
+  const store = new Map<string, Response>()
+  ;(global as unknown as { caches: unknown }).caches = {
+    default: {
+      put: async (req: Request, res: Response) => void store.set(req.url, res),
+      match: async (req: Request) => store.get(req.url)?.clone(),
+    },
+  }
+  return store
+}
+
+const STATIC_ONLY = [
+  '<?xml version="1.0" encoding="UTF-8"?>',
+  '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+  '  <url><loc>https://blog.gorman.club/privacy</loc></url>',
+  '  <url><loc>https://blog.gorman.club/terms</loc></url>',
+  '</urlset>',
+  '',
+].join('\n')
+
 describe('_worker.js', () => {
+  afterEach(() => {
+    delete (global as unknown as { caches?: unknown }).caches
+    jest.restoreAllMocks()
+  })
+
   it('injects the post title, description, Open Graph and canonical tags into the shell', async () => {
     backend()
     const response = await get('https://blog.gorman.club/post/hello-world')
@@ -118,6 +144,61 @@ describe('_worker.js', () => {
         '',
       ].join('\n'),
     )
+  })
+
+  // #246: Search Console reports any non-XML answer as "Sitemap could not be read".
+  it('serves the last good sitemap when the backend fails', async () => {
+    const store = cache()
+    backend()
+    const good = await (await get('https://blog.gorman.club/sitemap.xml')).text()
+    expect(good).toContain('/post/hello-world')
+    expect(await store.get('https://blog.gorman.club/sitemap.xml?last-good')?.clone().text()).toBe(good)
+    expect(store.get('https://blog.gorman.club/sitemap.xml?last-good')?.headers.get('Cache-Control')).toBe('public, max-age=604800')
+
+    global.fetch = jest.fn(async () => new Response('boom', { status: 500 })) as typeof fetch
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    const response = await get('https://blog.gorman.club/sitemap.xml')
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Content-Type')).toBe('application/xml; charset=utf-8')
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=300')
+    expect(await response.text()).toBe(good)
+  })
+
+  it('serves the static pages when the backend fails and nothing is cached', async () => {
+    cache()
+    global.fetch = jest.fn(async () => { throw new TypeError('fetch failed') }) as typeof fetch
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    const response = await get('https://blog.gorman.club/sitemap.xml')
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Content-Type')).toBe('application/xml; charset=utf-8')
+    expect(await response.text()).toBe(STATIC_ONLY)
+  })
+
+  it('serves the static pages without a backend or a Cache API', async () => {
+    backend()
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    const response = await get('https://blog.gorman.club/sitemap.xml', env(null))
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe(STATIC_ONLY)
+  })
+
+  it('falls back once the backend misses its deadline', async () => {
+    cache()
+    const deadline = new AbortController()
+    const timeout = jest.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
+    // A cold backend: it never answers, and only the deadline ends the wait.
+    global.fetch = jest.fn(
+      (_input: unknown, init?: RequestInit) =>
+        new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))),
+    ) as typeof fetch
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    const pending = get('https://blog.gorman.club/sitemap.xml')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    deadline.abort(new DOMException('timed out', 'TimeoutError'))
+    const response = await pending
+    expect(timeout).toHaveBeenCalledWith(10_000)
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe(STATIC_ONLY)
   })
 
   // The worker keeps its own copy of excerpt(); this keeps it describing a post the way the SPA does.

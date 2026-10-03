@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { FeedList } from '../components/FeedList'
 import { PageMeta } from '../components/PageMeta'
 import { useApp } from '../context/AppContext'
-import { errorMessage, userPath, type Blog } from '../lib/api'
+import { ApiError, errorMessage, userPath, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
 
 interface ProfileInfo {
@@ -34,6 +34,10 @@ export function UserProfile() {
   const { api } = useApp()
   const [profile, setProfile] = useState<ProfileInfo | null>(null)
   const [missing, setMissing] = useState(false)
+  // Any other failure to look the profile up, which is worth retrying rather than calling the
+  // name unclaimed. `attempt` is bumped by the retry to re-run the lookup.
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
   const [postsState, setPostsState] = useState<PostsState>(
     api ? { phase: 'loading' } : { phase: 'unconfigured' },
   )
@@ -44,6 +48,7 @@ export function UserProfile() {
     // second profile would render the first one's header, or its posts, while the new one loads.
     setProfile(null)
     setMissing(false)
+    setLookupError(null)
     setPostsState({ phase: 'loading' })
 
     let cancelled = false
@@ -53,19 +58,26 @@ export function UserProfile() {
       (u) => {
         if (!cancelled) setProfile({ id: u.id, username: u.username, bio: u.bio, memberSince: u.createdAt })
       },
-      () => {
-        if (!cancelled) setMissing(true)
+      (e: unknown) => {
+        if (cancelled) return
+        if (e instanceof ApiError && e.status === 404) setMissing(true)
+        else setLookupError(errorMessage(e, 'Failed to load this profile'))
       },
     )
     return () => {
       cancelled = true
     }
-  }, [api, username])
+  }, [api, username, attempt])
+
+  // Bumped whenever the profile changes, so a later page of the profile the reader has since left is
+  // dropped rather than appended to this one.
+  const feed = useRef(0)
 
   useEffect(() => {
     // Posts are fetched by the profile's uid, once it resolves, rather than filtered client-side
     // out of the whole feed - the point of scoping `listBlogs` by `ownerId` in the first place.
     if (!api || !profile) return
+    feed.current++
     setPostsState({ phase: 'loading' })
 
     let cancelled = false
@@ -87,11 +99,13 @@ export function UserProfile() {
   const loadMore = () => {
     if (!api || !profile || postsState.phase !== 'ready' || postsState.loadingMore) return
     const cursor = postsState.posts.at(-1)?.createdAt
+    const id = feed.current
     setPostsState({ ...postsState, loadingMore: true, loadMoreError: undefined })
 
     api
       .listBlogs({ ownerId: profile.id, limit: FEED_SIZE, startAfter: cursor })
       .then((page) => {
+        if (feed.current !== id) return
         setPostsState((prev) =>
           prev.phase === 'ready'
             ? { phase: 'ready', posts: [...prev.posts, ...page.posts], hasMore: page.hasMore, loadingMore: false }
@@ -99,6 +113,7 @@ export function UserProfile() {
         )
       })
       .catch((e: unknown) => {
+        if (feed.current !== id) return
         setPostsState((prev) =>
           prev.phase === 'ready'
             ? { ...prev, loadingMore: false, loadMoreError: errorMessage(e, 'Failed to load more posts') }
@@ -120,6 +135,19 @@ export function UserProfile() {
       <div className="page">
         <p className="center-note">No such user.</p>
         <Link to="/">← Back to feed</Link>
+      </div>
+    )
+  }
+
+  if (lookupError) {
+    return (
+      <div className="page">
+        <p role="alert" className="center-note">
+          {lookupError}
+        </p>
+        <button type="button" className="btn btn-ghost" onClick={() => setAttempt((n) => n + 1)}>
+          Try again
+        </button>
       </div>
     )
   }

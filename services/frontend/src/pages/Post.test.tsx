@@ -155,6 +155,22 @@ describe('Post', () => {
     window.location.hash = ''
   })
 
+  // A pasted, truncated link: decodeURIComponent throws on it, which must not blank the page.
+  it('still renders the post under a malformed hash', async () => {
+    window.location.hash = '#%E0%A4%A'
+
+    renderWithApp(<Post />, {
+      context: { api: fakeApi() },
+      route: '/post/hello-world#%E0%A4%A',
+      path: '/post/:slug',
+    })
+
+    expect(await screen.findByText('Body text.')).toBeInTheDocument()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.getByText('Body text.')).toBeInTheDocument()
+    window.location.hash = ''
+  })
+
   it('shows an Edit link only to the post owner', async () => {
     renderWithApp(<Post />, {
       context: { api: fakeApi(), user: { id: 'uid-1', email: 'a@b.com', name: 'Ada' } },

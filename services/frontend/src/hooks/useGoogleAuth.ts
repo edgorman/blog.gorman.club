@@ -90,6 +90,8 @@ export interface UseGoogleAuthResult {
   ready: boolean
   renderButton: (element: HTMLElement) => void
   signOut: () => void
+  /** Drops a credential the backend no longer accepts and asks Google for a fresh one. */
+  expire: () => void
 }
 
 export function useGoogleAuth(): UseGoogleAuthResult {
@@ -172,11 +174,35 @@ export function useGoogleAuth(): UseGoogleAuthResult {
     setToken(null)
   }, [])
 
+  // Unlike signOut, auto_select stays on, so prompt() can reissue a credential for the same account
+  // without a click where Google allows it, and One Tap asks for one where it doesn't.
+  const expire = useCallback(() => {
+    clearCredential()
+    setUser(null)
+    setToken(null)
+    window.google?.accounts.id.prompt()
+  }, [])
+
+  // A credential lasts about an hour and nothing refreshes it, so the tab signs out when it runs
+  // out rather than staying signed in on screen while every request 401s.
+  useEffect(() => {
+    if (!token) return
+    let exp: number | undefined
+    try {
+      exp = parseCredential(token).exp
+    } catch {
+      return
+    }
+    if (!exp) return
+    const timeoutId = window.setTimeout(expire, Math.max(0, exp * 1000 - Date.now()))
+    return () => window.clearTimeout(timeoutId)
+  }, [token, expire])
+
   const authHeaders = useMemo(
     (): Record<string, string> =>
       token ? { Authorization: `Bearer ${token}`, 'Authorization-Provider': AUTH_PROVIDER } : {},
     [token],
   )
 
-  return { user, authHeaders, error, ready, renderButton, signOut }
+  return { user, authHeaders, error, ready, renderButton, signOut, expire }
 }

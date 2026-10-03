@@ -26,14 +26,23 @@ export function EditProfile() {
 
   useEffect(() => {
     if (!api || !user) return
+    // Cleared per account, so a previous one's profile or load error never shows for this one.
+    setUsername(null)
+    setDraftUsername('')
+    setBio('')
+    setLoadError(null)
+    setLoading(true)
+    let cancelled = false
     api.getCurrentUser().then(
       (profile) => {
+        if (cancelled) return
         setUsername(profile.username)
         setDraftUsername(profile.username)
         setBio(profile.bio ?? '')
         setLoading(false)
       },
       (e: unknown) => {
+        if (cancelled) return
         // Only a 404 means "no profile yet", which leaves the form blank to be filled in. Any
         // other failure must not look like that: saving from a blank form would overwrite a real
         // bio with an empty one, so the form is withheld entirely.
@@ -43,6 +52,9 @@ export function EditProfile() {
         setLoading(false)
       },
     )
+    return () => {
+      cancelled = true
+    }
   }, [api, user])
 
   const save = () => {

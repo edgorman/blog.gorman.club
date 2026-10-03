@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Api, Blog, BlogPage, CurrentUser, ListBlogsParams, User } from '../lib/api'
+import { ApiError, type Api, type Blog, type BlogPage, type CurrentUser, type ListBlogsParams, type User } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { UserProfile } from './UserProfile'
 
@@ -97,7 +97,7 @@ describe('UserProfile', () => {
   // that misses means the name is genuinely unclaimed, not that the author is nameless.
   it('reports an unclaimed username as no such user', async () => {
     const listBlogs = listBlogsByOwner([mine])
-    const api = fakeApi({ getUser: jest.fn().mockRejectedValue(new Error('not found')), listBlogs })
+    const api = fakeApi({ getUser: jest.fn().mockRejectedValue(new ApiError(404, 'user not found')), listBlogs })
     renderWithApp(<UserProfile />, {
       context: { api },
       route: '/user/nobody-here-at-all',
@@ -107,6 +107,20 @@ describe('UserProfile', () => {
     expect(await screen.findByText('No such user.')).toBeInTheDocument()
     // Nothing to page through for a profile that never resolved, so posts are never fetched.
     expect(listBlogs).not.toHaveBeenCalled()
+  })
+
+  it('offers a retry, rather than calling the name unclaimed, when the lookup fails', async () => {
+    const getUser = jest.fn().mockRejectedValueOnce(new ApiError(500, 'backend down')).mockResolvedValue(user)
+    renderWithApp(<UserProfile />, {
+      context: { api: fakeApi({ getUser }) },
+      route: '/user/calm-smiling-kestrel',
+      path: '/user/:username',
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('backend down')
+    expect(screen.queryByText('No such user.')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('heading', { name: user.username })).toBeInTheDocument()
   })
 
   // Editing is reached from the account panel alone, so the owner's own profile page carries no

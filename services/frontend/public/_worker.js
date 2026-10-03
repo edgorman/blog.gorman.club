@@ -16,6 +16,10 @@ const PROD_HOSTNAME = new URL(SITE_URL).hostname
 // ponytail: stops the sitemap at 50 pages of 100 posts; move to a dedicated backend route if the
 // blog ever outgrows that.
 const SITEMAP_MAX_PAGES = 50
+// How long the backend gets to answer all its pages before the sitemap falls back (#246).
+const SITEMAP_TIMEOUT_MS = 10_000
+// How long a colo keeps the last good sitemap to fall back to: a week.
+const SITEMAP_LAST_GOOD_SECONDS = 7 * 24 * 60 * 60
 // The SPA's routes that aren't posts or profiles but are worth indexing.
 const STATIC_PAGES = ['/privacy', '/terms']
 
@@ -72,39 +76,71 @@ async function fetchPost(env, url, encodedSlug) {
   }
 }
 
+/**
+ * Always a 200 sitemap (#246): Search Console reports any error, or anything that isn't XML, as
+ * "Sitemap could not be read", so a backend that's down, cold or slow falls back to the last good
+ * sitemap this colo cached, or failing that to the static pages alone, rather than a 502.
+ */
 async function sitemap(env, url) {
-  const backend = await backendUrl(env, url)
-  if (!backend) return new Response('No backend configured\n', { status: 404 })
-  const entries = STATIC_PAGES.map((path) => `  <url><loc>${SITE_URL}${path}</loc></url>`)
+  const cache = typeof caches === 'undefined' ? null : caches.default
+  const lastGood = new Request(new URL('/sitemap.xml?last-good', url))
   try {
-    let startAfter = ''
-    for (let i = 0; i < SITEMAP_MAX_PAGES; i++) {
-      const query = new URLSearchParams({ limit: '100' })
-      if (startAfter) query.set('startAfter', startAfter)
-      const response = await fetch(`${backend}/blogs?${query}`)
-      if (!response.ok) throw new Error(`GET /blogs answered ${response.status}`)
-      const page = await response.json()
-      const posts = page.posts ?? []
-      for (const post of posts) {
-        if (post.visibility !== 'public') continue
-        const lastmod = post.updatedAt ? `<lastmod>${escapeHtml(post.updatedAt)}</lastmod>` : ''
-        entries.push(`  <url><loc>${escapeHtml(postUrl(post))}</loc>${lastmod}</url>`)
-      }
-      if (!page.hasMore || posts.length === 0) break
-      startAfter = posts.at(-1).createdAt
-    }
+    const xml = sitemapXml(await sitemapEntries(env, url))
+    const response = xmlResponse(xml, 3600)
+    // Kept well past the hour it's served fresh, so there's something to fall back to.
+    await cache?.put(lastGood, xmlResponse(xml, SITEMAP_LAST_GOOD_SECONDS)).catch(() => {})
+    return response
   } catch (e) {
-    return new Response(`Sitemap unavailable: ${e instanceof Error ? e.message : e}\n`, { status: 502 })
+    console.error(`Sitemap falling back: ${e instanceof Error ? e.message : e}`)
+    const cached = await cache?.match(lastGood).catch(() => undefined)
+    if (cached) return xmlResponse(await cached.text(), 300)
+    return xmlResponse(sitemapXml(STATIC_PAGES.map(staticEntry)), 300)
   }
-  const xml = [
+}
+
+/** Every <url> line: the static pages, then each public post. Throws if the backend can't be read. */
+async function sitemapEntries(env, url) {
+  const backend = await backendUrl(env, url)
+  if (!backend) throw new Error('no backend configured')
+  const entries = STATIC_PAGES.map(staticEntry)
+  // One deadline for all the pages, so a Cloud Run cold start falls back before the crawler gives up.
+  const signal = AbortSignal.timeout(SITEMAP_TIMEOUT_MS)
+  let startAfter = ''
+  for (let i = 0; i < SITEMAP_MAX_PAGES; i++) {
+    const query = new URLSearchParams({ limit: '100' })
+    if (startAfter) query.set('startAfter', startAfter)
+    const response = await fetch(`${backend}/blogs?${query}`, { signal })
+    if (!response.ok) throw new Error(`GET /blogs answered ${response.status}`)
+    const page = await response.json()
+    const posts = page.posts ?? []
+    for (const post of posts) {
+      if (post.visibility !== 'public') continue
+      const lastmod = post.updatedAt ? `<lastmod>${escapeHtml(post.updatedAt)}</lastmod>` : ''
+      entries.push(`  <url><loc>${escapeHtml(postUrl(post))}</loc>${lastmod}</url>`)
+    }
+    if (!page.hasMore || posts.length === 0) break
+    startAfter = posts.at(-1).createdAt
+  }
+  return entries
+}
+
+function staticEntry(path) {
+  return `  <url><loc>${SITE_URL}${path}</loc></url>`
+}
+
+function sitemapXml(entries) {
+  return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ...entries,
     '</urlset>',
     '',
   ].join('\n')
+}
+
+function xmlResponse(xml, maxAge) {
   return new Response(xml, {
-    headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+    headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': `public, max-age=${maxAge}` },
   })
 }
 

@@ -1,4 +1,4 @@
-import { ApiError, createApi } from './api'
+import { ApiError, SESSION_EXPIRED, createApi } from './api'
 
 const authHeaders = { Authorization: 'Bearer test-token', 'Authorization-Provider': 'google' }
 
@@ -149,4 +149,29 @@ describe('createApi', () => {
 
     expect((error as ApiError).message).toContain('502')
   })
+
+  it('ends the session and says so when the backend refuses the credential', async () => {
+    mockFetch({ ok: false, status: 401, json: () => Promise.resolve({ error: 'invalid token' }) })
+    const onUnauthorized = jest.fn()
+
+    const error = await createApi('https://api.example.com', authHeaders, onUnauthorized)
+      .updateBlog('hello-world', {})
+      .catch((e: unknown) => e)
+
+    expect(onUnauthorized).toHaveBeenCalled()
+    expect(error).toEqual(new ApiError(401, SESSION_EXPIRED))
+  })
+
+  it('leaves a signed-out 401 to the caller', async () => {
+    mockFetch({ ok: false, status: 401, json: () => Promise.resolve({ error: 'missing bearer token' }) })
+    const onUnauthorized = jest.fn()
+
+    const error = await createApi('https://api.example.com', {}, onUnauthorized)
+      .createBlog({})
+      .catch((e: unknown) => e)
+
+    expect(onUnauthorized).not.toHaveBeenCalled()
+    expect((error as ApiError).message).toBe('missing bearer token')
+  })
 })
+

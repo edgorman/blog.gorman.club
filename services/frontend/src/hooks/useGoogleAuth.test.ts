@@ -166,4 +166,29 @@ describe('useGoogleAuth', () => {
     expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull()
     expect(result.current.user).toBeNull()
   })
+
+  // Nothing refreshes a credential, so an open tab must not stay signed in past its expiry.
+  it('signs out and asks for a fresh credential when the restored one expires', () => {
+    jest.useFakeTimers()
+    try {
+      process.env.VITE_GOOGLE_CLIENT_ID = 'test-client-id'
+      sessionStorage.setItem(STORAGE_KEY, credentialExpiringIn(3600))
+      const id = stubGoogle()
+
+      const { result } = renderHook(() => useGoogleAuth())
+      expect(result.current.user).not.toBeNull()
+
+      act(() => jest.advanceTimersByTime(3600 * 1000))
+
+      expect(result.current.user).toBeNull()
+      expect(result.current.authHeaders).toEqual({})
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull()
+      // Not a sign-out: auto_select stays on so Google can reissue for the same account.
+      expect(id.disableAutoSelect).not.toHaveBeenCalled()
+      expect(id.prompt).toHaveBeenCalled()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
 })
+

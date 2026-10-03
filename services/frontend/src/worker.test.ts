@@ -105,6 +105,29 @@ describe('_worker.js', () => {
     expect(html).toBe(SHELL)
   })
 
+  // A string replacement would expand $' into the rest of the shell and $& into the matched <title>.
+  it("keeps $' and $& in a title literal", async () => {
+    backend()
+    global.fetch = jest.fn(async () => Response.json({ ...publicPost, title: "What $' and $& mean in sed" })) as typeof fetch
+    const html = await (await get('https://blog.gorman.club/post/hello-world')).text()
+    expect(html).toContain("<title>What $&#39; and $&amp; mean in sed · Gorman Club</title>")
+    expect(html.match(/<body>/g)).toHaveLength(1)
+  })
+
+  it('serves the plain shell once the post lookup misses its deadline', async () => {
+    const deadline = new AbortController()
+    const timeout = jest.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
+    global.fetch = jest.fn(
+      (_input: unknown, init?: RequestInit) =>
+        new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))),
+    ) as typeof fetch
+    const pending = get('https://blog.gorman.club/post/hello-world')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    deadline.abort(new DOMException('timed out', 'TimeoutError'))
+    expect(await (await pending).text()).toBe(SHELL)
+    expect(timeout).toHaveBeenCalledWith(1500)
+  })
+
   it('allows crawling on prod and names the sitemap', async () => {
     const response = await get('https://blog.gorman.club/robots.txt')
     expect(await response.text()).toBe('User-agent: *\nAllow: /\nSitemap: https://blog.gorman.club/sitemap.xml\n')

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FeedList } from '../components/FeedList'
 import { PageMeta } from '../components/PageMeta'
@@ -50,15 +50,22 @@ export function Landing() {
     setTerm(query)
   }
 
+  // Bumped whenever the filters change, so an answer for the feed the reader has since left -
+  // its first page or a later one - is dropped rather than shown under (or appended to) this one.
+  const feed = useRef(0)
+
   useEffect(() => {
     if (!api) return
+    const id = ++feed.current
     setState({ phase: 'loading' })
     api
       .listBlogs({ limit: FEED_SIZE, ...filterParams(tag, query) })
       .then((page) => {
+        if (feed.current !== id) return
         setState({ phase: 'ready', posts: page.posts, hasMore: page.hasMore, loadingMore: false })
       })
       .catch((e: unknown) => {
+        if (feed.current !== id) return
         setState({ phase: 'error', message: errorMessage(e, 'Failed to load the feed') })
       })
   }, [api, tag, query])
@@ -66,6 +73,7 @@ export function Landing() {
   const loadMore = () => {
     if (!api || state.phase !== 'ready' || state.loadingMore) return
     const cursor = state.posts.at(-1)?.createdAt
+    const id = feed.current
     setState({ ...state, loadingMore: true, loadMoreError: undefined })
 
     api
@@ -73,6 +81,7 @@ export function Landing() {
       // off, not what it was narrowed to.
       .listBlogs({ limit: FEED_SIZE, startAfter: cursor, ...filterParams(tag, query) })
       .then((page) => {
+        if (feed.current !== id) return
         setState((prev) =>
           prev.phase === 'ready'
             ? { phase: 'ready', posts: [...prev.posts, ...page.posts], hasMore: page.hasMore, loadingMore: false }
@@ -80,6 +89,7 @@ export function Landing() {
         )
       })
       .catch((e: unknown) => {
+        if (feed.current !== id) return
         setState((prev) =>
           prev.phase === 'ready'
             ? { ...prev, loadingMore: false, loadMoreError: errorMessage(e, 'Failed to load more posts') }

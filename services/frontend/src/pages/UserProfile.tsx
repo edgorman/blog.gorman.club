@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { FeedList } from '../components/FeedList'
 import { PageMeta } from '../components/PageMeta'
@@ -60,10 +60,15 @@ export function UserProfile() {
     }
   }, [api, username])
 
+  // Bumped whenever the profile changes, so a later page of the profile the reader has since left is
+  // dropped rather than appended to this one.
+  const feed = useRef(0)
+
   useEffect(() => {
     // Posts are fetched by the profile's username, once it resolves, rather than filtered
     // client-side out of the whole feed - the point of scoping `listBlogs` by `author`.
     if (!api || !profile) return
+    feed.current++
     setPostsState({ phase: 'loading' })
 
     let cancelled = false
@@ -85,11 +90,13 @@ export function UserProfile() {
   const loadMore = () => {
     if (!api || !profile || postsState.phase !== 'ready' || postsState.loadingMore) return
     const cursor = postsState.posts.at(-1)?.createdAt
+    const id = feed.current
     setPostsState({ ...postsState, loadingMore: true, loadMoreError: undefined })
 
     api
       .listBlogs({ author: profile.username, limit: FEED_SIZE, startAfter: cursor })
       .then((page) => {
+        if (feed.current !== id) return
         setPostsState((prev) =>
           prev.phase === 'ready'
             ? { phase: 'ready', posts: [...prev.posts, ...page.posts], hasMore: page.hasMore, loadingMore: false }
@@ -97,6 +104,7 @@ export function UserProfile() {
         )
       })
       .catch((e: unknown) => {
+        if (feed.current !== id) return
         setPostsState((prev) =>
           prev.phase === 'ready'
             ? { ...prev, loadingMore: false, loadMoreError: errorMessage(e, 'Failed to load more posts') }

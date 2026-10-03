@@ -37,9 +37,12 @@ export function EditPost() {
   useEffect(() => {
     if (!api || !slug) return
     setState({ phase: 'loading' })
+    // A slower answer for the post the author just left must not load (and then save) into this one.
+    let current = true
     api
       .getBlog(slug)
       .then((post) => {
+        if (!current) return
         setState({ phase: 'ready', post })
         setTitle(post.title)
         setMarkdown(post.content)
@@ -50,9 +53,13 @@ export function EditPost() {
         setVisibility(post.visibility as Visibility)
       })
       .catch((e: unknown) => {
+        if (!current) return
         if (e instanceof ApiError && e.status === 404) return setState({ phase: 'not-found' })
         setState({ phase: 'error', message: e instanceof Error ? e.message : 'Failed to load post' })
       })
+    return () => {
+      current = false
+    }
   }, [api, slug])
 
   const save = () => {

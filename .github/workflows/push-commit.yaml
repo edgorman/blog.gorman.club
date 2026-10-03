@@ -121,7 +121,8 @@ jobs:
           URL=$(gcloud run services describe backend-stag \
             --region=europe-west1 \
             --project=blog-gorman-club-stag \
-            --format='value(status.url)' 2>/dev/null || true)
+            --format='value(status.url)')
+          test -n "$URL" || { echo '::error::backend-stag URL not found'; exit 1; }
           echo "backend_url=$URL" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/frontend-build
         with:
@@ -303,6 +304,9 @@ jobs:
 
       - name: Terraform Plan (prod preview)
         shell: bash
+        env:
+          # Same as every other prod plan/apply, or this plan shows GOOGLE_CLIENT_ID being blanked.
+          TF_VAR_google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
         working-directory: infrastructure/env
         run: |
           terraform init \

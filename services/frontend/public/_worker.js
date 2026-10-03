@@ -20,6 +20,9 @@ const SITEMAP_MAX_PAGES = 50
 const SITEMAP_TIMEOUT_MS = 10_000
 // How long a colo keeps the last good sitemap to fall back to: a week.
 const SITEMAP_LAST_GOOD_SECONDS = 7 * 24 * 60 * 60
+// How long a post page waits for the backend before serving the plain shell: the SPA fetches the
+// post itself anyway, so a slow or cold backend shouldn't hold up the page.
+const POST_TIMEOUT_MS = 1500
 // The SPA's routes that aren't posts or profiles but are worth indexing.
 const STATIC_PAGES = ['/privacy', '/terms']
 
@@ -57,17 +60,19 @@ async function postShell(request, env, url, encodedSlug) {
   const headers = new Headers(shell.headers)
   headers.delete('Content-Length')
   headers.delete('ETag')
-  const html = (await shell.text()).replace(/<title>[^<]*<\/title>/, postTags(post))
+  // A function, not a string: a string replacement would expand $' and $& inside the post's title.
+  const html = (await shell.text()).replace(/<title>[^<]*<\/title>/, () => postTags(post))
   return new Response(html, { status: 200, headers })
 }
 
 /** The post as a signed-out reader sees it, or null for a private, missing or unreachable one. */
 async function fetchPost(env, url, encodedSlug) {
   try {
-    const backend = await backendUrl(env, url)
+    const signal = AbortSignal.timeout(POST_TIMEOUT_MS)
+    const backend = await backendUrl(env, url, signal)
     if (!backend) return null
     const slug = decodeURIComponent(encodedSlug)
-    const response = await fetch(`${backend}/blogs/${encodeURIComponent(slug)}`)
+    const response = await fetch(`${backend}/blogs/${encodeURIComponent(slug)}`, { signal })
     if (!response.ok) return null
     const post = await response.json()
     return post.visibility === 'public' ? post : null
@@ -145,9 +150,9 @@ function xmlResponse(xml, maxAge) {
 }
 
 /** config.json's backendUrl, or '' when this deployment has none. */
-async function backendUrl(env, url) {
+async function backendUrl(env, url, signal) {
   try {
-    const response = await env.ASSETS.fetch(new URL('/config.json', url))
+    const response = await env.ASSETS.fetch(new URL('/config.json', url), { signal })
     const config = response.ok ? await response.json() : {}
     return typeof config.backendUrl === 'string' ? config.backendUrl.replace(/\/$/, '') : ''
   } catch {

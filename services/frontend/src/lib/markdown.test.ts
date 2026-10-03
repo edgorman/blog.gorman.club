@@ -50,6 +50,26 @@ describe('renderMarkdown', () => {
       expect(html).not.toContain('javascript:')
     })
 
+    // Script is already blocked, but a post could still lay a fake sign-in panel over the page.
+    it('strips inline styles and form controls', () => {
+      const html = renderMarkdown(
+        '<div style="position:fixed;inset:0">Session expired</div>\n\n' +
+          '<form><input type="password"><button>Sign in</button><textarea></textarea></form>\n',
+      )
+
+      expect(html).toContain('Session expired')
+      for (const forbidden of ['style=', '<form', '<input', '<button', '<textarea']) {
+        expect(html).not.toContain(forbidden)
+      }
+    })
+
+    it('keeps the checkboxes of a task list', () => {
+      const html = renderMarkdown('- [x] done\n- [ ] todo\n')
+
+      expect(html).toContain('<input checked="" disabled="" type="checkbox">')
+      expect(html).toContain('<input disabled="" type="checkbox">')
+    })
+
     it('keeps the formatting a post is actually written in', () => {
       const html = renderMarkdown('**bold** and [a link](https://example.com) and `code`\n')
 

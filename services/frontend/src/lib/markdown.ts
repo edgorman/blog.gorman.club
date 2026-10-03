@@ -94,5 +94,23 @@ marked.use({
  */
 export function renderMarkdown(markdown: string): string {
   usedSlugs.clear()
-  return DOMPurify.sanitize(marked.parse(markdown, { async: false }))
+  return DOMPurify.sanitize(marked.parse(markdown, { async: false }), SANITIZE)
 }
+
+/**
+ * Stricter than DOMPurify's defaults, which stop script but keep forms, inputs and inline styles:
+ * enough for a post to lay a fixed-position fake "sign in again" panel over the whole page (#260).
+ * Nothing markdown itself writes needs any of them.
+ */
+const SANITIZE = {
+  FORBID_TAGS: ['style', 'form', 'button', 'textarea', 'select', 'option', 'label'],
+  FORBID_ATTR: ['style'],
+}
+
+// A task list (`- [x] done`) is the one place markdown writes an <input>: a disabled checkbox. Any
+// other input is a form control an author typed into the prose.
+DOMPurify.addHook('uponSanitizeElement', (node, data) => {
+  if (data.tagName !== 'input') return
+  const element = node as Element
+  if (element.getAttribute('type') !== 'checkbox' || !element.hasAttribute('disabled')) element.remove()
+})

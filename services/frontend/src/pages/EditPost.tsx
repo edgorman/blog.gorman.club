@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { AssistantPanel } from '../components/AssistantPanel'
 import { useApp } from '../context/AppContext'
-import { ApiError, errorMessage, postPath, type Blog, type Visibility } from '../lib/api'
+import { ApiError, errorMessage, isAuthor, postPath, type Blog, type Visibility } from '../lib/api'
 import { renderMarkdown } from '../lib/markdown'
 import { MAX_TAGS, formatTags, parseTags } from '../lib/tags'
 
@@ -122,8 +122,16 @@ export function EditPost() {
   }
   const { post } = state
 
+  // Ownership is told by username, which arrives with the caller's profile shortly after sign-in.
+  if (user && !profile) {
+    return (
+      <div className="page">
+        <p className="text-muted center-note">Loading…</p>
+      </div>
+    )
+  }
   // A public post owned by someone else is fetched fine by getBlog, so ownership needs its own check.
-  if (post.ownerId !== user?.id) {
+  if (!isAuthor(profile, post.authorUsername)) {
     return (
       <div className="page">
         <p className="center-note">You don't have permission to edit this post.</p>

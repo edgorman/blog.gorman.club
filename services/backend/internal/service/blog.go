@@ -44,7 +44,6 @@ type blogResponse struct {
 func blogMessage(response blogResponse) *blogv1.Blog {
 	return &blogv1.Blog{
 		Slug:           response.Slug,
-		OwnerId:        response.OwnerID,
 		AuthorUsername: response.AuthorUsername,
 		Title:          response.Title,
 		Content:        response.Content,
@@ -100,15 +99,21 @@ func (s *Service) authorsFor(ctx context.Context, blogs []entity.Blog) (map[stri
 	return s.usernamesFor(ctx, uids)
 }
 
-// withAuthors pairs every blog with its owner's username.
+// withAuthors pairs every blog with its owner's username. It is also where a post's whitelist is
+// withheld from everybody but its owner: who a post was shared with is the owner's business, not
+// that of the readers named on it, nor of anybody reading a public post that still carries one.
 func (s *Service) withAuthors(ctx context.Context, blogs []entity.Blog) ([]blogResponse, error) {
 	authors, err := s.authorsFor(ctx, blogs)
 	if err != nil {
 		return nil, err
 	}
 
+	uid := uidFromContext(ctx)
 	responses := make([]blogResponse, 0, len(blogs))
 	for _, blog := range blogs {
+		if !blog.IsOwnedBy(uid) {
+			blog.AllowedUserIDs = nil
+		}
 		responses = append(responses, blogResponse{Blog: blog, AuthorUsername: authors[blog.OwnerID]})
 	}
 	return responses, nil
@@ -283,8 +288,7 @@ func (s *Service) requireReadableBlog(w http.ResponseWriter, r *http.Request) (e
 const listBlogsDefaultLimit = 20
 
 // parseBlogListParams reads ListBlogs' paging, scope and filters out of the query string: `limit`
-// bounds the page, `startAfter` (an RFC3339 timestamp) continues one, `ownerId` narrows to a
-// single author's posts for a profile feed, `tag` narrows to one topic, and `q` narrows to posts
+// bounds the page, `startAfter` (an RFC3339 timestamp) continues one, `tag` narrows to one topic, and `q` narrows to posts
 // holding a term. Each is optional, and a malformed one is reported as a 400 rather than silently
 // ignored - a client sending garbage here is the one case among List's callers where that garbage
 // should not be read as "no preference".
@@ -294,9 +298,8 @@ const listBlogsDefaultLimit = 20
 func parseBlogListParams(r *http.Request) (repository.ListParams, error) {
 	query := r.URL.Query()
 	params := repository.ListParams{
-		Limit:    listBlogsDefaultLimit,
-		OwnerUID: query.Get("ownerId"),
-		Query:    strings.TrimSpace(query.Get("q")),
+		Limit: listBlogsDefaultLimit,
+		Query: strings.TrimSpace(query.Get("q")),
 	}
 
 	// The tag is normalized here rather than in the repository, so what reaches Firestore is
@@ -329,7 +332,7 @@ func parseBlogListParams(r *http.Request) (repository.ListParams, error) {
 }
 
 // ListBlogs returns one page of the blogs the caller is allowed to read, newest first - the whole
-// collection for the general feed, or narrowed by `ownerId` to one author's posts, by `tag` to one
+// collection for the general feed, or narrowed by `author` (a username) to one author's posts, by `tag` to one
 // topic, and by `q` to posts holding a term.
 //
 // Filtering never widens what comes back: every narrowing is applied on top of the same
@@ -340,6 +343,21 @@ func (s *Service) ListBlogs(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	// A profile feed names its author by username, the only handle a client holds for one, and is
+	// resolved to the uid posts are stored under here. A name nobody holds has no posts.
+	if author := strings.TrimSpace(r.URL.Query().Get("author")); author != "" {
+		user, err := s.users.GetByUsername(r.Context(), author)
+		if errors.Is(err, repository.ErrNotFound) {
+			writeProto(w, http.StatusOK, blogPageMessage(nil, false))
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		params.OwnerUID = user.ID
 	}
 
 	blogs, hasMore, err := s.blogs.List(r.Context(), uidFromContext(r.Context()), params)

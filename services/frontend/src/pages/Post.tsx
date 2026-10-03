@@ -7,7 +7,7 @@ import { ReactionBar } from '../components/ReactionBar'
 import { TagList } from '../components/TagList'
 import { useApp } from '../context/AppContext'
 import { useReactions } from '../hooks/useReactions'
-import { ApiError, postPath, userPath, type Blog } from '../lib/api'
+import { ApiError, isAuthor, postPath, userPath, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
 import { renderMarkdown } from '../lib/markdown'
 import { excerpt } from '../lib/seo'
@@ -24,7 +24,7 @@ type State =
 export function Post() {
   // The slug addresses the post on its own: slugs are unique across every author.
   const { slug } = useParams<{ slug: string }>()
-  const { api, user } = useApp()
+  const { api, user, profile } = useApp()
   const [state, setState] = useState<State>(api ? { phase: 'loading' } : { phase: 'unconfigured' })
   // Loaded for the whole page at once - the post's reactions and every comment's come back
   // together - so this lives here rather than inside the two components that draw them.
@@ -124,7 +124,7 @@ export function Post() {
             ← Back to feed
           </Link>
         )}
-        {user?.id === post.ownerId && (
+        {isAuthor(profile, post.authorUsername) && (
           <Link to={`${href}/edit`} className="btn btn-secondary">
             Edit
           </Link>
@@ -164,7 +164,7 @@ export function Post() {
       )}
       {/* The thread is as visible as the post: this only renders for a post the caller could read
           in the first place, and the backend applies the same rule to the comments themselves. */}
-      <Comments slug={post.slug} ownerId={post.ownerId} reactions={reactions} />
+      <Comments slug={post.slug} ownerUsername={post.authorUsername} reactions={reactions} />
       {related.length > 0 && (
         <section aria-labelledby="related-heading">
           <hr className="hr" />

@@ -34,13 +34,18 @@ export function Post() {
   useEffect(() => {
     if (!api || !slug) return
     setState({ phase: 'loading' })
+    let current = true
     api
       .getBlog(slug)
-      .then((post) => setState({ phase: 'ready', post }))
+      .then((post) => current && setState({ phase: 'ready', post }))
       .catch((e: unknown) => {
+        if (!current) return
         if (e instanceof ApiError && e.status === 404) return setState({ phase: 'not-found' })
         setState({ phase: 'error', message: e instanceof Error ? e.message : 'Failed to load post' })
       })
+    return () => {
+      current = false
+    }
   }, [api, slug])
 
   // Loaded beside the post rather than after it, and never an error of the page's own: a post with

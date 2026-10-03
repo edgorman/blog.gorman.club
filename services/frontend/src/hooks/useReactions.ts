@@ -38,6 +38,10 @@ export function useReactions(slug: string): Reactions {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // Cleared per post: the router reuses the page between posts, and `toggle` decides add or
+    // remove from these, so the last post's counts must never stand in for this one's.
+    setReactions({ post: [], comments: {} })
+    setError(null)
     if (!api) return
     let cancelled = false
     api

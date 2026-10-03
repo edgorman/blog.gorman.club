@@ -74,12 +74,16 @@ export function tagPath(tag: string): string {
 
 export type AuthHeaders = Record<string, string>
 
-async function request<T>(
+/** What a request carrying a credential the backend rejected tells its caller. */
+export const SESSION_EXPIRED = 'Your sign-in has expired. Sign in again to carry on.'
+
+async function send<T>(
   baseUrl: string,
   authHeaders: AuthHeaders,
   method: string,
   path: string,
   body?: unknown,
+  onUnauthorized?: () => void,
 ): Promise<T> {
   const response = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, {
     method,
@@ -89,6 +93,13 @@ async function request<T>(
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+
+  // A 401 with a credential attached means the credential itself was refused - in practice, that
+  // it expired - so the caller hears that rather than a raw status, and the session is ended.
+  if (response.status === 401 && authHeaders.Authorization) {
+    onUnauthorized?.()
+    throw new ApiError(401, SESSION_EXPIRED)
+  }
 
   if (!response.ok) {
     // Every non-2xx response is an ErrorResponse (see `packages/protos/AGENTS.md`'s "Contract Layer"), but fall back
@@ -141,7 +152,11 @@ function chatPath(slug: string): string {
   return `${blogPath(slug)}/chat`
 }
 
-export function createApi(baseUrl: string, authHeaders: AuthHeaders) {
+export function createApi(baseUrl: string, authHeaders: AuthHeaders, onUnauthorized?: () => void) {
+  // Every call below goes through this, so each one ends the session on a refused credential.
+  function request<T>(base: string, headers: AuthHeaders, method: string, path: string, body?: unknown) {
+    return send<T>(base, headers, method, path, body, onUnauthorized)
+  }
   return {
     listBlogs: (params?: ListBlogsParams) =>
       request<BlogPage>(baseUrl, authHeaders, 'GET', blogsListPath(params)),

@@ -28,6 +28,9 @@ type fakeBlogRepository struct {
 	hasMore bool
 	err     error
 
+	// duringList, when set, runs inside List before it answers - a write landing mid-read.
+	duringList func()
+
 	creates  int
 	updates  int
 	deletes  int
@@ -39,6 +42,9 @@ func (r *fakeBlogRepository) Get(context.Context, string) (entity.Blog, error) {
 }
 
 func (r *fakeBlogRepository) List(_ context.Context, uid string, params repository.ListParams) ([]entity.Blog, bool, error) {
+	if r.duringList != nil {
+		r.duringList()
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -333,6 +339,27 @@ func TestWrites_InvalidateTheCache(t *testing.T) {
 }
 
 // A write that failed changed nothing, so it must not throw away pages that are still accurate.
+// A read that started before a write and finished after it must not be cached: the page it holds
+// predates the write, so storing it would undo the write's invalidation for the rest of the TTL.
+func TestList_ReadRacingAWriteIsNotCached(t *testing.T) {
+	inner := &fakeBlogRepository{blogs: page("stale")}
+	cached, _ := newTestCache(inner)
+	inner.duringList = func() {
+		inner.duringList = nil
+		if _, err := cached.Update(context.Background(), page("stale")[0]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, _, err := cached.List(context.Background(), "", repository.ListParams{Limit: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := cached.List(context.Background(), "", repository.ListParams{Limit: 10}); err != nil {
+		t.Fatal(err)
+	}
+	assertLists(t, inner, 2)
+}
+
 func TestWrites_FailedWriteKeepsTheCache(t *testing.T) {
 	failure := errors.New("firestore unavailable")
 	inner := &fakeBlogRepository{blogs: page("first"), writeErr: failure}

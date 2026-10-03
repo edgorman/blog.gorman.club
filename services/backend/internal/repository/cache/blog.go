@@ -65,6 +65,9 @@ type BlogRepository struct {
 
 	mu      sync.Mutex
 	entries map[string]blogListEntry
+	// generation counts invalidations, so a read that started before one cannot store what it read
+	// after it (see List).
+	generation uint64
 }
 
 // NewBlogRepository returns inner with its anonymous listings cached for blogListTTL.
@@ -120,15 +123,28 @@ func (r *BlogRepository) lookup(key string) (blogListEntry, bool) {
 	return entry, true
 }
 
-// store keeps a page until it expires, unless the cache is already full of unexpired ones.
+// currentGeneration is the invalidation count a read through should be stored against.
+func (r *BlogRepository) currentGeneration() uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.generation
+}
+
+// store keeps a page until it expires, unless the cache is already full of unexpired ones, or the
+// cache was invalidated since generation was taken - the page was read before a write it does not
+// reflect, and keeping it would put the stale page back in front of every anonymous reader.
 //
 // Expired entries are dropped here rather than by a goroutine or a timer, and only when the cap is
 // actually in the way: an expired entry is never served (see lookup), so leaving it in the map
 // costs a little memory and nothing else, while sweeping on every write would walk the whole map
 // per request to reclaim entries that will be overwritten by their own key anyway.
-func (r *BlogRepository) store(key string, entry blogListEntry) {
+func (r *BlogRepository) store(key string, entry blogListEntry, generation uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if generation != r.generation {
+		return
+	}
 
 	if _, held := r.entries[key]; !held && len(r.entries) >= maxBlogListEntries {
 		r.sweep()
@@ -166,6 +182,7 @@ func (r *BlogRepository) invalidate() {
 	defer r.mu.Unlock()
 
 	clear(r.entries)
+	r.generation++
 }
 
 // Get is not cached: it is a single document read by key, which is the cheapest thing Firestore
@@ -196,6 +213,7 @@ func (r *BlogRepository) List(ctx context.Context, uid string, params repository
 		return slices.Clone(entry.blogs), entry.hasMore, nil
 	}
 
+	generation := r.currentGeneration()
 	blogs, hasMore, err := r.inner.List(ctx, uid, params)
 	if err != nil {
 		return nil, false, err
@@ -205,7 +223,7 @@ func (r *BlogRepository) List(ctx context.Context, uid string, params repository
 	// the cache holds: without this, a caller reordering or truncating its page would be editing
 	// what the next caller is served. The posts within are shared and treated as read-only, which
 	// is how a listed post was already treated when every List built fresh ones.
-	r.store(key, blogListEntry{blogs: slices.Clone(blogs), hasMore: hasMore, expires: r.now().Add(r.ttl)})
+	r.store(key, blogListEntry{blogs: slices.Clone(blogs), hasMore: hasMore, expires: r.now().Add(r.ttl)}, generation)
 	return blogs, hasMore, nil
 }
 

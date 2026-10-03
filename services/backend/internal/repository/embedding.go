@@ -12,7 +12,11 @@ import (
 type EmbeddingRepository interface {
 	// Get returns ErrNotFound if slug has no embedding.
 	Get(ctx context.Context, slug string) (entity.Embedding, error)
-	// Put writes the embedding at its slug, replacing any there.
+	// Put writes the embedding at its slug, replacing any there - but only while the post at that
+	// slug is undeleted and its text still hashes to embedding.ContentHash. Otherwise it writes
+	// nothing and returns nil: the post changed or went while the vector was being made, and the
+	// event for that change syncs it instead, so a slow sync can neither overwrite a newer vector
+	// nor leave one behind for a deleted post.
 	Put(ctx context.Context, embedding entity.Embedding) error
 	// Delete removes slug's embedding. Deleting one that isn't there is not an error.
 	Delete(ctx context.Context, slug string) error

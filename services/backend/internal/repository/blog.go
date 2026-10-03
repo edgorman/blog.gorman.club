@@ -33,9 +33,9 @@ type ListParams struct {
 }
 
 // BlogRepository persists blogs. A post is identified by its slug alone - slugs are unique across
-// every author, not merely within one - so a lookup names nothing else. Updates are unconditional
-// (last writer wins) and Get is unfiltered: callers check read access themselves via
-// entity.Blog.CanBeReadBy.
+// every author, not merely within one - so a lookup names nothing else. Updates are conditional on
+// the post being unchanged since it was read, and Get is unfiltered: callers check read access
+// themselves via entity.Blog.CanBeReadBy.
 type BlogRepository interface {
 	// Get returns ErrNotFound if no undeleted post holds slug.
 	Get(ctx context.Context, slug string) (entity.Blog, error)
@@ -50,7 +50,10 @@ type BlogRepository interface {
 	Create(ctx context.Context, blog entity.Blog) (entity.Blog, error)
 	// Update overwrites the post at blog.Slug and refreshes UpdatedAt, carrying CreatedAt over from
 	// blog rather than re-reading it. It rejects a blog that fails entity.Blog.Validate without
-	// writing anything.
+	// writing anything. blog.UpdatedAt must be the value Get returned: the write is refused with
+	// ErrPostChanged if the stored post has been written since, and with ErrNotFound if it has been
+	// deleted or erased, so a caller holding an old copy - an assistant turn waiting on the model -
+	// cannot write back an audience, a body or a post that is no longer there.
 	Update(ctx context.Context, blog entity.Blog) (entity.Blog, error)
 	// Delete soft-deletes the post at slug by stamping entity.Blog.DeletedAt - the document itself
 	// is never removed from Firestore. It returns ErrNotFound if no undeleted post holds slug.

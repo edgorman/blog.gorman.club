@@ -120,6 +120,15 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (en
 // Put writes the profile and, when the username is new to it, moves the reservation across in the
 // same transaction, so the two can never disagree about who holds what.
 func (r *UserRepository) Put(ctx context.Context, user entity.User) (entity.User, error) {
+	return r.put(ctx, user, false)
+}
+
+// Create is Put refusing a profile that already exists, decided inside the same transaction.
+func (r *UserRepository) Create(ctx context.Context, user entity.User) (entity.User, error) {
+	return r.put(ctx, user, true)
+}
+
+func (r *UserRepository) put(ctx context.Context, user entity.User, create bool) (entity.User, error) {
 	user, err := user.Normalized()
 	if err != nil {
 		return entity.User{}, err
@@ -138,6 +147,8 @@ func (r *UserRepository) Put(ctx context.Context, user entity.User) (entity.User
 			// A profile being written for the first time holds no username yet.
 		case err != nil:
 			return err
+		case create:
+			return repository.ErrUserExists
 		default:
 			if err := stored.DataTo(&current); err != nil {
 				return err
@@ -173,6 +184,7 @@ func (r *UserRepository) Put(ctx context.Context, user entity.User) (entity.User
 			user.CreatedAt = now
 		}
 		user.UpdatedAt = now
+		user.SubscribedUntil = current.SubscribedUntil
 
 		if claiming {
 			if err := tx.Set(r.usernames.Doc(key), usernameDocument{UserID: user.ID}); err != nil {

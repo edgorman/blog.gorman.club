@@ -117,6 +117,14 @@ func (r *fakeBlogRepository) Update(_ context.Context, blog entity.Blog) (entity
 	if err := blog.Validate(); err != nil {
 		return entity.Blog{}, err
 	}
+	stored, ok := r.stored(blog.Slug)
+	if !ok || stored.IsDeleted() {
+		return entity.Blog{}, repository.ErrNotFound
+	}
+	if !stored.UpdatedAt.Equal(blog.UpdatedAt) {
+		return entity.Blog{}, repository.ErrPostChanged
+	}
+	blog.UpdatedAt = time.Now().UTC()
 	r.seed(blog)
 	return blog, nil
 }
@@ -208,7 +216,15 @@ func (r *fakeUserRepository) GetByUsername(_ context.Context, username string) (
 	return user, nil
 }
 
-func (r *fakeUserRepository) Put(_ context.Context, user entity.User) (entity.User, error) {
+func (r *fakeUserRepository) Put(ctx context.Context, user entity.User) (entity.User, error) {
+	return r.put(ctx, user, false)
+}
+
+func (r *fakeUserRepository) Create(ctx context.Context, user entity.User) (entity.User, error) {
+	return r.put(ctx, user, true)
+}
+
+func (r *fakeUserRepository) put(_ context.Context, user entity.User, create bool) (entity.User, error) {
 	user, err := user.Normalized()
 	if err != nil {
 		return entity.User{}, err
@@ -218,14 +234,19 @@ func (r *fakeUserRepository) Put(_ context.Context, user entity.User) (entity.Us
 			return entity.User{}, err
 		}
 	}
+	if _, exists := r.users[user.ID]; create && exists {
+		return entity.User{}, repository.ErrUserExists
+	}
 	key := user.UsernameKey()
 	if owner, claimed := r.usernames[key]; claimed && owner != user.ID {
 		return entity.User{}, repository.ErrUsernameTaken
 	}
 
 	now := time.Now().UTC()
+	user.SubscribedUntil = nil
 	if previous, ok := r.users[user.ID]; ok {
 		user.CreatedAt = previous.CreatedAt
+		user.SubscribedUntil = previous.SubscribedUntil
 		delete(r.usernames, previous.UsernameKey())
 	}
 	if user.CreatedAt.IsZero() {

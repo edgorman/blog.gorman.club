@@ -150,8 +150,7 @@ func (s *Service) CreateComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body blogv1.CreateCommentRequest
-	if err := readProto(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !readProto(w, r, &body) {
 		return
 	}
 

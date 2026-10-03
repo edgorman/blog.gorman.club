@@ -121,13 +121,13 @@ func (s *Service) GetUser(w http.ResponseWriter, r *http.Request) {
 	writeProto(w, http.StatusOK, userMessage(user))
 }
 
-// saveUser writes the profile, naming it first when it has none - which is every profile at
+// saveUser writes the profile through put (Put, or Create for a profile that must be new), naming it first when it has none - which is every profile at
 // sign-up, since clients are not asked to choose. Only the write can tell whether a name is free,
 // so a collision is answered by drawing another rather than by checking beforehand, which would be
 // slower and still racy.
-func (s *Service) saveUser(ctx context.Context, user entity.User) (entity.User, error) {
+func (s *Service) saveUser(ctx context.Context, user entity.User, put func(context.Context, entity.User) (entity.User, error)) (entity.User, error) {
 	if user.Username != "" {
-		return s.users.Put(ctx, user)
+		return put(ctx, user)
 	}
 
 	var err error
@@ -135,7 +135,7 @@ func (s *Service) saveUser(ctx context.Context, user entity.User) (entity.User, 
 		user.Username = entity.NewUsername()
 
 		var saved entity.User
-		if saved, err = s.users.Put(ctx, user); !errors.Is(err, repository.ErrUsernameTaken) {
+		if saved, err = put(ctx, user); !errors.Is(err, repository.ErrUsernameTaken) {
 			return saved, err
 		}
 	}
@@ -153,8 +153,7 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 	id := uidFromContext(r.Context())
 
 	var body blogv1.UpdateCurrentUserRequest
-	if err := readProto(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !readProto(w, r, &body) {
 		return
 	}
 
@@ -171,7 +170,7 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	saved, err := s.saveUser(r.Context(), user)
+	saved, err := s.saveUser(r.Context(), user, s.users.Put)
 	if errors.Is(err, repository.ErrUsernameTaken) {
 		writeError(w, http.StatusConflict, "username already taken")
 		return

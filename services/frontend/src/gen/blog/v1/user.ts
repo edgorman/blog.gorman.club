@@ -18,7 +18,6 @@ export const protobufPackage = "blog.v1";
  * "Contract Layer" for why protos model the wire rather than the domain.
  */
 export interface User {
-  id: string;
   /**
    * The whole of a profile's public identity: both the handle it is looked up by and the name
    * readers see. There is deliberately no separate display name.
@@ -34,7 +33,7 @@ export interface User {
  * It carries what this deployment lets the account do, and when its paid access runs out, neither
  * of which a lookup of somebody else's name ever discloses.
  *
- * The five profile fields are repeated here rather than nested under a `User` field, because the
+ * The profile fields - and id, which only the account itself is sent - are repeated here rather than nested under a `User` field, because the
  * wire is flat: Go reaches it by embedding entity.User and TypeScript by `extends User`, and proto3
  * can express neither. Nesting would be tidier to write and a breaking change to ship, so the
  * duplication is deliberate - renaming a profile field means editing both messages, and the
@@ -76,14 +75,11 @@ export interface UpdateCurrentUserRequest {
 }
 
 function createBaseUser(): User {
-  return { id: "", username: "", bio: "", createdAt: undefined, updatedAt: undefined };
+  return { username: "", bio: "", createdAt: undefined, updatedAt: undefined };
 }
 
 export const User: MessageFns<User> = {
   encode(message: User, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.id !== "") {
-      writer.uint32(10).string(message.id);
-    }
     if (message.username !== "") {
       writer.uint32(18).string(message.username);
     }
@@ -112,14 +108,6 @@ export const User: MessageFns<User> = {
       while (reader.pos < end) {
         const tag = reader.uint32();
         switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 10) {
-              break;
-            }
-
-            message.id = reader.string();
-            continue;
-          }
           case 2: {
             if (tag !== 18) {
               break;
@@ -166,7 +154,6 @@ export const User: MessageFns<User> = {
 
   fromJSON(object: any): User {
     return {
-      id: isSet(object.id) ? globalThis.String(object.id) : "",
       username: isSet(object.username) ? globalThis.String(object.username) : "",
       bio: isSet(object.bio) ? globalThis.String(object.bio) : "",
       createdAt: isSet(object.createdAt)
@@ -184,9 +171,6 @@ export const User: MessageFns<User> = {
 
   toJSON(message: User): unknown {
     const obj: any = {};
-    if (message.id !== "") {
-      obj.id = message.id;
-    }
     if (message.username !== "") {
       obj.username = message.username;
     }
@@ -207,7 +191,6 @@ export const User: MessageFns<User> = {
   },
   fromPartial<I extends Exact<DeepPartial<User>, I>>(object: I): User {
     const message = createBaseUser();
-    message.id = object.id ?? "";
     message.username = object.username ?? "";
     message.bio = object.bio ?? "";
     message.createdAt = object.createdAt ?? undefined;

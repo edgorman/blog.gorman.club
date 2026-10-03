@@ -6,7 +6,6 @@ import { AssistantPanel } from './AssistantPanel'
 
 const blog: Blog = {
   slug: 'hello-world',
-  ownerId: 'uid-1',
   authorUsername: 'calm-smiling-kestrel',
   title: 'Hello world',
   content: 'the cat sat',

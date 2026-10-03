@@ -29,7 +29,6 @@ func commentMessage(response commentResponse) *blogv1.Comment {
 	message := &blogv1.Comment{
 		Id:             response.ID,
 		BlogSlug:       response.BlogSlug,
-		AuthorId:       response.AuthorID,
 		AuthorUsername: response.AuthorUsername,
 		Body:           response.Body,
 		CreatedAt:      timestamppb.New(response.CreatedAt),

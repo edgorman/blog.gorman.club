@@ -41,7 +41,6 @@ func applyUpdate(req *blogv1.UpdateCurrentUserRequest, user *entity.User) error 
 // blogv1.User entirely rather than skipped here, so a lookup cannot disclose it by oversight.
 func userMessage(user entity.User) *blogv1.User {
 	return &blogv1.User{
-		Id:        user.ID,
 		Username:  user.Username,
 		Bio:       user.Bio,
 		CreatedAt: timestamppb.New(user.CreatedAt),

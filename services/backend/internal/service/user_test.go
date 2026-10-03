@@ -421,8 +421,8 @@ func TestGetUser(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.ID != "someone" {
-		t.Errorf("ID = %q, want %q", got.ID, "someone")
+	if got.ID != "" {
+		t.Errorf("ID = %q, want the uid withheld from a public profile", got.ID)
 	}
 }
 
@@ -536,8 +536,8 @@ func TestHandler_RoutesUsernameLookups(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.ID != "someone" {
-		t.Errorf("ID = %q, want %q", got.ID, "someone")
+	if got.ID != "" {
+		t.Errorf("ID = %q, want the uid withheld from a public profile", got.ID)
 	}
 }
 
@@ -786,7 +786,7 @@ func TestGetUser_WireBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.GetUser(rec, usernameHTTPRequest("sly-dancing-monkey"))
 
-	want := `{"id":"someone","username":"sly-dancing-monkey","bio":"hi","createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z"}`
+	want := `{"username":"sly-dancing-monkey","bio":"hi","createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z"}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}

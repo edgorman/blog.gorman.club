@@ -29,7 +29,6 @@ func commentMessage(response commentResponse) *blogv1.Comment {
 	message := &blogv1.Comment{
 		Id:             response.ID,
 		BlogSlug:       response.BlogSlug,
-		AuthorId:       response.AuthorID,
 		AuthorUsername: response.AuthorUsername,
 		Body:           response.Body,
 		CreatedAt:      timestamppb.New(response.CreatedAt),
@@ -150,8 +149,7 @@ func (s *Service) CreateComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body blogv1.CreateCommentRequest
-	if err := readProto(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !readProto(w, r, &body) {
 		return
 	}
 

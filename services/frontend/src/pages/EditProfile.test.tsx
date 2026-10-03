@@ -8,7 +8,6 @@ import { EditProfile } from './EditProfile'
 const me = { id: 'uid-1', email: 'a@b.com', name: 'Ada' }
 
 const profile: User = {
-  id: 'uid-1',
   username: 'calm-smiling-kestrel',
   bio: 'Writes things.',
   createdAt: '2026-01-01T00:00:00Z',

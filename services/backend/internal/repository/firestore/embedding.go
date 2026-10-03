@@ -29,12 +29,14 @@ var _ repository.EmbeddingRepository = (*EmbeddingRepository)(nil)
 // on the post: a write to blogs/{slug} would fire the worker's trigger again, and a vector on every
 // post would be read by every feed page that never uses it.
 type EmbeddingRepository struct {
+	client     *fs.Client
+	blogs      *fs.CollectionRef
 	embeddings *fs.CollectionRef
 }
 
 // NewEmbeddingRepository returns a repository.EmbeddingRepository backed by "embeddings".
 func NewEmbeddingRepository(client *fs.Client) *EmbeddingRepository {
-	return &EmbeddingRepository{embeddings: client.Collection("embeddings")}
+	return &EmbeddingRepository{client: client, blogs: client.Collection("blogs"), embeddings: client.Collection("embeddings")}
 }
 
 func (r *EmbeddingRepository) Get(ctx context.Context, slug string) (entity.Embedding, error) {
@@ -62,15 +64,32 @@ func (r *EmbeddingRepository) Get(ctx context.Context, slug string) (entity.Embe
 	}, nil
 }
 
+// Put re-reads the post in the same transaction as the write, so the post cannot change between
+// the check and the write without the transaction re-running and seeing it.
 func (r *EmbeddingRepository) Put(ctx context.Context, e entity.Embedding) error {
-	_, err := r.embeddings.Doc(e.Slug).Set(ctx, embeddingDocument{
-		OwnerID:     e.OwnerID,
-		Embedding:   e.Vector,
-		ContentHash: e.ContentHash,
-		Model:       e.Model,
-		CreatedAt:   e.CreatedAt,
+	return r.client.RunTransaction(ctx, func(ctx context.Context, tx *fs.Transaction) error {
+		doc, err := tx.Get(r.blogs.Doc(e.Slug))
+		if status.Code(err) == codes.NotFound {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		blog, err := documentToBlog(doc)
+		if err != nil {
+			return err
+		}
+		if blog.IsDeleted() || entity.ContentHash(entity.EmbeddingText(blog)) != e.ContentHash {
+			return nil
+		}
+		return tx.Set(r.embeddings.Doc(e.Slug), embeddingDocument{
+			OwnerID:     e.OwnerID,
+			Embedding:   e.Vector,
+			ContentHash: e.ContentHash,
+			Model:       e.Model,
+			CreatedAt:   e.CreatedAt,
+		})
 	})
-	return err
 }
 
 func (r *EmbeddingRepository) Delete(ctx context.Context, slug string) error {

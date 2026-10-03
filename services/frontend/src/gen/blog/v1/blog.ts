@@ -26,11 +26,11 @@ export interface Blog {
    * author, so this alone identifies a post; it carries no author segment.
    */
   slug: string;
-  ownerId: string;
   /**
    * The owner's username, resolved server-side rather than stored on the post: a post records its
    * owner by uid, which is never public, so this is the only handle a client holds for the author
-   * behind it. Empty for a post whose owner holds no profile.
+   * behind it - and what a client compares with CurrentUser.username to tell its own posts. Empty
+   * for a post whose owner holds no profile.
    */
   authorUsername: string;
   title: string;
@@ -46,6 +46,10 @@ export interface Blog {
    * string rather than a proto enum.
    */
   visibility: string;
+  /**
+   * Who besides the owner may read a private post. Sent to the owner alone; everybody else gets
+   * it empty, since who a post was shared with is the owner's business.
+   */
   allowedUserIds: string[];
   createdAt?: string | undefined;
   updatedAt?: string | undefined;
@@ -98,8 +102,11 @@ export interface ListBlogsParams {
   startAfter?:
     | string
     | undefined;
-  /** Narrows to one author's posts - a profile feed's User.id, not their username. */
-  ownerId?:
+  /**
+   * Narrows to one author's posts - a profile feed's username. A name nobody holds answers an
+   * empty page.
+   */
+  author?:
     | string
     | undefined;
   /** Narrows to one topic. Any spelling works; the backend normalizes it before matching. */
@@ -120,7 +127,7 @@ export interface ListBlogsParams {
 /**
  * BlogRequest is the client-settable half of a post - the body of both `POST /blogs` and
  * `PUT /blogs/{slug}`, which share the same shape (internal/service/blog.go's blogRequest and
- * decodeBlogRequest serve both routes with it). The slug, owner_id, and the timestamps are decided
+ * decodeBlogRequest serve both routes with it). The slug, the owner, and the timestamps are decided
  * by the server, so none of them are here.
  */
 export interface BlogRequest {
@@ -138,7 +145,6 @@ export interface BlogRequest {
 function createBaseBlog(): Blog {
   return {
     slug: "",
-    ownerId: "",
     authorUsername: "",
     title: "",
     content: "",
@@ -154,9 +160,6 @@ export const Blog: MessageFns<Blog> = {
   encode(message: Blog, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.slug !== "") {
       writer.uint32(10).string(message.slug);
-    }
-    if (message.ownerId !== "") {
-      writer.uint32(18).string(message.ownerId);
     }
     if (message.authorUsername !== "") {
       writer.uint32(26).string(message.authorUsername);
@@ -204,14 +207,6 @@ export const Blog: MessageFns<Blog> = {
             }
 
             message.slug = reader.string();
-            continue;
-          }
-          case 2: {
-            if (tag !== 18) {
-              break;
-            }
-
-            message.ownerId = reader.string();
             continue;
           }
           case 3: {
@@ -293,11 +288,6 @@ export const Blog: MessageFns<Blog> = {
   fromJSON(object: any): Blog {
     return {
       slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
-      ownerId: isSet(object.ownerId)
-        ? globalThis.String(object.ownerId)
-        : isSet(object.owner_id)
-        ? globalThis.String(object.owner_id)
-        : "",
       authorUsername: isSet(object.authorUsername)
         ? globalThis.String(object.authorUsername)
         : isSet(object.author_username)
@@ -329,9 +319,6 @@ export const Blog: MessageFns<Blog> = {
     const obj: any = {};
     if (message.slug !== "") {
       obj.slug = message.slug;
-    }
-    if (message.ownerId !== "") {
-      obj.ownerId = message.ownerId;
     }
     if (message.authorUsername !== "") {
       obj.authorUsername = message.authorUsername;
@@ -366,7 +353,6 @@ export const Blog: MessageFns<Blog> = {
   fromPartial<I extends Exact<DeepPartial<Blog>, I>>(object: I): Blog {
     const message = createBaseBlog();
     message.slug = object.slug ?? "";
-    message.ownerId = object.ownerId ?? "";
     message.authorUsername = object.authorUsername ?? "";
     message.title = object.title ?? "";
     message.content = object.content ?? "";
@@ -536,7 +522,7 @@ export const RelatedPosts: MessageFns<RelatedPosts> = {
 };
 
 function createBaseListBlogsParams(): ListBlogsParams {
-  return { limit: undefined, startAfter: undefined, ownerId: undefined, tag: undefined, q: undefined };
+  return { limit: undefined, startAfter: undefined, author: undefined, tag: undefined, q: undefined };
 }
 
 export const ListBlogsParams: MessageFns<ListBlogsParams> = {
@@ -547,8 +533,8 @@ export const ListBlogsParams: MessageFns<ListBlogsParams> = {
     if (message.startAfter !== undefined) {
       writer.uint32(18).string(message.startAfter);
     }
-    if (message.ownerId !== undefined) {
-      writer.uint32(26).string(message.ownerId);
+    if (message.author !== undefined) {
+      writer.uint32(50).string(message.author);
     }
     if (message.tag !== undefined) {
       writer.uint32(34).string(message.tag);
@@ -588,12 +574,12 @@ export const ListBlogsParams: MessageFns<ListBlogsParams> = {
             message.startAfter = reader.string();
             continue;
           }
-          case 3: {
-            if (tag !== 26) {
+          case 6: {
+            if (tag !== 50) {
               break;
             }
 
-            message.ownerId = reader.string();
+            message.author = reader.string();
             continue;
           }
           case 4: {
@@ -632,11 +618,7 @@ export const ListBlogsParams: MessageFns<ListBlogsParams> = {
         : isSet(object.start_after)
         ? globalThis.String(object.start_after)
         : undefined,
-      ownerId: isSet(object.ownerId)
-        ? globalThis.String(object.ownerId)
-        : isSet(object.owner_id)
-        ? globalThis.String(object.owner_id)
-        : undefined,
+      author: isSet(object.author) ? globalThis.String(object.author) : undefined,
       tag: isSet(object.tag) ? globalThis.String(object.tag) : undefined,
       q: isSet(object.q) ? globalThis.String(object.q) : undefined,
     };
@@ -650,8 +632,8 @@ export const ListBlogsParams: MessageFns<ListBlogsParams> = {
     if (message.startAfter !== undefined) {
       obj.startAfter = message.startAfter;
     }
-    if (message.ownerId !== undefined) {
-      obj.ownerId = message.ownerId;
+    if (message.author !== undefined) {
+      obj.author = message.author;
     }
     if (message.tag !== undefined) {
       obj.tag = message.tag;
@@ -669,7 +651,7 @@ export const ListBlogsParams: MessageFns<ListBlogsParams> = {
     const message = createBaseListBlogsParams();
     message.limit = object.limit ?? undefined;
     message.startAfter = object.startAfter ?? undefined;
-    message.ownerId = object.ownerId ?? undefined;
+    message.author = object.author ?? undefined;
     message.tag = object.tag ?? undefined;
     message.q = object.q ?? undefined;
     return message;

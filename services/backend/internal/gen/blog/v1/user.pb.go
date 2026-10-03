@@ -29,7 +29,6 @@ const (
 // "Contract Layer" for why protos model the wire rather than the domain.
 type User struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// The whole of a profile's public identity: both the handle it is looked up by and the name
 	// readers see. There is deliberately no separate display name.
 	Username      string                 `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
@@ -70,13 +69,6 @@ func (*User) Descriptor() ([]byte, []int) {
 	return file_blog_v1_user_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *User) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
-}
-
 func (x *User) GetUsername() string {
 	if x != nil {
 		return x.Username
@@ -109,7 +101,7 @@ func (x *User) GetUpdatedAt() *timestamppb.Timestamp {
 // It carries what this deployment lets the account do, and when its paid access runs out, neither
 // of which a lookup of somebody else's name ever discloses.
 //
-// The five profile fields are repeated here rather than nested under a `User` field, because the
+// The profile fields - and id, which only the account itself is sent - are repeated here rather than nested under a `User` field, because the
 // wire is flat: Go reaches it by embedding entity.User and TypeScript by `extends User`, and proto3
 // can express neither. Nesting would be tidier to write and a breaking change to ship, so the
 // duplication is deliberate - renaming a profile field means editing both messages, and the
@@ -272,15 +264,14 @@ var File_blog_v1_user_proto protoreflect.FileDescriptor
 
 const file_blog_v1_user_proto_rawDesc = "" +
 	"\n" +
-	"\x12blog/v1/user.proto\x12\ablog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xba\x01\n" +
-	"\x04User\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
+	"\x12blog/v1/user.proto\x12\ablog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb4\x01\n" +
+	"\x04User\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12\x10\n" +
 	"\x03bio\x18\x03 \x01(\tR\x03bio\x129\n" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xb5\x02\n" +
+	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtJ\x04\b\x01\x10\x02R\x02id\"\xb5\x02\n" +
 	"\vCurrentUser\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12\x10\n" +

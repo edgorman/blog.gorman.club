@@ -5,7 +5,6 @@ import { renderWithApp } from '../testUtils'
 import { UserProfile } from './UserProfile'
 
 const user: User = {
-  id: 'uid-1',
   username: 'calm-smiling-kestrel',
   bio: 'Writes things.',
   createdAt: '2026-01-01T00:00:00Z',
@@ -13,10 +12,9 @@ const user: User = {
 }
 // The caller's own profile carries what their account may do as well as who they are; a public
 // profile (`user` above) deliberately does not.
-const profile: CurrentUser = { ...user, assistantEnabled: false }
+const profile: CurrentUser = { ...user, id: 'uid-1', assistantEnabled: false }
 const mine: Blog = {
   slug: 'mine',
-  ownerId: 'uid-1',
   authorUsername: 'calm-smiling-kestrel',
   title: 'Mine',
   content: 'hello',
@@ -29,21 +27,20 @@ const mine: Blog = {
 const theirs: Blog = {
   ...mine,
   slug: 'not-mine',
-  ownerId: 'uid-2',
   authorUsername: 'bold-leaping-lynx',
   title: 'Not mine',
 }
 
-// The real backend does the owner-scoping `listBlogs({ ownerId })` asks for; this mirrors that so
+// The real backend does the author-scoping `listBlogs({ author })` asks for; this mirrors that so
 // a test can assert UserProfile leans on the server rather than filtering the page itself.
 function listBlogsByOwner(...pages: Blog[][]): Api['listBlogs'] {
   const byOwner = new Map<string, Blog[][]>()
   for (const blogs of pages) {
-    const ownerId = blogs[0]?.ownerId ?? ''
-    byOwner.set(ownerId, [...(byOwner.get(ownerId) ?? []), blogs])
+    const author = blogs[0]?.authorUsername ?? ''
+    byOwner.set(author, [...(byOwner.get(author) ?? []), blogs])
   }
   return jest.fn((params: ListBlogsParams = {}): Promise<BlogPage> => {
-    const remaining = byOwner.get(params.ownerId ?? '') ?? []
+    const remaining = byOwner.get(params.author ?? '') ?? []
     const posts = remaining.shift() ?? []
     return Promise.resolve({ posts, hasMore: remaining.length > 0 })
   })
@@ -79,9 +76,9 @@ describe('UserProfile', () => {
     expect(screen.queryByText('Not mine')).not.toBeInTheDocument()
   })
 
-  // The point of scoping by ownerId: the page only ever asks for one author's posts, not the
+  // The point of scoping by author: the page only ever asks for one author's posts, not the
   // whole feed filtered client-side.
-  it('fetches posts scoped to the profile uid, not the whole feed', async () => {
+  it('fetches posts scoped to the profile, not the whole feed', async () => {
     const listBlogs = listBlogsByOwner([mine])
     renderWithApp(<UserProfile />, {
       context: { api: fakeApi({ listBlogs }) },
@@ -90,7 +87,7 @@ describe('UserProfile', () => {
     })
 
     await screen.findByText('Mine')
-    expect(listBlogs).toHaveBeenCalledWith({ ownerId: 'uid-1', limit: 10 })
+    expect(listBlogs).toHaveBeenCalledWith({ author: 'calm-smiling-kestrel', limit: 10 })
   })
 
   // An author with no profile holds no username, so no URL reaches this page for them: a lookup
@@ -151,7 +148,7 @@ describe('UserProfile', () => {
 
     expect(await screen.findByText('Older')).toBeInTheDocument()
     expect(screen.getByText('Mine')).toBeInTheDocument()
-    expect(listBlogs).toHaveBeenLastCalledWith({ ownerId: 'uid-1', limit: 10, startAfter: mine.createdAt })
+    expect(listBlogs).toHaveBeenLastCalledWith({ author: 'calm-smiling-kestrel', limit: 10, startAfter: mine.createdAt })
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: /Load more/ })).not.toBeInTheDocument(),
     )

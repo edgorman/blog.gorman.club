@@ -32,7 +32,7 @@ for the ownership and moderation rules.
 ## Finding Posts
 
 The feed is reverse-chronological, so `GET /blogs` carries two filters beside
-the `ownerId` a profile feed uses: `tag` narrows to one topic and `q` to a
+the `author` (a username) a profile feed uses: `tag` narrows to one topic and `q` to a
 search of posts by meaning (below). Both narrow the same feed
 and neither can widen it - each is applied on top of the read rules above, so a
 search can never surface a post the caller could not already have scrolled to,
@@ -52,7 +52,7 @@ repository: when `q` is set it embeds the query synchronously (the same
 `EMBEDDING_MODEL` and dimension the worker embeds posts with, as
 `RETRIEVAL_QUERY` against the posts' `RETRIEVAL_DOCUMENT`), runs `FindNearest`
 over `embeddings/`, loads each candidate and keeps it only if `CanBeReadBy` the
-caller and it passes `ownerId`/`tag`, and returns them most relevant first. So
+caller and it passes the author and `tag`, and returns them most relevant first. So
 a paraphrase ("deploying containers") finds a post that shares no word with it
 ("Shipping to Cloud Run"), and the index still only ranks. Relevance has no
 `createdAt` cursor, so a search is one page: the top `limit` with

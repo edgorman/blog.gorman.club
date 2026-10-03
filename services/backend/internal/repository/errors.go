@@ -11,6 +11,14 @@ var ErrNotFound = errors.New("not found")
 // learns to pick another name.
 var ErrUsernameTaken = errors.New("username taken")
 
+// ErrPostChanged is returned by BlogRepository.Update when the stored post is no longer the one
+// its caller read - something else wrote it in between - so writing would undo that write.
+var ErrPostChanged = errors.New("post changed")
+
+// ErrUserExists is returned by UserRepository.Create when a profile is already stored at the id,
+// so a caller that only meant to fill a gap leaves whatever the account wrote for itself alone.
+var ErrUserExists = errors.New("user exists")
+
 // ErrSlugTaken is returned by BlogRepository.Create when the author already holds the requested
 // slug. Slugs come from post titles, so one author posting twice under a title collides by design;
 // as with ErrUsernameTaken, only the write can decide whether a slug is free, so this is how a

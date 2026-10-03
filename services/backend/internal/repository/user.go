@@ -16,8 +16,13 @@ type UserRepository interface {
 	// Put writes the record at user.ID, creating it if absent, refreshing UpdatedAt and preserving
 	// the stored CreatedAt (stamping it when the profile is new). It rejects a profile that fails
 	// entity.User.Validate without writing anything, and returns ErrUsernameTaken - again without
-	// writing - if user.Username is already held by somebody else.
+	// writing - if user.Username is already held by somebody else. SubscribedUntil is carried over
+	// from the stored profile rather than taken from user: it is written out of band, and a profile
+	// edit read before that write must not undo it.
 	Put(ctx context.Context, user entity.User) (entity.User, error)
+	// Create is Put for a profile that must not exist yet: it returns ErrUserExists, without
+	// writing, if one is already stored at user.ID.
+	Create(ctx context.Context, user entity.User) (entity.User, error)
 	// Delete removes the profile and releases the username it held.
 	Delete(ctx context.Context, id string) error
 }

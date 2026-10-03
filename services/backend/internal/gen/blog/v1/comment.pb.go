@@ -39,12 +39,10 @@ type Comment struct {
 	// see entity.Comment's own comment on why it has no name of its own to be addressed by.
 	Id       string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	BlogSlug string `protobuf:"bytes,2,opt,name=blog_slug,json=blogSlug,proto3" json:"blog_slug,omitempty"`
-	// The uid of whoever wrote it, which a client needs to know whether to offer a delete button -
-	// never a public identifier on its own, unlike author_username below.
-	AuthorId string `protobuf:"bytes,3,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
 	// The commenter's username, resolved server-side rather than stored on the comment: it records
 	// its author by uid, which is never public, so this is the only handle a client holds for the
-	// profile behind it. Empty for a commenter who holds no profile.
+	// profile behind it - and what it compares with CurrentUser.username to offer a delete button.
+	// Empty for a commenter who holds no profile.
 	AuthorUsername string                 `protobuf:"bytes,4,opt,name=author_username,json=authorUsername,proto3" json:"author_username,omitempty"`
 	Body           string                 `protobuf:"bytes,5,opt,name=body,proto3" json:"body,omitempty"`
 	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
@@ -96,13 +94,6 @@ func (x *Comment) GetId() string {
 func (x *Comment) GetBlogSlug() string {
 	if x != nil {
 		return x.BlogSlug
-	}
-	return ""
-}
-
-func (x *Comment) GetAuthorId() string {
-	if x != nil {
-		return x.AuthorId
 	}
 	return ""
 }
@@ -290,18 +281,17 @@ var File_blog_v1_comment_proto protoreflect.FileDescriptor
 
 const file_blog_v1_comment_proto_rawDesc = "" +
 	"\n" +
-	"\x15blog/v1/comment.proto\x12\ablog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x87\x02\n" +
+	"\x15blog/v1/comment.proto\x12\ablog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfb\x01\n" +
 	"\aComment\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
-	"\tblog_slug\x18\x02 \x01(\tR\bblogSlug\x12\x1b\n" +
-	"\tauthor_id\x18\x03 \x01(\tR\bauthorId\x12'\n" +
+	"\tblog_slug\x18\x02 \x01(\tR\bblogSlug\x12'\n" +
 	"\x0fauthor_username\x18\x04 \x01(\tR\x0eauthorUsername\x12\x12\n" +
 	"\x04body\x18\x05 \x01(\tR\x04body\x129\n" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12:\n" +
 	"\n" +
 	"moderation\x18\a \x01(\v2\x1a.blog.v1.CommentModerationR\n" +
-	"moderation\"G\n" +
+	"moderationJ\x04\b\x03\x10\x04R\tauthor_id\"G\n" +
 	"\x11CommentModeration\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x1a\n" +
 	"\bcategory\x18\x02 \x01(\tR\bcategory\"*\n" +

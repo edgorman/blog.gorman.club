@@ -12,7 +12,10 @@ option go_package = "github.com/edgorman/blog.gorman.club/services/backend/inter
 // lookup must never disclose and which therefore has no field here at all. See `packages/protos/AGENTS.md`'s
 // "Contract Layer" for why protos model the wire rather than the domain.
 message User {
-  string id = 1;
+  // id carried the account's uid - its Google account id - to anybody who looked up the name
+  // (#253). Only CurrentUser, which an account reads about itself, still carries it.
+  reserved 1;
+  reserved "id";
   // The whole of a profile's public identity: both the handle it is looked up by and the name
   // readers see. There is deliberately no separate display name.
   string username = 2;
@@ -25,7 +28,7 @@ message User {
 // It carries what this deployment lets the account do, and when its paid access runs out, neither
 // of which a lookup of somebody else's name ever discloses.
 //
-// The five profile fields are repeated here rather than nested under a `User` field, because the
+// The profile fields - and id, which only the account itself is sent - are repeated here rather than nested under a `User` field, because the
 // wire is flat: Go reaches it by embedding entity.User and TypeScript by `extends User`, and proto3
 // can express neither. Nesting would be tidier to write and a breaking change to ship, so the
 // duplication is deliberate - renaming a profile field means editing both messages, and the

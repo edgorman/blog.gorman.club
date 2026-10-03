@@ -31,14 +31,10 @@ export interface Comment {
   id: string;
   blogSlug: string;
   /**
-   * The uid of whoever wrote it, which a client needs to know whether to offer a delete button -
-   * never a public identifier on its own, unlike author_username below.
-   */
-  authorId: string;
-  /**
    * The commenter's username, resolved server-side rather than stored on the comment: it records
    * its author by uid, which is never public, so this is the only handle a client holds for the
-   * profile behind it. Empty for a commenter who holds no profile.
+   * profile behind it - and what it compares with CurrentUser.username to offer a delete button.
+   * Empty for a commenter who holds no profile.
    */
   authorUsername: string;
   body: string;
@@ -84,15 +80,7 @@ export interface CommentThread {
 }
 
 function createBaseComment(): Comment {
-  return {
-    id: "",
-    blogSlug: "",
-    authorId: "",
-    authorUsername: "",
-    body: "",
-    createdAt: undefined,
-    moderation: undefined,
-  };
+  return { id: "", blogSlug: "", authorUsername: "", body: "", createdAt: undefined, moderation: undefined };
 }
 
 export const Comment: MessageFns<Comment> = {
@@ -102,9 +90,6 @@ export const Comment: MessageFns<Comment> = {
     }
     if (message.blogSlug !== "") {
       writer.uint32(18).string(message.blogSlug);
-    }
-    if (message.authorId !== "") {
-      writer.uint32(26).string(message.authorId);
     }
     if (message.authorUsername !== "") {
       writer.uint32(34).string(message.authorUsername);
@@ -148,14 +133,6 @@ export const Comment: MessageFns<Comment> = {
             }
 
             message.blogSlug = reader.string();
-            continue;
-          }
-          case 3: {
-            if (tag !== 26) {
-              break;
-            }
-
-            message.authorId = reader.string();
             continue;
           }
           case 4: {
@@ -210,11 +187,6 @@ export const Comment: MessageFns<Comment> = {
         : isSet(object.blog_slug)
         ? globalThis.String(object.blog_slug)
         : "",
-      authorId: isSet(object.authorId)
-        ? globalThis.String(object.authorId)
-        : isSet(object.author_id)
-        ? globalThis.String(object.author_id)
-        : "",
       authorUsername: isSet(object.authorUsername)
         ? globalThis.String(object.authorUsername)
         : isSet(object.author_username)
@@ -238,9 +210,6 @@ export const Comment: MessageFns<Comment> = {
     if (message.blogSlug !== "") {
       obj.blogSlug = message.blogSlug;
     }
-    if (message.authorId !== "") {
-      obj.authorId = message.authorId;
-    }
     if (message.authorUsername !== "") {
       obj.authorUsername = message.authorUsername;
     }
@@ -263,7 +232,6 @@ export const Comment: MessageFns<Comment> = {
     const message = createBaseComment();
     message.id = object.id ?? "";
     message.blogSlug = object.blogSlug ?? "";
-    message.authorId = object.authorId ?? "";
     message.authorUsername = object.authorUsername ?? "";
     message.body = object.body ?? "";
     message.createdAt = object.createdAt ?? undefined;

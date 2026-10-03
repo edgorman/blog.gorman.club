@@ -17,8 +17,9 @@ export interface AppContextValue {
    * or when they have not set one up yet. It is how the app learns its own username: the Google
    * identity carries only a sub, which is no longer addressable.
    *
-   * Post authors do not come from here - a post carries its own, since resolving one from ownerId
-   * is exactly what the API no longer allows.
+   * Post authors do not come from here - a post carries its own username, and no uid to resolve
+   * one from. Comparing this profile's username with it is how the app tells its own posts (see
+   * api.ts's isAuthor).
    *
    * It carries what this account may do as well as who they are (`assistantEnabled`), which is why
    * it is the caller's own profile type rather than the public one.

@@ -18,10 +18,13 @@ message Blog {
   // changes `title` beneath a fixed slug rather than moving the URL. Slugs are unique across every
   // author, so this alone identifies a post; it carries no author segment.
   string slug = 1;
-  string owner_id = 2;
+  // owner_id carried the owner's uid - their Google account id - to every reader (#253).
+  reserved 2;
+  reserved "owner_id";
   // The owner's username, resolved server-side rather than stored on the post: a post records its
   // owner by uid, which is never public, so this is the only handle a client holds for the author
-  // behind it. Empty for a post whose owner holds no profile.
+  // behind it - and what a client compares with CurrentUser.username to tell its own posts. Empty
+  // for a post whose owner holds no profile.
   string author_username = 3;
   string title = 4;
   string content = 5;
@@ -32,6 +35,8 @@ message Blog {
   // "public" or "private" - see the "Contract Layer" section of `packages/protos/AGENTS.md` for why this is a plain
   // string rather than a proto enum.
   string visibility = 7;
+  // Who besides the owner may read a private post. Sent to the owner alone; everybody else gets
+  // it empty, since who a post was shared with is the owner's business.
   repeated string allowed_user_ids = 8;
   google.protobuf.Timestamp created_at = 9;
   google.protobuf.Timestamp updated_at = 10;
@@ -70,8 +75,12 @@ message ListBlogsParams {
   optional int32 limit = 1;
   // Continues a previous page: the createdAt of the last post the previous one held.
   optional string start_after = 2;
-  // Narrows to one author's posts - a profile feed's User.id, not their username.
-  optional string owner_id = 3;
+  // owner_id narrowed by uid, which a client no longer holds (#253); `author` replaces it.
+  reserved 3;
+  reserved "owner_id";
+  // Narrows to one author's posts - a profile feed's username. A name nobody holds answers an
+  // empty page.
+  optional string author = 6;
   // Narrows to one topic. Any spelling works; the backend normalizes it before matching.
   optional string tag = 4;
   // Searches for posts about this, by meaning rather than by exact words: the backend embeds it
@@ -85,7 +94,7 @@ message ListBlogsParams {
 
 // BlogRequest is the client-settable half of a post - the body of both `POST /blogs` and
 // `PUT /blogs/{slug}`, which share the same shape (internal/service/blog.go's blogRequest and
-// decodeBlogRequest serve both routes with it). The slug, owner_id, and the timestamps are decided
+// decodeBlogRequest serve both routes with it). The slug, the owner, and the timestamps are decided
 // by the server, so none of them are here.
 message BlogRequest {
   string title = 1;

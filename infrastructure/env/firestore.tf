@@ -28,6 +28,18 @@ resource "google_firestore_database" "database" {
   name        = "(default)"
   location_id = var.gcp_region
   type        = "FIRESTORE_NATIVE"
+
+  # Every post, comment and user lives here, and prod applies run with -auto-approve on promotion
+  # and rollback (#261), so nothing a plan proposes may delete it: prevent_destroy fails any plan
+  # that would replace it, delete protection stops a delete outside Terraform, ABANDON leaves the
+  # database in place if it is ever dropped from state, and PITR keeps 7 days to restore from.
+  delete_protection_state           = "DELETE_PROTECTION_ENABLED"
+  point_in_time_recovery_enablement = "POINT_IN_TIME_RECOVERY_ENABLED"
+  deletion_policy                   = "ABANDON"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # No security rules are deployed deliberately: the backend is the only client and decides access

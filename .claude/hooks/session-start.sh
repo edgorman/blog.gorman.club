@@ -22,9 +22,8 @@ echo "export PATH=\"$BIN_DIR:\$PATH\"" >>"$CLAUDE_ENV_FILE"
 export PATH="$BIN_DIR:$PATH"
 
 # --- buf 1.47.2 ------------------------------------------------------------------------------
-# The CLI version pull-request.yaml's protos-drift check actually installs, via
-# `bufbuild/buf-setup-action`'s `version: '1.47.2'` input - not the action's own tag (v1.50.0),
-# a different number. Needed for `buf generate`/`buf lint`/`buf format` in packages/protos.
+# The version the root .prototools pins, which moon/proto install for CI's protos-drift check.
+# Needed for `buf generate`/`buf lint`/`buf format` in packages/protos.
 if ! "$BIN_DIR/buf" --version 2>/dev/null | grep -qx '1.47.2'; then
   buf_tmp="$(mktemp -d)"
   trap 'rm -rf "$buf_tmp"' RETURN

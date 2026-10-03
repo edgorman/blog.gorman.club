@@ -1,7 +1,10 @@
 version: 2
 updates:
   - package-ecosystem: 'github-actions'
-    directory: '/'
+    # '/' alone covers .github/workflows only, not the composite actions' action.yml files.
+    directories:
+      - '/'
+      - '/.github/actions/*'
     schedule:
       interval: 'weekly'
     labels:
@@ -12,7 +15,9 @@ updates:
           - '*'
 
   - package-ecosystem: 'terraform'
-    directory: '/infrastructure/env'
+    directories:
+      - '/infrastructure/env'
+      - '/infrastructure/root'
     schedule:
       interval: 'weekly'
     labels:

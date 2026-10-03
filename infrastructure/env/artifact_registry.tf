@@ -23,12 +23,25 @@ resource "google_artifact_registry_repository" "backend" {
 
   cleanup_policy_dry_run = true
 
+  # One KEEP policy per image, so each of backend and worker keeps its own
+  # backend_registry_keep_count versions however the count is applied across packages (#264).
   cleanup_policies {
     id     = "keep-minimum-versions"
     action = "KEEP"
 
     most_recent_versions {
-      keep_count = var.backend_registry_keep_count
+      package_name_prefixes = ["backend"]
+      keep_count            = var.backend_registry_keep_count
+    }
+  }
+
+  cleanup_policies {
+    id     = "keep-minimum-worker-versions"
+    action = "KEEP"
+
+    most_recent_versions {
+      package_name_prefixes = ["worker"]
+      keep_count            = var.backend_registry_keep_count
     }
   }
 
@@ -52,14 +65,4 @@ resource "google_artifact_registry_repository_iam_member" "backend_github_action
   repository = google_artifact_registry_repository.backend.name
   role       = "roles/artifactregistry.writer"
   member     = "serviceAccount:github-actions@blog-gorman-club-root.iam.gserviceaccount.com"
-}
-
-# Stores the frontend image built alongside the Cloudflare Pages deploy; not served from here.
-resource "google_artifact_registry_repository" "frontend" {
-  depends_on = [google_project_service.artifact_registry]
-
-  project       = var.gcp_project_id
-  location      = var.gcp_region
-  repository_id = "frontend"
-  format        = "DOCKER"
 }

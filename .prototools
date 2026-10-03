@@ -2,7 +2,7 @@ moon = "2.5.5"
 go = "1.26.0"          # must equal services/backend/go.mod's `go` line
 node = "22"            # matches setup-node '22' in both workflows today
 npm = "10.9.7"         # version bundled with Node 22 today; no prior pin existed to match
-buf = "1.47.2"         # matches buf-setup-action and session-start.sh
+buf = "1.47.2"         # matches session-start.sh
 terraform = "1.15.8"   # matches setup-terraform and every providers.tf required_version
 
 [plugins]

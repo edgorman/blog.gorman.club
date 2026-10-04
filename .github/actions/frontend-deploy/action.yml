@@ -58,7 +58,7 @@ runs:
     # --branch=main is required: wrangler infers production vs. preview from GITHUB_REF_NAME, which
     # is the release tag on a `release` event, and would silently deploy as Preview.
     - name: Deploy to Cloudflare Pages
-      uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+      uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
       with:
         apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
         accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}

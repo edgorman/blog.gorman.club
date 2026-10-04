@@ -265,7 +265,7 @@ describe('EditPost', () => {
         <EditPost />
         <GoToOther />
       </>,
-      { context: { api, user: owner }, route: '/post/hello-world/edit', path: '/post/:slug/edit' },
+      { context: { api, user: owner, profile }, route: '/post/hello-world/edit', path: '/post/:slug/edit' },
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'other' }))

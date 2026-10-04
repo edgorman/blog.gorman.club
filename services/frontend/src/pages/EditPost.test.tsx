@@ -1,6 +1,7 @@
-import { screen } from '@testing-library/react'
+import { act, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ApiError, type Api, type Blog, type CurrentUser } from '../lib/api'
+import { useNavigate } from 'react-router-dom'
 import { renderWithApp } from '../testUtils'
 import { EditPost } from './EditPost'
 
@@ -243,5 +244,34 @@ describe('EditPost', () => {
 
     expect(await screen.findByDisplayValue('Hello world')).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Writing assistant' })).not.toBeInTheDocument()
+  })
+
+  // Leaving post A's editor for post B's before A has loaded: A's text must not land in B's editor,
+  // where saving would write it over B.
+  it("ignores a slower answer for the post the author just left", async () => {
+    let resolveA!: (post: Blog) => void
+    const other: Blog = { ...blog, slug: 'other', title: 'Other post' }
+    const api = fakeApi({
+      getBlog: jest.fn((slug: string) =>
+        slug === 'hello-world' ? new Promise<Blog>((resolve) => (resolveA = resolve)) : Promise.resolve(other),
+      ),
+    })
+    function GoToOther() {
+      const navigate = useNavigate()
+      return <button onClick={() => navigate('/post/other/edit')}>other</button>
+    }
+    renderWithApp(
+      <>
+        <EditPost />
+        <GoToOther />
+      </>,
+      { context: { api, user: owner, profile }, route: '/post/hello-world/edit', path: '/post/:slug/edit' },
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'other' }))
+    expect(await screen.findByDisplayValue('Other post')).toBeInTheDocument()
+    await act(async () => resolveA(blog))
+    expect(screen.getByDisplayValue('Other post')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('Hello world')).not.toBeInTheDocument()
   })
 })

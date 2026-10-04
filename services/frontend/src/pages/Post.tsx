@@ -34,13 +34,18 @@ export function Post() {
   useEffect(() => {
     if (!api || !slug) return
     setState({ phase: 'loading' })
+    let current = true
     api
       .getBlog(slug)
-      .then((post) => setState({ phase: 'ready', post }))
+      .then((post) => current && setState({ phase: 'ready', post }))
       .catch((e: unknown) => {
+        if (!current) return
         if (e instanceof ApiError && e.status === 404) return setState({ phase: 'not-found' })
         setState({ phase: 'error', message: e instanceof Error ? e.message : 'Failed to load post' })
       })
+    return () => {
+      current = false
+    }
   }, [api, slug])
 
   // Loaded beside the post rather than after it, and never an error of the page's own: a post with
@@ -63,7 +68,14 @@ export function Post() {
     if (state.phase !== 'ready') return
     const hash = window.location.hash.slice(1)
     if (!hash) return
-    const target = decodeURIComponent(hash)
+    // A pasted or truncated link can carry a malformed escape (`#%`), which must not take the page
+    // down - the raw hash is still worth trying as an id.
+    let target = hash
+    try {
+      target = decodeURIComponent(hash)
+    } catch {
+      // Keep the raw hash.
+    }
     const timeoutId = window.setTimeout(() => {
       // Some markdown sources target legacy `<a name="...">` anchors rather than an element id.
       const el = document.getElementById(target) ?? document.getElementsByName(target)[0]

@@ -18,12 +18,12 @@ export function AppProvider({
   version?: string
   environment?: string
 }) {
-  const { user, authHeaders, error, ready, renderButton, signOut } = useGoogleAuth()
+  const { user, authHeaders, error, ready, renderButton, signOut, expire } = useGoogleAuth()
   const { theme, toggleTheme } = useTheme()
 
   const api = useMemo(
-    () => (backendUrl ? createApi(backendUrl, authHeaders) : null),
-    [backendUrl, authHeaders],
+    () => (backendUrl ? createApi(backendUrl, authHeaders, expire) : null),
+    [backendUrl, authHeaders, expire],
   )
 
   const [profile, setProfile] = useState<CurrentUser | null>(null)

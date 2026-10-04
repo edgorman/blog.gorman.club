@@ -60,31 +60,30 @@ jobs:
       - id: moon
         name: Compute moon-affected deployments
         shell: bash
-        env:
-          # The whole push, not moon's own on-`main` fallback of HEAD~1, which only sees the last
-          # commit of a multi-commit push (#198). `moon query affected` has no --base flag, but
-          # reads MOON_BASE the same way `moon ci` does (crates/app/src/queries/changed_files.rs).
-          MOON_BASE: ${{ github.event.before }}
         run: |
-          # On the very first push to a new ref, `before` is 40 zeros; after a force-push, it can
-          # name a commit this history no longer contains (rewritten away). Both are detected here
-          # and fail open - every deployment marked affected rather than guessed at. This repo's
-          # branch protection (`allow_force_pushes: false`, settings.yml) plus squash-merge-only
-          # history means the force-push case shouldn't occur in practice, but it costs nothing
-          # to handle.
-          before="$MOON_BASE"
-          if [ "$before" = '0000000000000000000000000000000000000000' ] || ! git cat-file -e "$before" 2>/dev/null; then
+          # Diffed against the last commit this workflow fully processed - the newest release tag
+          # before this commit (pre-release only tags a commit once every publish job succeeded) -
+          # rather than `github.event.before` (#262). The concurrency group keeps at most one
+          # pending run and cancels the rest, so `before` can name a merge whose run never happened,
+          # and that merge's infrastructure changes would never be applied. HEAD~1, not HEAD, so a
+          # re-run of an already-tagged commit still sees its own changes. moon reads MOON_BASE the
+          # same way `moon ci` does (`moon query affected` has no --base flag). No tag at all fails
+          # open: every deployment marked affected rather than guessed at.
+          if base=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD~1 2>/dev/null); then
+            echo "Diffing against $base"
+            export MOON_BASE="$base"
+          else
             echo 'root=true' >> "$GITHUB_OUTPUT"
             echo 'staging=true' >> "$GITHUB_OUTPUT"
-          else
-            moon query affected > affected.json
-            for env in root staging; do
-              # .tasks is omitted entirely when nothing is affected (moon's Affected struct skips
-              # empty maps on serialize), so `(.tasks // {})` guards against `has` erroring on null.
-              val=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' affected.json)
-              echo "$env=$val" >> "$GITHUB_OUTPUT"
-            done
+            exit 0
           fi
+          moon query affected > affected.json
+          for env in root staging; do
+            # .tasks is omitted entirely when nothing is affected (moon's Affected struct skips
+            # empty maps on serialize), so `(.tasks // {})` guards against `has` erroring on null.
+            val=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' affected.json)
+            echo "$env=$val" >> "$GITHUB_OUTPUT"
+          done
 
   # Runs on every merge - not gated on the services-frontend diff - so every commit on `main`, and
   # therefore every release tag, has a folder in both buckets. One build feeds both buckets and
@@ -122,7 +121,8 @@ jobs:
           URL=$(gcloud run services describe backend-stag \
             --region=europe-west1 \
             --project=blog-gorman-club-stag \
-            --format='value(status.url)' 2>/dev/null || true)
+            --format='value(status.url)')
+          test -n "$URL" || { echo '::error::backend-stag URL not found'; exit 1; }
           echo "backend_url=$URL" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/frontend-build
         with:
@@ -304,6 +304,9 @@ jobs:
 
       - name: Terraform Plan (prod preview)
         shell: bash
+        env:
+          # Same as every other prod plan/apply, or this plan shows GOOGLE_CLIENT_ID being blanked.
+          TF_VAR_google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
         working-directory: infrastructure/env
         run: |
           terraform init \

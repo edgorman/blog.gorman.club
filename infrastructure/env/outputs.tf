@@ -8,11 +8,6 @@ output "artifact_registry_repository" {
   value       = google_artifact_registry_repository.backend.name
 }
 
-output "frontend_artifact_registry_repository" {
-  description = "Full resource name of the frontend Artifact Registry repository"
-  value       = google_artifact_registry_repository.frontend.name
-}
-
 output "frontend_bucket" {
   description = "Name of this environment's frontend static-build bucket"
   value       = google_storage_bucket.frontend.name

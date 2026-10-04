@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import type { Reactions } from '../hooks/useReactions'
-import { errorMessage, userPath, type Comment } from '../lib/api'
+import { errorMessage, isAuthor, userPath, type Comment } from '../lib/api'
 import { formatDate } from '../lib/format'
 import { ReactionBar } from './ReactionBar'
 
@@ -10,11 +10,11 @@ interface Props {
   /** The post being commented on. A comment has no identity apart from its post. */
   slug: string
   /**
-   * The post's owner, who may delete any comment on it. The backend decides either way (see
+   * The post owner's username; its owner may delete any comment on it. The backend decides either way (see
    * `Comment.CanBeDeletedBy`); this only keeps a button off the screen for somebody who would be
    * told no.
    */
-  ownerId: string
+  ownerUsername: string
   /**
    * The page's reactions, loaded once by the post above rather than per comment: a comment's
    * reactions come back with the post's in one response, so fetching them here would be asking
@@ -31,8 +31,8 @@ interface Props {
  * the safe rendering of a stranger's input is the one that has no syntax in it at all. Line breaks
  * are kept (see `.comment-body`), which is the whole of what a comment needs.
  */
-export function Comments({ slug, ownerId, reactions }: Props) {
-  const { api, user } = useApp()
+export function Comments({ slug, ownerUsername, reactions }: Props) {
+  const { api, user, profile } = useApp()
   const [comments, setComments] = useState<Comment[]>([])
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
@@ -115,7 +115,7 @@ export function Comments({ slug, ownerId, reactions }: Props) {
           // by one does not.
           const name = comment.authorUsername || 'an unnamed reader'
           const href = userPath(comment.authorUsername)
-          const deletable = !!user && (user.id === comment.authorId || user.id === ownerId)
+          const deletable = isAuthor(profile, comment.authorUsername) || isAuthor(profile, ownerUsername)
           // Only the post's owner is sent a comment's moderation; its author sees it as normal.
           const flagged = comment.moderation?.status === 'flagged'
 

@@ -2,13 +2,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AppContext } from '../context/AppContext'
-import { ApiError, type Api, type Blog } from '../lib/api'
+import { ApiError, type Api, type Blog, type CurrentUser } from '../lib/api'
 import { fakeAppContext, renderWithApp } from '../testUtils'
 import { Post } from './Post'
 
 const blog: Blog = {
   slug: 'hello-world',
-  ownerId: 'uid-1',
   authorUsername: 'calm-smiling-kestrel',
   title: 'Hello world',
   content: '# Hi\n\nBody text.',
@@ -157,7 +156,11 @@ describe('Post', () => {
 
   it('shows an Edit link only to the post owner', async () => {
     renderWithApp(<Post />, {
-      context: { api: fakeApi(), user: { id: 'uid-1', email: 'a@b.com', name: 'Ada' } },
+      context: {
+        api: fakeApi(),
+        user: { id: 'uid-1', email: 'a@b.com', name: 'Ada' },
+        profile: { id: 'uid-1', username: 'calm-smiling-kestrel', bio: '', assistantEnabled: false } as CurrentUser,
+      },
       route: '/post/hello-world',
       path: '/post/:slug',
     })
@@ -169,7 +172,11 @@ describe('Post', () => {
 
   it('hides the Edit link from a signed-in visitor who is not the owner', async () => {
     renderWithApp(<Post />, {
-      context: { api: fakeApi(), user: { id: 'someone-else', email: 'x@y.com', name: 'Bo' } },
+      context: {
+        api: fakeApi(),
+        user: { id: 'someone-else', email: 'x@y.com', name: 'Bo' },
+        profile: { id: 'someone-else', username: 'someone-else', bio: '', assistantEnabled: false } as CurrentUser,
+      },
       route: '/post/hello-world',
       path: '/post/:slug',
     })
@@ -184,7 +191,6 @@ describe('Post', () => {
       {
         id: 'cmt1',
         blogSlug: 'hello-world',
-        authorId: 'uid-2',
         authorUsername: 'sly-dancing-monkey',
         body: 'Nicely put.',
         createdAt: '2026-08-02T00:00:00Z',

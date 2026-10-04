@@ -34,11 +34,11 @@ type Blog struct {
 	// The whole of the post's address, assigned once at creation and never revised - a retitle
 	// changes `title` beneath a fixed slug rather than moving the URL. Slugs are unique across every
 	// author, so this alone identifies a post; it carries no author segment.
-	Slug    string `protobuf:"bytes,1,opt,name=slug,proto3" json:"slug,omitempty"`
-	OwnerId string `protobuf:"bytes,2,opt,name=owner_id,json=ownerId,proto3" json:"owner_id,omitempty"`
+	Slug string `protobuf:"bytes,1,opt,name=slug,proto3" json:"slug,omitempty"`
 	// The owner's username, resolved server-side rather than stored on the post: a post records its
 	// owner by uid, which is never public, so this is the only handle a client holds for the author
-	// behind it. Empty for a post whose owner holds no profile.
+	// behind it - and what a client compares with CurrentUser.username to tell its own posts. Empty
+	// for a post whose owner holds no profile.
 	AuthorUsername string `protobuf:"bytes,3,opt,name=author_username,json=authorUsername,proto3" json:"author_username,omitempty"`
 	Title          string `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
 	Content        string `protobuf:"bytes,5,opt,name=content,proto3" json:"content,omitempty"`
@@ -48,7 +48,9 @@ type Blog struct {
 	Tags []string `protobuf:"bytes,6,rep,name=tags,proto3" json:"tags,omitempty"`
 	// "public" or "private" - see the "Contract Layer" section of `packages/protos/AGENTS.md` for why this is a plain
 	// string rather than a proto enum.
-	Visibility     string                 `protobuf:"bytes,7,opt,name=visibility,proto3" json:"visibility,omitempty"`
+	Visibility string `protobuf:"bytes,7,opt,name=visibility,proto3" json:"visibility,omitempty"`
+	// Who besides the owner may read a private post. Sent to the owner alone; everybody else gets
+	// it empty, since who a post was shared with is the owner's business.
 	AllowedUserIds []string               `protobuf:"bytes,8,rep,name=allowed_user_ids,json=allowedUserIds,proto3" json:"allowed_user_ids,omitempty"`
 	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
@@ -89,13 +91,6 @@ func (*Blog) Descriptor() ([]byte, []int) {
 func (x *Blog) GetSlug() string {
 	if x != nil {
 		return x.Slug
-	}
-	return ""
-}
-
-func (x *Blog) GetOwnerId() string {
-	if x != nil {
-		return x.OwnerId
 	}
 	return ""
 }
@@ -277,8 +272,9 @@ type ListBlogsParams struct {
 	Limit *int32 `protobuf:"varint,1,opt,name=limit,proto3,oneof" json:"limit,omitempty"`
 	// Continues a previous page: the createdAt of the last post the previous one held.
 	StartAfter *string `protobuf:"bytes,2,opt,name=start_after,json=startAfter,proto3,oneof" json:"start_after,omitempty"`
-	// Narrows to one author's posts - a profile feed's User.id, not their username.
-	OwnerId *string `protobuf:"bytes,3,opt,name=owner_id,json=ownerId,proto3,oneof" json:"owner_id,omitempty"`
+	// Narrows to one author's posts - a profile feed's username. A name nobody holds answers an
+	// empty page.
+	Author *string `protobuf:"bytes,6,opt,name=author,proto3,oneof" json:"author,omitempty"`
 	// Narrows to one topic. Any spelling works; the backend normalizes it before matching.
 	Tag *string `protobuf:"bytes,4,opt,name=tag,proto3,oneof" json:"tag,omitempty"`
 	// Searches for posts about this, by meaning rather than by exact words: the backend embeds it
@@ -336,9 +332,9 @@ func (x *ListBlogsParams) GetStartAfter() string {
 	return ""
 }
 
-func (x *ListBlogsParams) GetOwnerId() string {
-	if x != nil && x.OwnerId != nil {
-		return *x.OwnerId
+func (x *ListBlogsParams) GetAuthor() string {
+	if x != nil && x.Author != nil {
+		return *x.Author
 	}
 	return ""
 }
@@ -359,7 +355,7 @@ func (x *ListBlogsParams) GetQ() string {
 
 // BlogRequest is the client-settable half of a post - the body of both `POST /blogs` and
 // `PUT /blogs/{slug}`, which share the same shape (internal/service/blog.go's blogRequest and
-// decodeBlogRequest serve both routes with it). The slug, owner_id, and the timestamps are decided
+// decodeBlogRequest serve both routes with it). The slug, the owner, and the timestamps are decided
 // by the server, so none of them are here.
 type BlogRequest struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
@@ -443,10 +439,9 @@ var File_blog_v1_blog_proto protoreflect.FileDescriptor
 
 const file_blog_v1_blog_proto_rawDesc = "" +
 	"\n" +
-	"\x12blog/v1/blog.proto\x12\ablog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe2\x02\n" +
+	"\x12blog/v1/blog.proto\x12\ablog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd7\x02\n" +
 	"\x04Blog\x12\x12\n" +
-	"\x04slug\x18\x01 \x01(\tR\x04slug\x12\x19\n" +
-	"\bowner_id\x18\x02 \x01(\tR\aownerId\x12'\n" +
+	"\x04slug\x18\x01 \x01(\tR\x04slug\x12'\n" +
 	"\x0fauthor_username\x18\x03 \x01(\tR\x0eauthorUsername\x12\x14\n" +
 	"\x05title\x18\x04 \x01(\tR\x05title\x12\x18\n" +
 	"\acontent\x18\x05 \x01(\tR\acontent\x12\x12\n" +
@@ -459,24 +454,24 @@ const file_blog_v1_blog_proto_rawDesc = "" +
 	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"J\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtJ\x04\b\x02\x10\x03R\bowner_id\"J\n" +
 	"\bBlogPage\x12#\n" +
 	"\x05posts\x18\x01 \x03(\v2\r.blog.v1.BlogR\x05posts\x12\x19\n" +
 	"\bhas_more\x18\x02 \x01(\bR\ahasMore\"3\n" +
 	"\fRelatedPosts\x12#\n" +
-	"\x05posts\x18\x01 \x03(\v2\r.blog.v1.BlogR\x05posts\"\xd1\x01\n" +
+	"\x05posts\x18\x01 \x03(\v2\r.blog.v1.BlogR\x05posts\"\xdc\x01\n" +
 	"\x0fListBlogsParams\x12\x19\n" +
 	"\x05limit\x18\x01 \x01(\x05H\x00R\x05limit\x88\x01\x01\x12$\n" +
 	"\vstart_after\x18\x02 \x01(\tH\x01R\n" +
-	"startAfter\x88\x01\x01\x12\x1e\n" +
-	"\bowner_id\x18\x03 \x01(\tH\x02R\aownerId\x88\x01\x01\x12\x15\n" +
+	"startAfter\x88\x01\x01\x12\x1b\n" +
+	"\x06author\x18\x06 \x01(\tH\x02R\x06author\x88\x01\x01\x12\x15\n" +
 	"\x03tag\x18\x04 \x01(\tH\x03R\x03tag\x88\x01\x01\x12\x11\n" +
 	"\x01q\x18\x05 \x01(\tH\x04R\x01q\x88\x01\x01B\b\n" +
 	"\x06_limitB\x0e\n" +
-	"\f_start_afterB\v\n" +
-	"\t_owner_idB\x06\n" +
+	"\f_start_afterB\t\n" +
+	"\a_authorB\x06\n" +
 	"\x04_tagB\x04\n" +
-	"\x02_q\"\x9b\x01\n" +
+	"\x02_qJ\x04\b\x03\x10\x04R\bowner_id\"\x9b\x01\n" +
 	"\vBlogRequest\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x12\n" +

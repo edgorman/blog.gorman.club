@@ -9,8 +9,7 @@ const stranger = { id: 'someone-else', email: 'x@y.com', name: 'Bo' }
 
 const blog: Blog = {
   slug: 'hello-world',
-  ownerId: 'uid-1',
-  authorUsername: 'calm-smiling-kestrel',
+  authorUsername: 'edgorman',
   title: 'Hello world',
   content: '# Hi\n\nBody text.',
   tags: [],
@@ -49,7 +48,7 @@ function fakeApi(overrides: Partial<Api> = {}): Api {
 describe('EditPost', () => {
   it('pre-fills the editor with the existing post for its owner', async () => {
     renderWithApp(<EditPost />, {
-      context: { api: fakeApi(), user: owner },
+      context: { api: fakeApi(), user: owner, profile },
       route: '/post/hello-world/edit',
       path: '/post/:slug/edit',
     })
@@ -60,7 +59,7 @@ describe('EditPost', () => {
   it('saves edits via updateBlog', async () => {
     const api = fakeApi()
     renderWithApp(<EditPost />, {
-      context: { api, user: owner },
+      context: { api, user: owner, profile },
       route: '/post/hello-world/edit',
       path: '/post/:slug/edit',
     })
@@ -80,7 +79,7 @@ describe('EditPost', () => {
     const privateBlog: Blog = { ...blog, visibility: 'private', allowedUserIds: ['u2', 'u3'] }
     const api = fakeApi({ getBlog: jest.fn().mockResolvedValue(privateBlog) })
     renderWithApp(<EditPost />, {
-      context: { api, user: owner },
+      context: { api, user: owner, profile },
       route: '/post/hello-world/edit',
       path: '/post/:slug/edit',
     })
@@ -100,7 +99,7 @@ describe('EditPost', () => {
     const tagged: Blog = { ...blog, tags: ['go', 'web-dev'] }
     const api = fakeApi({ getBlog: jest.fn().mockResolvedValue(tagged) })
     renderWithApp(<EditPost />, {
-      context: { api, user: owner },
+      context: { api, user: owner, profile },
       route: '/post/hello-world/edit',
       path: '/post/:slug/edit',
     })
@@ -123,7 +122,7 @@ describe('EditPost', () => {
     const tagged: Blog = { ...blog, tags: ['go'] }
     const api = fakeApi({ getBlog: jest.fn().mockResolvedValue(tagged) })
     renderWithApp(<EditPost />, {
-      context: { api, user: owner },
+      context: { api, user: owner, profile },
       route: '/post/hello-world/edit',
       path: '/post/:slug/edit',
     })
@@ -137,7 +136,7 @@ describe('EditPost', () => {
   it('switches visibility to private before saving', async () => {
     const api = fakeApi()
     renderWithApp(<EditPost />, {
-      context: { api, user: owner },
+      context: { api, user: owner, profile },
       route: '/post/hello-world/edit',
       path: '/post/:slug/edit',
     })
@@ -154,7 +153,7 @@ describe('EditPost', () => {
 
   it('refuses to edit a post owned by someone else', async () => {
     renderWithApp(<EditPost />, {
-      context: { api: fakeApi(), user: stranger },
+      context: { api: fakeApi(), user: stranger, profile: { ...profile, id: 'someone-else', username: 'someone-else' } },
       route: '/post/hello-world/edit',
       path: '/post/:slug/edit',
     })
@@ -168,7 +167,7 @@ describe('EditPost', () => {
   it('treats a masked private post the same as a missing one', async () => {
     const api = fakeApi({ getBlog: jest.fn().mockRejectedValue(new ApiError(404, 'blog not found')) })
     renderWithApp(<EditPost />, {
-      context: { api, user: owner },
+      context: { api, user: owner, profile },
       route: '/post/hello-world/edit',
       path: '/post/:slug/edit',
     })
@@ -180,7 +179,7 @@ describe('EditPost', () => {
     const api = fakeApi()
     jest.spyOn(window, 'confirm').mockReturnValue(true)
     renderWithApp(<EditPost />, {
-      context: { api, user: owner },
+      context: { api, user: owner, profile },
       route: '/post/hello-world/edit',
       path: '/post/:slug/edit',
     })
@@ -195,7 +194,7 @@ describe('EditPost', () => {
     const api = fakeApi()
     jest.spyOn(window, 'confirm').mockReturnValue(false)
     renderWithApp(<EditPost />, {
-      context: { api, user: owner },
+      context: { api, user: owner, profile },
       route: '/post/hello-world/edit',
       path: '/post/:slug/edit',
     })
@@ -210,7 +209,7 @@ describe('EditPost', () => {
     const api = fakeApi({ deleteBlog: jest.fn().mockRejectedValue(new Error('nope')) })
     jest.spyOn(window, 'confirm').mockReturnValue(true)
     renderWithApp(<EditPost />, {
-      context: { api, user: owner },
+      context: { api, user: owner, profile },
       route: '/post/hello-world/edit',
       path: '/post/:slug/edit',
     })

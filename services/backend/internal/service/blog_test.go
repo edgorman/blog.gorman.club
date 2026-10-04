@@ -67,7 +67,6 @@ func author(uid, username string) entity.User {
 // useDate=string).
 type wireBlog struct {
 	Slug           string   `json:"slug"`
-	OwnerID        string   `json:"ownerId"`
 	AuthorUsername string   `json:"authorUsername"`
 	Title          string   `json:"title"`
 	Content        string   `json:"content"`
@@ -262,24 +261,42 @@ func TestListBlogs_RejectsMalformedParams(t *testing.T) {
 	}
 }
 
-// `ownerId` narrows a page to one author's posts - what a profile feed asks for - and still hides
+// `author` narrows a page to one author's posts - what a profile feed asks for - and still hides
 // what that viewer may not read, exactly as the general feed does.
-func TestListBlogs_OwnerIDScopesToOneAuthor(t *testing.T) {
+func TestListBlogs_AuthorScopesToOneAuthor(t *testing.T) {
 	repo := newFakeBlogRepository()
 	repo.seed(
 		entity.Blog{Slug: "mine-public", OwnerID: "author", Visibility: entity.VisibilityPublic},
 		entity.Blog{Slug: "mine-private", OwnerID: "author", Visibility: entity.VisibilityPrivate},
 		entity.Blog{Slug: "someone-elses", OwnerID: "someone", Visibility: entity.VisibilityPublic},
 	)
-	s := newTestService(repo, nil)
+	s := newBlogService(repo, author("author", "calm-smiling-kestrel"))
 
-	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?ownerId=author", nil), "reader")
-	rec := httptest.NewRecorder()
-	s.ListBlogs(rec, req)
+	for query, want := range map[string]int{"calm-smiling-kestrel": 1, "nobody-holds-this": 0} {
+		req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?author="+query, nil), "reader")
+		rec := httptest.NewRecorder()
+		s.ListBlogs(rec, req)
 
-	got := decodeBlogPage(t, rec)
-	if len(got.Posts) != 1 || got.Posts[0].Slug != "mine-public" {
-		t.Errorf("posts = %v, want [mine-public]", got.Posts)
+		got := decodeBlogPage(t, rec)
+		if len(got.Posts) != want || (want == 1 && got.Posts[0].Slug != "mine-public") {
+			t.Errorf("author=%s: posts = %v, want %d of mine-public", query, got.Posts, want)
+		}
+	}
+}
+
+// A post's whitelist is the owner's business: a reader named on it, or anybody reading a public
+// post that still carries one, is sent it empty.
+func TestGetBlog_WhitelistOnlyForTheOwner(t *testing.T) {
+	repo := newFakeBlogRepository()
+	repo.seed(entity.Blog{Slug: "shared", OwnerID: "owner", Visibility: entity.VisibilityPrivate, AllowedUserIDs: []string{"reader", "other"}})
+	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
+
+	for uid, want := range map[string]int{"owner": 2, "reader": 0} {
+		rec := httptest.NewRecorder()
+		s.GetBlog(rec, withUID(blogPathRequest(http.MethodGet, "shared", nil), uid))
+		if got := decodeBlog(t, rec).AllowedUserIDs; len(got) != want {
+			t.Errorf("%s was sent allowedUserIds %v, want %d entries", uid, got, want)
+		}
 	}
 }
 
@@ -410,8 +427,8 @@ func TestCreateBlog_OwnerIDFromCaller(t *testing.T) {
 	if rec.Result().StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
 	}
-	if got := decodeBlog(t, rec); got.OwnerID != "caller" {
-		t.Errorf("OwnerID = %q, want %q (must ignore client-supplied ownerId)", got.OwnerID, "caller")
+	if stored, _ := repo.stored(decodeBlog(t, rec).Slug); stored.OwnerID != "caller" {
+		t.Errorf("OwnerID = %q, want %q (must ignore client-supplied ownerId)", stored.OwnerID, "caller")
 	}
 }
 
@@ -610,6 +627,33 @@ func TestCreateBlog_NamesAnAuthorWhoHasNoProfile(t *testing.T) {
 	}
 }
 
+// The client's first-sign-in PUT /users/me can land between ensureAuthor's lookup and its write;
+// the profile it chose must survive rather than be replaced by a generated one.
+func TestCreateBlog_KeepsAProfileWrittenMeanwhile(t *testing.T) {
+	blogs := newFakeBlogRepository()
+	users := newFakeUserRepository()
+	users.beforePut = func(entity.User) error {
+		users.beforePut = nil
+		users.seed(entity.User{ID: "caller", Username: "chosen-name", Bio: "mine"})
+		return nil
+	}
+	s := newTestService(blogs, users)
+
+	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello world", Visibility: string(entity.VisibilityPublic)})
+	rec := httptest.NewRecorder()
+	s.CreateBlog(rec, withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller"))
+
+	if rec.Result().StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
+	}
+	if got := users.users["caller"]; got.Username != "chosen-name" || got.Bio != "mine" {
+		t.Errorf("profile = %+v, want the one the client wrote", got)
+	}
+	if got := decodeBlog(t, rec).AuthorUsername; got != "chosen-name" {
+		t.Errorf("AuthorUsername = %q, want %q", got, "chosen-name")
+	}
+}
+
 func TestCreateBlog_RejectsInvalidVisibility(t *testing.T) {
 	s := newTestService(nil, nil)
 
@@ -730,9 +774,9 @@ func TestListBlogs_FiltersCompose(t *testing.T) {
 		entity.Blog{Slug: "wrong-tag", OwnerID: "author", Visibility: entity.VisibilityPublic, Title: "Generics", Tags: []string{"rust"}},
 		entity.Blog{Slug: "wrong-term", OwnerID: "author", Visibility: entity.VisibilityPublic, Title: "Channels", Tags: []string{"go"}},
 	)
-	s := newTestService(repo, nil)
+	s := newBlogService(repo, author("author", "calm-smiling-kestrel"))
 
-	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?ownerId=author&tag=go&q=generics", nil), "reader")
+	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?author=calm-smiling-kestrel&tag=go&q=generics", nil), "reader")
 	rec := httptest.NewRecorder()
 	s.ListBlogs(rec, req)
 
@@ -1065,7 +1109,7 @@ func TestGetBlog_WireBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.GetBlog(rec, withUID(blogPathRequest(http.MethodGet, "hello-world", nil), "reader"))
 
-	want := `{"slug":"hello-world","ownerId":"owner","authorUsername":"sly-dancing-monkey","title":"Hello","content":"World","tags":[],"visibility":"public","allowedUserIds":[],"createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z"}`
+	want := `{"slug":"hello-world","authorUsername":"sly-dancing-monkey","title":"Hello","content":"World","tags":[],"visibility":"public","allowedUserIds":[],"createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z"}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}

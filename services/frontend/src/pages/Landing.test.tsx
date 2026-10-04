@@ -7,7 +7,6 @@ import { Landing } from './Landing'
 function post(overrides: Partial<Blog>): Blog {
   return {
     slug: 'hello-world',
-    ownerId: 'uid-1',
     authorUsername: 'calm-smiling-kestrel',
     title: 'Untitled',
     content: 'hello',

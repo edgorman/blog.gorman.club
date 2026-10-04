@@ -157,8 +157,8 @@ refuses a reserved slug outright.
 ### Finding a post
 
 The feed is reverse-chronological, which is the right default and a poor way to
-find one post among many, so `GET /blogs` takes two filters beside the `ownerId`
-a profile feed already used. Both narrow the page and neither can widen it: each
+find one post among many, so `GET /blogs` takes two filters beside the `author`
+(a username) a profile feed uses. Both narrow the page and neither can widen it: each
 is applied on top of `Blog.CanBeReadBy`, so a private post cannot be surfaced by
 a search that names it exactly, and a stranger cannot use the search box to
 discover what somebody wrote.
@@ -216,7 +216,7 @@ at all, is granted public posts and nothing else. Every anonymous caller
 therefore really is asking the same question. A signed-in caller's page carries
 their own private and whitelisted posts, so it is never stored and never served
 from the cache; there is no per-uid keying to get wrong because there are no
-per-uid entries. Filters do not widen this either: `ownerId`, `tag`, `startAfter`,
+per-uid entries. Filters do not widen this either: `author`, `tag`, `startAfter`,
 `limit` and `q` are all part of the key, so a narrowed page is its own entry
 rather than a variation on the feed.
 
@@ -308,7 +308,7 @@ Adding another provider means extending `authProvider` and the switch in
 
 | Method | Path          | Description                                                           |
 | ------ | ------------- | --------------------------------------------------------------------- |
-| GET    | `/blogs`      | List the blogs the caller may read, newest first. `tag` narrows to one topic and `q` to a search term, both on top of the same read rules. No credential required. |
+| GET    | `/blogs`      | List the blogs the caller may read, newest first. `author` narrows to one username's posts, `tag` to one topic and `q` to a search term, all on top of the same read rules. A post's `allowedUserIds` is sent to its owner alone, and no response but `/users/me` carries a uid. No credential required. |
 | GET    | `/blogs/{slug}` | Fetch a single blog. No credential required for a public one; a private one the caller may not read is a `404`, the same as a missing one. |
 | POST   | `/blogs`      | Create a blog. `ownerId` is always the caller, and the slug comes from the title, regardless of the body. |
 | PUT    | `/blogs/{slug}` | Replace a blog's fields. A post the caller may not read is a `404`; one they may read but do not own is a `403`. The slug does not move, even when the title changes. |

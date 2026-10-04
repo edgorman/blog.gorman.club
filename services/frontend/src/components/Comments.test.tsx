@@ -1,19 +1,18 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Reactions } from '../hooks/useReactions'
-import { ApiError, type Api, type Comment } from '../lib/api'
+import { ApiError, type Api, type Comment, type CurrentUser } from '../lib/api'
 import { renderWithApp } from '../testUtils'
 import { Comments } from './Comments'
 
-const OWNER = 'uid-owner'
-const READER = 'uid-reader'
+const OWNER = 'calm-smiling-kestrel'
+const READER = 'sly-dancing-monkey'
 
 function comment(overrides: Partial<Comment> = {}): Comment {
   return {
     id: 'cmt1',
     blogSlug: 'hello-world',
-    authorId: READER,
-    authorUsername: 'sly-dancing-monkey',
+    authorUsername: READER,
     body: 'Nicely put.',
     createdAt: '2026-08-02T00:00:00Z',
     ...overrides,
@@ -35,10 +34,11 @@ function noReactions(overrides: Partial<Reactions> = {}): Reactions {
   return { countsFor: () => [], toggle: jest.fn(), error: null, ...overrides }
 }
 
-/** Renders the thread as the given signed-in reader, or signed out when uid is omitted. */
-function renderComments(api: Api, uid?: string, reactions: Reactions = noReactions()) {
-  return renderWithApp(<Comments slug="hello-world" ownerId={OWNER} reactions={reactions} />, {
-    context: { api, user: uid ? { id: uid, email: 'reader@example.com', name: 'Reader' } : null },
+/** Renders the thread as the given signed-in reader, or signed out when username is omitted. */
+function renderComments(api: Api, username?: string, reactions: Reactions = noReactions()) {
+  const profile = username ? ({ id: 'uid', username, bio: '', assistantEnabled: false } as CurrentUser) : null
+  return renderWithApp(<Comments slug="hello-world" ownerUsername={OWNER} reactions={reactions} />, {
+    context: { api, user: username ? { id: 'uid', email: 'reader@example.com', name: 'Reader' } : null, profile },
   })
 }
 
@@ -121,7 +121,7 @@ describe('Comments', () => {
     expect(await screen.findByRole('button', { name: 'Delete' })).toBeInTheDocument()
     asOwner.unmount()
 
-    const asStranger = renderComments(api(), 'uid-stranger')
+    const asStranger = renderComments(api(), 'some-stranger')
     expect(await screen.findByText('Nicely put.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
     asStranger.unmount()

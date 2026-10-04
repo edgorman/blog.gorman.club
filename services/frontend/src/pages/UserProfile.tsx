@@ -7,8 +7,6 @@ import { errorMessage, userPath, type Blog } from '../lib/api'
 import { formatDate } from '../lib/format'
 
 interface ProfileInfo {
-  /** What posts are fetched by - `listBlogs`' `ownerId` takes a uid, never a username. */
-  id: string
   /** Taken from the fetched profile rather than the URL, so it carries the casing as stored. */
   username: string
   bio: string
@@ -51,7 +49,7 @@ export function UserProfile() {
     // them - a lookup that misses means the name really is unclaimed.
     api.getUser(username).then(
       (u) => {
-        if (!cancelled) setProfile({ id: u.id, username: u.username, bio: u.bio, memberSince: u.createdAt })
+        if (!cancelled) setProfile({ username: u.username, bio: u.bio, memberSince: u.createdAt })
       },
       () => {
         if (!cancelled) setMissing(true)
@@ -63,14 +61,14 @@ export function UserProfile() {
   }, [api, username])
 
   useEffect(() => {
-    // Posts are fetched by the profile's uid, once it resolves, rather than filtered client-side
-    // out of the whole feed - the point of scoping `listBlogs` by `ownerId` in the first place.
+    // Posts are fetched by the profile's username, once it resolves, rather than filtered
+    // client-side out of the whole feed - the point of scoping `listBlogs` by `author`.
     if (!api || !profile) return
     setPostsState({ phase: 'loading' })
 
     let cancelled = false
     api
-      .listBlogs({ ownerId: profile.id, limit: FEED_SIZE })
+      .listBlogs({ author: profile.username, limit: FEED_SIZE })
       .then((page) => {
         if (!cancelled) {
           setPostsState({ phase: 'ready', posts: page.posts, hasMore: page.hasMore, loadingMore: false })
@@ -90,7 +88,7 @@ export function UserProfile() {
     setPostsState({ ...postsState, loadingMore: true, loadMoreError: undefined })
 
     api
-      .listBlogs({ ownerId: profile.id, limit: FEED_SIZE, startAfter: cursor })
+      .listBlogs({ author: profile.username, limit: FEED_SIZE, startAfter: cursor })
       .then((page) => {
         setPostsState((prev) =>
           prev.phase === 'ready'

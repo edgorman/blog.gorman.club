@@ -111,7 +111,6 @@ func (f *commentFixture) delete(uid, id string) *httptest.ResponseRecorder {
 type wireComment struct {
 	ID             string `json:"id"`
 	BlogSlug       string `json:"blogSlug"`
-	AuthorID       string `json:"authorId"`
 	AuthorUsername string `json:"authorUsername"`
 	Body           string `json:"body"`
 	CreatedAt      string `json:"createdAt"`
@@ -163,8 +162,8 @@ func TestCreateComment(t *testing.T) {
 	if created.Body != "nicely put" {
 		t.Errorf("Body = %q, want it trimmed", created.Body)
 	}
-	if created.AuthorID != commentReader {
-		t.Errorf("AuthorID = %q, want the caller %q", created.AuthorID, commentReader)
+	if created.AuthorUsername != "sly-dancing-monkey" {
+		t.Errorf("AuthorUsername = %q, want the caller's", created.AuthorUsername)
 	}
 	if created.BlogSlug != commentSlug {
 		t.Errorf("BlogSlug = %q, want the post from the path", created.BlogSlug)

@@ -22,12 +22,13 @@ message Comment {
   // see entity.Comment's own comment on why it has no name of its own to be addressed by.
   string id = 1;
   string blog_slug = 2;
-  // The uid of whoever wrote it, which a client needs to know whether to offer a delete button -
-  // never a public identifier on its own, unlike author_username below.
-  string author_id = 3;
+  // author_id carried the commenter's uid - their Google account id - to every reader (#253).
+  reserved 3;
+  reserved "author_id";
   // The commenter's username, resolved server-side rather than stored on the comment: it records
   // its author by uid, which is never public, so this is the only handle a client holds for the
-  // profile behind it. Empty for a commenter who holds no profile.
+  // profile behind it - and what it compares with CurrentUser.username to offer a delete button.
+  // Empty for a commenter who holds no profile.
   string author_username = 4;
   string body = 5;
   google.protobuf.Timestamp created_at = 6;

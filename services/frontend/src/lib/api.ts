@@ -54,6 +54,16 @@ export function postPath(post: Pick<Blog, 'slug'>): string {
 }
 
 /**
+ * Whether the signed-in caller wrote something attributed to username. Usernames are unique and a
+ * post or comment resolves its author's on every read, so this is the "is it mine" check the wire
+ * leaves a client - it is never sent a uid to compare (#253). Only for what to show: the backend
+ * decides every write itself.
+ */
+export function isAuthor(profile: CurrentUser | null, username: string): boolean {
+  return !!profile && !!username && profile.username === username
+}
+
+/**
  * The path a profile lives at, or null for an author with no username and so no page. Escaped for
  * the same reason `postPath` escapes a slug.
  */
@@ -109,7 +119,7 @@ function blogsListPath(params: ListBlogsParams = {}): string {
   const query = new URLSearchParams()
   if (params.limit !== undefined) query.set('limit', String(params.limit))
   if (params.startAfter) query.set('startAfter', params.startAfter)
-  if (params.ownerId) query.set('ownerId', params.ownerId)
+  if (params.author) query.set('author', params.author)
   if (params.tag) query.set('tag', params.tag)
   if (params.q) query.set('q', params.q)
 

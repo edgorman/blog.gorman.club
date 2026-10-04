@@ -114,6 +114,32 @@ func TestPutUser_UpdatePreservesCreatedAt(t *testing.T) {
 	}
 }
 
+// subscribedUntil is written out of band; a profile edit must carry the stored value rather than
+// whatever it read before that write.
+func TestPutUser_KeepsTheStoredSubscription(t *testing.T) {
+	until := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+	repo := newFakeUserRepository()
+	repo.seed(entity.User{ID: "caller", Username: "sly-dancing-monkey"})
+	repo.beforePut = func(entity.User) error {
+		repo.beforePut = nil
+		stored := repo.users["caller"]
+		stored.SubscribedUntil = &until
+		repo.users["caller"] = stored
+		return nil
+	}
+	s := newTestService(nil, repo)
+
+	rec := httptest.NewRecorder()
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", []byte(`{"bio":"Edward"}`)))
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
+	}
+	if got := repo.users["caller"].SubscribedUntil; got == nil || !got.Equal(until) {
+		t.Errorf("SubscribedUntil = %v, want %v", got, until)
+	}
+}
+
 // There is no id in the path to forge, so a write can only ever land on the caller's own profile.
 // This pins that: two different callers writing the same body get two separate profiles, and
 // neither can name the other.
@@ -395,8 +421,8 @@ func TestGetUser(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.ID != "someone" {
-		t.Errorf("ID = %q, want %q", got.ID, "someone")
+	if got.ID != "" {
+		t.Errorf("ID = %q, want the uid withheld from a public profile", got.ID)
 	}
 }
 
@@ -510,8 +536,8 @@ func TestHandler_RoutesUsernameLookups(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.ID != "someone" {
-		t.Errorf("ID = %q, want %q", got.ID, "someone")
+	if got.ID != "" {
+		t.Errorf("ID = %q, want the uid withheld from a public profile", got.ID)
 	}
 }
 
@@ -760,7 +786,7 @@ func TestGetUser_WireBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.GetUser(rec, usernameHTTPRequest("sly-dancing-monkey"))
 
-	want := `{"id":"someone","username":"sly-dancing-monkey","bio":"hi","createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z"}`
+	want := `{"username":"sly-dancing-monkey","bio":"hi","createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z"}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}
@@ -915,4 +941,17 @@ func TestDeleteUser_RetryFinishesAPartialErasure(t *testing.T) {
 
 	f.deleteAccount(t, http.StatusNoContent)
 	f.assertErased(t)
+}
+
+// Every write route reads its body through readProto, so one route stands for all of them.
+func TestPutUser_RejectsOversizedBody(t *testing.T) {
+	s := newTestService(nil, newFakeUserRepository())
+
+	body := []byte(`{"bio":"` + strings.Repeat("a", maxRequestBody) + `"}`)
+	rec := httptest.NewRecorder()
+	s.PutUser(rec, selfHTTPRequest(http.MethodPut, "caller", body))
+
+	if rec.Result().StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusRequestEntityTooLarge)
+	}
 }

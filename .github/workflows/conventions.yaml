@@ -1,0 +1,72 @@
+name: 'Conventions'
+
+# Separate from pull-request.yaml so a title edit reruns only these two cheap checks, not the
+# whole build. `edited` covers the title (and body, for the BREAKING CHANGE: footer).
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, edited, synchronize, reopened]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conventions-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The squash commit subject is the PR title, and versioning parses it (root AGENTS.md, Commit
+  # Message Convention). In a merge queue the title was already checked on the PR, so this
+  # reports skipped, which counts as passing.
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Conventional Commit title
+        shell: bash
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          re='^(feat|fix|build|chore|ci|docs|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+'
+          if [[ ! "$TITLE" =~ $re ]]; then
+            echo "::error::PR title '$TITLE' is not a Conventional Commit: type(scope)?!?: description, with type one of feat, fix, build, chore, ci, docs, perf, refactor, revert, style, test."
+            exit 1
+          fi
+
+  # buf breaking against main, unless the PR declares itself breaking, so a deliberate wire break
+  # also bumps major. In a merge queue the squash commit carries the PR title and body, so the
+  # same markers are read from it.
+  protos-breaking:
+    runs-on: ubuntu-latest
+    steps:
+      - id: marker
+        name: Check for a breaking-change marker
+        shell: bash
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body || github.event.merge_group.head_commit.message }}
+        run: |
+          subject="${TITLE:-${BODY%%$'\n'*}}"
+          re='^[a-z]+(\([^)]+\))?!:'
+          if [[ "$subject" =~ $re ]] || grep -qE '^BREAKING[ -]CHANGE:' <<<"$BODY"; then
+            echo "Marked breaking; skipping buf breaking."
+            echo "breaking=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.marker.outputs.breaking != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          filter: 'blob:none'
+      - if: steps.marker.outputs.breaking != 'true'
+        uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+          cache: false # see pull-request.yaml's `changed` job for why
+      - if: steps.marker.outputs.breaking != 'true'
+        name: moon ci
+        shell: bash
+        run: moon ci packages/protos:breaking
+        env:
+          MOON_BASE: origin/main

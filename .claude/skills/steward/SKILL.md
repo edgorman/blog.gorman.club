@@ -15,13 +15,14 @@ Run what CI runs, from the repo root, against `origin/main` (`git fetch origin m
 moon ci --base origin/main :format :lint :vet :typecheck :build root:wire-types root:projects-covered root:go-version-sync
 moon ci --base origin/main :test
 moon ci --base origin/main packages/protos:drift
+moon ci --base origin/main packages/protos:breaking
 ```
 
 `moon ci` runs only what the diff affects, so a clean run on an untouched project proves nothing about it. In a cloud session two targets cannot run: `:validate` (`terraform init` needs `registry.terraform.io`) and `services/backend:image` (no Docker daemon). For those, read the CI log.
 
 ## Required checks
 
-All seven jobs of `.github/workflows/pull-request.yaml` are required (`.github/settings.yml`). A job its `if:` skips reports "skipped", which counts as passing.
+All seven jobs of `.github/workflows/pull-request.yaml` and both jobs of `.github/workflows/conventions.yaml` are required (`.github/settings.yml`). A job its `if:` skips reports "skipped", which counts as passing.
 
 | Check | What a failure means | Fix |
 |---|---|---|
@@ -34,6 +35,8 @@ All seven jobs of `.github/workflows/pull-request.yaml` are required (`.github/s
 | `test` → `:test` | `go test` or Jest | A real failure. Root-cause it |
 | `test` → `services/backend:image` | The Docker build | Usually a Go version or a file missing from the build context |
 | `protos-drift` | Generated code doesn't match the `.proto` | `cd packages/protos && buf generate`, then commit `services/backend/internal/gen` and `services/frontend/src/gen`. **Never hand-edit either folder** |
+| `pr-title` | The PR title isn't a Conventional Commit: `type(scope)?!?: description`, type one of `feat`, `fix`, `build`, `chore`, `ci`, `docs`, `perf`, `refactor`, `revert`, `style`, `test` (root `AGENTS.md`) | Edit the title. The check reruns on the edit, no push needed |
+| `protos-breaking` → `packages/protos:breaking` | `buf breaking` against `origin/main` found a wire break (a field removed, renumbered or retyped, ...) | Make the change additive (see "A wire change is a two-release problem" in `packages/protos/AGENTS.md`). If the break is deliberate, ask the user: marking the PR breaking (`!` in the title or a `BREAKING CHANGE:` footer in the body) skips the check and bumps major. Local repro: `moon run packages/protos:breaking` |
 | `changed` | `moon query affected` failed | A `moon.yml` is invalid. `MOON_BASE=origin/main moon query affected` reproduces it |
 | `infrastructure-{root,staging,prod}` | `terraform init/fmt/validate/plan` with real credentials | See below |
 

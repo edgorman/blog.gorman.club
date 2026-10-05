@@ -56,7 +56,7 @@ branches:
         dismiss_stale_reviews: true
         require_code_owner_reviews: true
 
-      # The jobs of .github/workflows/pull-request.yaml, named by their job ids
+      # The jobs of .github/workflows/pull-request.yaml and conventions.yaml, named by their job ids
       # (none of them set a `name:`, so that is what the check run is called).
       #
       # Every one of these is safe to require even though most are conditional
@@ -80,6 +80,8 @@ branches:
           - infrastructure-root
           - infrastructure-staging
           - infrastructure-prod
+          - pr-title
+          - protos-breaking
 
       # Stays false on purpose (#275): Claude Code opens PRs as @edgorman, GitHub never lets an
       # author approve their own PR, so the owner merges those with the admin override. Revisit

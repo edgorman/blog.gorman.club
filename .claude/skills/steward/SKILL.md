@@ -31,7 +31,7 @@ All seven jobs of `.github/workflows/pull-request.yaml` are required (`.github/s
 | `lint-check` → `root:wire-types` | An `export interface` in `services/frontend/src/lib/api.ts`, or a `json:"..."` tag in `services/backend/internal/service` outside `debug.go` | Use the generated type from `src/gen` / `internal/gen`. If the type doesn't exist yet, add the message to a `.proto` |
 | `lint-check` → `root:projects-covered` | A `services/*` or `packages/*` folder has no `moon.yml` | Add one, modelled on a sibling |
 | `lint-check` → `root:go-version-sync` | `.prototools`'s `go` pin and `services/backend/go.mod`'s `go` line differ | Change both. Also bump `FROM golang:X-alpine` in `services/backend/Dockerfile` (#123) |
-| `test` → `:test` | `go test` or Jest | A real failure. Root-cause it |
+| `test` → `:test` | `go test` or Vitest | A real failure. Root-cause it |
 | `test` → `services/backend:image` | The Docker build | Usually a Go version or a file missing from the build context |
 | `protos-drift` | Generated code doesn't match the `.proto` | `cd packages/protos && buf generate`, then commit `services/backend/internal/gen` and `services/frontend/src/gen`. **Never hand-edit either folder** |
 | `changed` | `moon query affected` failed | A `moon.yml` is invalid. `MOON_BASE=origin/main moon query affected` reproduces it |

@@ -142,7 +142,7 @@ instead of a button, and the backend answers any authenticated request with a
 ```sh
 npm ci            # install
 npm run lint      # oxlint
-npm test          # jest
+npm test          # vitest
 npm run build     # tsc -b && vite build
 ```
 

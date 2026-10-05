@@ -58,6 +58,14 @@ jobs:
           service_account: ${{ vars.SERVICE_ACCOUNT }}
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # Retention only: the release-<version> tag is what the registry's keep-releases cleanup policy
+      # (infrastructure/env/artifact_registry.tf) matches, so a release's image outlives the
+      # most-recent-N window for rollback. The deploy below still goes by commit SHA.
+      - name: Tag the image with its release
+        env:
+          IMAGE: 'europe-west1-docker.pkg.dev/blog-gorman-club-prod/backend/backend'
+          RELEASE: ${{ github.event.release.tag_name }}
+        run: gcloud artifacts docker tags add "$IMAGE:$GITHUB_SHA" "$IMAGE:release-$RELEASE" --quiet
       - id: deploy
         uses: ./.github/actions/backend-cloudrun-deploy
         with:
@@ -84,6 +92,14 @@ jobs:
           service_account: ${{ vars.SERVICE_ACCOUNT }}
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # Retention only: the release-<version> tag is what the registry's keep-releases cleanup policy
+      # (infrastructure/env/artifact_registry.tf) matches, so a release's image outlives the
+      # most-recent-N window for rollback. The deploy below still goes by commit SHA.
+      - name: Tag the image with its release
+        env:
+          IMAGE: 'europe-west1-docker.pkg.dev/blog-gorman-club-prod/backend/worker'
+          RELEASE: ${{ github.event.release.tag_name }}
+        run: gcloud artifacts docker tags add "$IMAGE:$GITHUB_SHA" "$IMAGE:release-$RELEASE" --quiet
       - uses: ./.github/actions/backend-cloudrun-deploy
         with:
           gcp_project_id: 'blog-gorman-club-prod'

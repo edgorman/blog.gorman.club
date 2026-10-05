@@ -18,6 +18,8 @@ interface GoogleButtonConfiguration {
   type?: 'standard' | 'icon'
   theme?: 'outline' | 'filled_blue' | 'filled_black'
   size?: 'large' | 'medium' | 'small'
+  /** In pixels; Google clamps it to 200-400. */
+  width?: number
 }
 
 declare global {

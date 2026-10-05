@@ -87,6 +87,25 @@ describe('useGoogleAuth', () => {
     expect(id.prompt).toHaveBeenCalled()
   })
 
+  // Without a width Google's placeholder fills the container and its iframe then shrinks to fit the
+  // text, which is the jump seen when the account panel opens.
+  it('renders the button at its container width, within Google\'s 200-400px range', () => {
+    process.env.VITE_GOOGLE_CLIENT_ID = 'test-client-id'
+    const id = stubGoogle()
+    const { result } = renderHook(() => useGoogleAuth())
+
+    const widthFor = (clientWidth: number) => {
+      const element = document.createElement('div')
+      Object.defineProperty(element, 'clientWidth', { value: clientWidth })
+      result.current.renderButton(element)
+      return id.renderButton.mock.lastCall[1].width
+    }
+
+    expect(widthFor(288)).toBe(288)
+    expect(widthFor(0)).toBe(200)
+    expect(widthFor(900)).toBe(400)
+  })
+
   // The deterministic half of staying signed in: the cached credential is what survives a reload,
   // rather than depending on Google choosing to reissue one.
   it('restores an unexpired cached credential on mount', () => {

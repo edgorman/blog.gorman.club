@@ -158,10 +158,14 @@ export function useGoogleAuth(): UseGoogleAuthResult {
   const renderButton = useCallback((element: HTMLElement) => {
     if (!window.google || !initialized.current) return
 
+    // Without a width Google first paints a placeholder that fills the container, then swaps in an
+    // iframe sized to its text, so the button visibly shrinks a moment after it appears. Pinning
+    // the width to the container makes both the same size.
     window.google.accounts.id.renderButton(element, {
       type: 'standard',
       theme: 'outline',
       size: 'medium',
+      width: Math.min(400, Math.max(200, element.clientWidth)),
     })
   }, [])
 

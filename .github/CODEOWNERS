@@ -1,2 +1,11 @@
-# Default owner for everything in the repo, unless a later match takes precedence.
+# One line per area, so adding a second owner to one area is a one-line change. The last matching
+# pattern wins, so the high-risk paths (infrastructure/, .github/, access.go) stay explicitly owned
+# whatever happens to the broader lines above them.
 * @edgorman
+
+/services/backend/ @edgorman
+/services/frontend/ @edgorman
+/packages/protos/ @edgorman
+/infrastructure/ @edgorman
+/.github/ @edgorman
+/services/backend/internal/entity/access.go @edgorman

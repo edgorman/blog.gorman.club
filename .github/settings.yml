@@ -65,6 +65,11 @@ branches:
       # check run - with conclusion "skipped", which branch protection counts
       # as passing. It is a workflow that never runs at all that leaves a
       # required check pending forever, and this one always runs.
+      #
+      # `strict: true` makes each PR re-run CI after every merge ahead of it. A merge queue would
+      # batch that, but GitHub only offers merge queues to organization-owned repositories, and
+      # this one is user-owned, so there is no queue to configure here (#275). pull-request.yaml
+      # already runs on merge_group for when the repository moves to an organization.
       required_status_checks:
         strict: true
         contexts:
@@ -76,6 +81,9 @@ branches:
           - infrastructure-staging
           - infrastructure-prod
 
+      # Stays false on purpose (#275): Claude Code opens PRs as @edgorman, GitHub never lets an
+      # author approve their own PR, so the owner merges those with the admin override. Revisit
+      # once a second code owner can approve them.
       enforce_admins: false
       required_linear_history: true
       required_conversation_resolution: true

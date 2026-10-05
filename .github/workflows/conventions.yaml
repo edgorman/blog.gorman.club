@@ -56,9 +56,10 @@ jobs:
           fi
       - if: steps.marker.outputs.breaking != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        # Full history and no blob:none filter: buf clones this checkout locally to read main's
+        # .proto files, and a partial clone can't serve the blobs it never fetched.
         with:
           fetch-depth: 0
-          filter: 'blob:none'
       - if: steps.marker.outputs.breaking != 'true'
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:

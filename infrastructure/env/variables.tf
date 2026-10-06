@@ -32,9 +32,9 @@ variable "google_client_id" {
 }
 
 variable "assistant_model" {
-  description = "Model id the writing assistant calls, e.g. gemini-3.7-flash. It must be a model the Gemini Enterprise Agent Platform serves in assistant_location - model ids come and go faster than this service is redeployed, so this is configuration rather than a constant in the backend. Empty disables the feature."
+  description = "Model id the writing assistant calls, e.g. gemini-3.8-flash. It must be a model the Gemini Enterprise Agent Platform serves in assistant_location - model ids come and go faster than this service is redeployed, so this is configuration rather than a constant in the backend. Empty disables the feature."
   type        = string
-  default     = "gemini-3.7-flash"
+  default     = "gemini-3.8-flash"
 }
 
 variable "assistant_location" {
@@ -64,7 +64,7 @@ variable "embedding_dimension" {
 variable "moderation_model" {
   description = "Model id the worker classifies new comments with. A cheap, fast model is enough for a yes/no verdict; like assistant_model it must be served in moderation_location. Empty leaves comments unscreened."
   type        = string
-  default     = "gemini-3.7-flash"
+  default     = "gemini-3.8-flash"
 }
 
 variable "moderation_location" {

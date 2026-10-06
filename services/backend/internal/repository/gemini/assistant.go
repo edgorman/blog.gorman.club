@@ -60,7 +60,7 @@ var _ repository.Assistant = (*Assistant)(nil)
 
 // Config names the model to call and where it lives.
 type Config struct {
-	// Model is the model id, e.g. "gemini-3.7-flash". It is configuration rather than a constant
+	// Model is the model id, e.g. "gemini-3.8-flash". It is configuration rather than a constant
 	// because model ids come and go far faster than this service is redeployed. Empty disables the
 	// assistant entirely, in the same way an empty client ID disables authentication.
 	Model string

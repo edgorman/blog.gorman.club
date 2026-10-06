@@ -4,13 +4,19 @@ on:
   pull_request:
     branches:
       - main
+  # Runs the same required checks on a merge queue's merge commits. Inert while the repository is
+  # user-owned (GitHub only offers merge queues to organization-owned repositories, see
+  # .github/settings.yml), but ready the day one is turned on.
+  merge_group:
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: pull-request-root-${{ github.event.pull_request.number }}
+  # A merge_group event has no PR number; its ref (gh-readonly-queue/main/pr-N-<sha>) is unique
+  # per queue entry, so entries don't cancel each other.
+  group: pull-request-root-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -45,6 +51,9 @@ jobs:
         env:
           # `moon query affected` has no --base flag, but reads MOON_BASE the same way `moon ci`
           # does (crates/app/src/queries/changed_files.rs) - set explicitly, matching the other jobs.
+          # On merge_group it is still right: checkout's fetch-depth 0 fetches origin/main, and the
+          # queue commit diffs against it as this PR plus any entries queued ahead of it - a
+          # superset, so an infrastructure/-only PR still plans every environment it reaches.
           MOON_BASE: origin/main
         run: |
           # Left at the command's own defaults (no --upstream/--downstream): #206 deliberately

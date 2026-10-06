@@ -247,6 +247,30 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
+  # #277: the deployed frontend and backend together, signed out and read-only, against the live
+  # staging site - the defects that sit between components (config.json, CORS, the Pages worker,
+  # routing) and so pass every unit test. services-frontend already waits on services-backend, so
+  # this runs once both are live, and pre-release waits on it: a failing smoke test leaves this
+  # merge without a release candidate.
+  smoke:
+    needs: services-frontend
+    if: always() && needs.services-frontend.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: services/frontend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+
   # Runs on every merge, since the pre-release isn't gated on what changed - it waits on the publish
   # jobs having actually published instead, so a tag never exists without a commit-SHA image and
   # frontend folder behind it in both environments (the one failure promotion can't recover from:
@@ -265,9 +289,10 @@ jobs:
   # uses above; the explicit `== 'success'` (not `'success' || 'skipped'`) keeps the fix #156 made -
   # no publish job has a benign skip path, so a skip of any of them here is still not tag-worthy.
   pre-release:
-    needs: [services-backend, services-worker, services-frontend, version]
+    needs: [services-backend, services-worker, services-frontend, smoke, version]
     if: |
       always() &&
+      needs.smoke.result == 'success' &&
       needs.services-backend.result == 'success' &&
       needs.services-worker.result == 'success' &&
       needs.services-frontend.result == 'success' &&

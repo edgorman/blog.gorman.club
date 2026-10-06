@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   # A merge_group event has no PR number; its ref (gh-readonly-queue/main/pr-N-<sha>) is unique
@@ -69,19 +68,29 @@ jobs:
             echo "$env=$val" >> "$GITHUB_OUTPUT"
           done
 
-  # One `moon ci` invocation covering every lint/check/format/build task across every project,
-  # affected-and-runInCI filtered. `:taskId` (no project prefix) is moon's "run in every project
-  # that has this task" scope
-  # (https://moonrepo.dev/docs/concepts/target); a project without a given task is silently
-  # skipped, not an error. `:format` and `:validate` reach infra-root/infra-env's inherited
-  # `terraform fmt -check` and `terraform init -backend=false && terraform validate`
-  # (.moon/tasks/terraform.yml) - redundant with infrastructure-*'s own steps when those run, but
-  # credential-free and fail faster. `:validate` is `runInCI: 'only'`, so this is the one place it
-  # runs at all.
-  lint-check:
+  # The three required moon checks, one leg each, so each keeps its own check name. `:taskId` (no
+  # project prefix) is moon's "run in every project that has this task" scope
+  # (https://moonrepo.dev/docs/concepts/target); a project without a given task is silently skipped.
+  # - lint-check: every lint/format/build task. `:format`/`:validate` reach infra-root/infra-env's
+  #   inherited `terraform fmt -check` and `terraform validate` (.moon/tasks/terraform.yml);
+  #   `:validate` is `runInCI: 'only'`, so this is the one place it runs at all.
+  # - test: every project's tests (a shared package still reaches its dependents via each test
+  #   task's own `inputs`, e.g. `project://packages/protos`, #155) plus both images, so a broken
+  #   image build fails the PR rather than the job that publishes it.
+  # - protos-drift: packages/protos:drift (#194), `buf generate` re-run and diffed.
+  moon:
+    name: ${{ matrix.check }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - check: lint-check
+            targets: ':format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync'
+          - check: test
+            targets: ':test services/backend:image worker:image'
+          - check: protos-drift
+            targets: 'packages/protos:drift'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -93,52 +102,7 @@ jobs:
           cache: false # see `changed`'s identical setup step above for why
       - name: moon ci
         shell: bash
-        run: moon ci :format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync
-        env:
-          MOON_BASE: origin/main
-
-  # `:test` (every project's tests, affected-and-runInCI filtered - a change to a shared package
-  # still reaches its dependents via each test task's own `inputs`, e.g. backend/frontend's
-  # `project://packages/protos`, #155) plus services/backend:image (the docker_image parity target
-  # from #117) and worker:image, so a broken image build fails the PR rather than the job that
-  # publishes it.
-  test:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          filter: 'blob:none'
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
-        with:
-          auto-install: true
-          cache: false # see `changed`'s identical setup step above for why
-      - name: moon ci
-        shell: bash
-        run: moon ci :test services/backend:image worker:image
-        env:
-          MOON_BASE: origin/main
-
-  # Replaces the hand-rolled setup-go/setup-node/buf-setup-action + `buf generate` + diff:
-  # packages/protos:drift (#194) already is that exact check, moved into moon.
-  protos-drift:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          filter: 'blob:none'
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
-        with:
-          auto-install: true
-          cache: false # see `changed`'s identical setup step above for why
-      - name: moon ci
-        shell: bash
-        run: moon ci packages/protos:drift
+        run: moon ci ${{ matrix.targets }}
         env:
           MOON_BASE: origin/main
 

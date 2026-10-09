@@ -1,7 +1,7 @@
 import { resolveConfig } from './config'
 
 function mockFetch(impl: () => Promise<Partial<Response>>) {
-  const fetchMock = jest.fn(impl)
+  const fetchMock = vi.fn(impl)
   globalThis.fetch = fetchMock as unknown as typeof fetch
   return fetchMock
 }

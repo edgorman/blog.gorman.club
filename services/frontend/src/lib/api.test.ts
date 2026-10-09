@@ -3,7 +3,7 @@ import { ApiError, SESSION_EXPIRED, createApi } from './api'
 const authHeaders = { Authorization: 'Bearer test-token', 'Authorization-Provider': 'google' }
 
 function mockFetch(response: Partial<Response>) {
-  const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200, ...response })
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, ...response })
   globalThis.fetch = fetchMock as unknown as typeof fetch
   return fetchMock
 }
@@ -152,7 +152,7 @@ describe('createApi', () => {
 
   it('ends the session and says so when the backend refuses the credential', async () => {
     mockFetch({ ok: false, status: 401, json: () => Promise.resolve({ error: 'invalid token' }) })
-    const onUnauthorized = jest.fn()
+    const onUnauthorized = vi.fn()
 
     const error = await createApi('https://api.example.com', authHeaders, onUnauthorized)
       .updateBlog('hello-world', {})
@@ -164,7 +164,7 @@ describe('createApi', () => {
 
   it('leaves a signed-out 401 to the caller', async () => {
     mockFetch({ ok: false, status: 401, json: () => Promise.resolve({ error: 'missing bearer token' }) })
-    const onUnauthorized = jest.fn()
+    const onUnauthorized = vi.fn()
 
     const error = await createApi('https://api.example.com', {}, onUnauthorized)
       .createBlog({})

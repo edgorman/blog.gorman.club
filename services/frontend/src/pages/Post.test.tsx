@@ -20,21 +20,21 @@ const blog: Blog = {
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
-    listBlogs: jest.fn(),
-    getBlog: jest.fn().mockResolvedValue(blog),
-    getRelatedBlogs: jest.fn().mockResolvedValue([]),
-    createBlog: jest.fn(),
-    updateBlog: jest.fn(),
-    deleteBlog: jest.fn(),
-    getUser: jest.fn(),
-    putUser: jest.fn(),
-    deleteUser: jest.fn(),
-    listComments: jest.fn().mockResolvedValue([]),
-    getReactions: jest.fn().mockResolvedValue({ post: [], comments: {} }),
-    addReaction: jest.fn(),
-    removeReaction: jest.fn(),
-    createComment: jest.fn(),
-    deleteComment: jest.fn(),
+    listBlogs: vi.fn(),
+    getBlog: vi.fn().mockResolvedValue(blog),
+    getRelatedBlogs: vi.fn().mockResolvedValue([]),
+    createBlog: vi.fn(),
+    updateBlog: vi.fn(),
+    deleteBlog: vi.fn(),
+    getUser: vi.fn(),
+    putUser: vi.fn(),
+    deleteUser: vi.fn(),
+    listComments: vi.fn().mockResolvedValue([]),
+    getReactions: vi.fn().mockResolvedValue({ post: [], comments: {} }),
+    addReaction: vi.fn(),
+    removeReaction: vi.fn(),
+    createComment: vi.fn(),
+    deleteComment: vi.fn(),
     ...overrides,
   } as unknown as Api
 }
@@ -44,7 +44,7 @@ describe('Post', () => {
   // post's own title, description and canonical link, swapped as the reader moves between posts.
   it('updates the document title, description and canonical link when navigating between posts', async () => {
     const second: Blog = { ...blog, slug: 'second-post', title: 'Second post', content: 'Another **bold** body.' }
-    const api = fakeApi({ getBlog: jest.fn((slug: string) => Promise.resolve(slug === second.slug ? second : blog)) })
+    const api = fakeApi({ getBlog: vi.fn((slug: string) => Promise.resolve(slug === second.slug ? second : blog)) })
     render(
       <MemoryRouter initialEntries={['/post/hello-world']}>
         <AppContext.Provider value={fakeAppContext({ api })}>
@@ -79,7 +79,7 @@ describe('Post', () => {
   // A tag on the post page is the way into the rest of what an author wrote on that topic, so it
   // is a link to the filtered feed rather than a label.
   it('links each of the post\'s tags to the feed filtered by it', async () => {
-    const api = fakeApi({ getBlog: jest.fn().mockResolvedValue({ ...blog, tags: ['go', 'web-dev'] }) })
+    const api = fakeApi({ getBlog: vi.fn().mockResolvedValue({ ...blog, tags: ['go', 'web-dev'] }) })
     renderWithApp(<Post />, { context: { api }, route: '/post/hello-world', path: '/post/:slug' })
 
     expect(await screen.findByRole('link', { name: 'go' })).toHaveAttribute('href', '/?tag=go')
@@ -95,7 +95,7 @@ describe('Post', () => {
 
   it('lists related posts at the foot of the post, each linking to it', async () => {
     const neighbour: Blog = { ...blog, slug: 'goodbye-world', title: 'Goodbye world', content: 'Farewell.' }
-    const api = fakeApi({ getRelatedBlogs: jest.fn().mockResolvedValue([neighbour]) })
+    const api = fakeApi({ getRelatedBlogs: vi.fn().mockResolvedValue([neighbour]) })
     renderWithApp(<Post />, { context: { api }, route: '/post/hello-world', path: '/post/:slug' })
 
     expect(await screen.findByRole('heading', { level: 2, name: 'Related posts' })).toBeInTheDocument()
@@ -105,8 +105,8 @@ describe('Post', () => {
 
   // No embedding yet (or a failed lookup) is not the page's problem: the section is just absent.
   it.each([
-    ['no related posts', jest.fn().mockResolvedValue([])],
-    ['a failed lookup', jest.fn().mockRejectedValue(new Error('boom'))],
+    ['no related posts', vi.fn().mockResolvedValue([])],
+    ['a failed lookup', vi.fn().mockRejectedValue(new Error('boom'))],
   ])('hides the related section for %s', async (_, getRelatedBlogs) => {
     const api = fakeApi({ getRelatedBlogs })
     renderWithApp(<Post />, { context: { api }, route: '/post/hello-world', path: '/post/:slug' })
@@ -118,7 +118,7 @@ describe('Post', () => {
   })
 
   it('shows a not-found message for a missing post', async () => {
-    const api = fakeApi({ getBlog: jest.fn().mockRejectedValue(new ApiError(404, 'not found')) })
+    const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(404, 'not found')) })
     renderWithApp(<Post />, { context: { api }, route: '/post/missing', path: '/post/:slug' })
 
     expect(await screen.findByText('Post not found.')).toBeInTheDocument()
@@ -128,7 +128,7 @@ describe('Post', () => {
   // is nothing here to distinguish from an outright missing post - this locks that in rather than
   // reintroducing a "this post is private" state the API never triggers.
   it('treats a masked private post the same as a missing one', async () => {
-    const api = fakeApi({ getBlog: jest.fn().mockRejectedValue(new ApiError(404, 'blog not found')) })
+    const api = fakeApi({ getBlog: vi.fn().mockRejectedValue(new ApiError(404, 'blog not found')) })
     renderWithApp(<Post />, { context: { api }, route: '/post/hello-world', path: '/post/:slug' })
 
     expect(await screen.findByText('Post not found.')).toBeInTheDocument()
@@ -139,12 +139,12 @@ describe('Post', () => {
       ...blog,
       content: '# Hi\n\n<a name="section"></a>\n\n## Section\n\nBody.',
     }
-    const scrollIntoView = jest.fn()
+    const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
     window.location.hash = '#section'
 
     renderWithApp(<Post />, {
-      context: { api: fakeApi({ getBlog: jest.fn().mockResolvedValue(namedAnchorBlog) }) },
+      context: { api: fakeApi({ getBlog: vi.fn().mockResolvedValue(namedAnchorBlog) }) },
       route: '/post/hello-world#section',
       path: '/post/:slug',
     })
@@ -203,7 +203,7 @@ describe('Post', () => {
   // The thread is the readers' half of the page, and hangs off the post that was just loaded - so
   // it is fetched by the same slug, for whoever could read the post at all.
   it('shows the comment thread beneath the post', async () => {
-    const listComments = jest.fn().mockResolvedValue([
+    const listComments = vi.fn().mockResolvedValue([
       {
         id: 'cmt1',
         blogSlug: 'hello-world',

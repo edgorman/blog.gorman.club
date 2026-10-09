@@ -59,10 +59,10 @@ function credentialExpiringIn(seconds: number): string {
 
 function stubGoogle() {
   const id = {
-    initialize: jest.fn(),
-    renderButton: jest.fn(),
-    prompt: jest.fn(),
-    disableAutoSelect: jest.fn(),
+    initialize: vi.fn(),
+    renderButton: vi.fn(),
+    prompt: vi.fn(),
+    disableAutoSelect: vi.fn(),
   }
   window.google = { accounts: { id } }
   return id
@@ -98,7 +98,7 @@ describe('useGoogleAuth', () => {
       const element = document.createElement('div')
       Object.defineProperty(element, 'clientWidth', { value: clientWidth })
       result.current.renderButton(element)
-      return id.renderButton.mock.lastCall[1].width
+      return id.renderButton.mock.lastCall![1].width
     }
 
     expect(widthFor(288)).toBe(288)
@@ -188,7 +188,7 @@ describe('useGoogleAuth', () => {
 
   // Nothing refreshes a credential, so an open tab must not stay signed in past its expiry.
   it('signs out and asks for a fresh credential when the restored one expires', () => {
-    jest.useFakeTimers()
+    vi.useFakeTimers()
     try {
       process.env.VITE_GOOGLE_CLIENT_ID = 'test-client-id'
       sessionStorage.setItem(STORAGE_KEY, credentialExpiringIn(3600))
@@ -197,7 +197,7 @@ describe('useGoogleAuth', () => {
       const { result } = renderHook(() => useGoogleAuth())
       expect(result.current.user).not.toBeNull()
 
-      act(() => jest.advanceTimersByTime(3600 * 1000))
+      act(() => vi.advanceTimersByTime(3600 * 1000))
 
       expect(result.current.user).toBeNull()
       expect(result.current.authHeaders).toEqual({})
@@ -206,7 +206,7 @@ describe('useGoogleAuth', () => {
       expect(id.disableAutoSelect).not.toHaveBeenCalled()
       expect(id.prompt).toHaveBeenCalled()
     } finally {
-      jest.useRealTimers()
+      vi.useRealTimers()
     }
   })
 })

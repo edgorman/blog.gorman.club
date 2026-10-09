@@ -23,7 +23,7 @@ describe('NavBar', () => {
   })
 
   it('toggles the theme when the icon button is clicked', async () => {
-    const toggleTheme = jest.fn()
+    const toggleTheme = vi.fn()
     renderWithApp(<NavBar />, { context: { toggleTheme } })
 
     await userEvent.click(screen.getByRole('button', { name: 'Toggle dark mode' }))
@@ -31,7 +31,7 @@ describe('NavBar', () => {
   })
 
   it('opens the account panel with New post, View profile, and Sign out when signed in', async () => {
-    const signOut = jest.fn()
+    const signOut = vi.fn()
     renderWithApp(<NavBar />, { context: { user: author, profile, signOut } })
 
     await userEvent.click(screen.getByRole('button', { name: 'Account' }))
@@ -75,7 +75,7 @@ describe('NavBar', () => {
   })
 
   it('offers the Google sign-in button in the panel when signed out', async () => {
-    const renderSignInButton = jest.fn()
+    const renderSignInButton = vi.fn()
     renderWithApp(<NavBar />, { context: { renderSignInButton } })
 
     await userEvent.click(screen.getByRole('button', { name: 'Account' }))

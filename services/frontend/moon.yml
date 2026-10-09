@@ -17,8 +17,7 @@ toolchains:
 
 fileGroups:
   sources: ['src/**/*', 'public/**/*', 'e2e/**/*', 'index.html', 'vite.config.ts', 'playwright.config.ts']
-  configs: ['package.json', 'package-lock.json', 'tsconfig*.json', '.oxlintrc.json',
-            'babel.config.cjs', 'babel-plugin-import-meta-env.cjs', 'jest.config.cjs', 'jest.setup-env.cjs']
+  configs: ['package.json', 'package-lock.json', 'tsconfig*.json', '.oxlintrc.json']
 
 tasks:
   install:

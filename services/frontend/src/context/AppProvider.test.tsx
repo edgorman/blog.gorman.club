@@ -3,12 +3,14 @@ import { ApiError, type User } from '../lib/api'
 import { useApp } from './AppContext'
 import { AppProvider } from './AppProvider'
 
-// Prefixed with "mock" so babel-plugin-jest-hoist hoists these declarations above the jest.mock()
-// calls below along with the calls themselves - otherwise the factories would see them as TDZ.
-const mockGetCurrentUser = jest.fn()
-const mockPutUser = jest.fn()
+// vi.hoisted, since vi.mock() calls are hoisted above every other statement - the factories below
+// would otherwise see these as TDZ.
+const { mockGetCurrentUser, mockPutUser } = vi.hoisted(() => ({
+  mockGetCurrentUser: vi.fn(),
+  mockPutUser: vi.fn(),
+}))
 
-jest.mock('../hooks/useGoogleAuth', () => ({
+vi.mock('../hooks/useGoogleAuth', () => ({
   useGoogleAuth: () => ({
     user: { id: 'uid-1', email: 'a@b.com', name: 'Ada' },
     authHeaders: {},
@@ -19,8 +21,8 @@ jest.mock('../hooks/useGoogleAuth', () => ({
   }),
 }))
 
-jest.mock('../lib/api', () => ({
-  ...jest.requireActual('../lib/api'),
+vi.mock('../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/api')>()),
   createApi: () => ({ getCurrentUser: mockGetCurrentUser, putUser: mockPutUser }),
 }))
 

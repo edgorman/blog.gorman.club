@@ -16,15 +16,15 @@ const profile: User = {
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
-    listBlogs: jest.fn(),
-    getBlog: jest.fn(),
-    createBlog: jest.fn(),
-    updateBlog: jest.fn(),
-    deleteBlog: jest.fn(),
-    getUser: jest.fn(),
-    getCurrentUser: jest.fn().mockResolvedValue(profile),
-    putUser: jest.fn().mockResolvedValue(profile),
-    deleteUser: jest.fn(),
+    listBlogs: vi.fn(),
+    getBlog: vi.fn(),
+    createBlog: vi.fn(),
+    updateBlog: vi.fn(),
+    deleteBlog: vi.fn(),
+    getUser: vi.fn(),
+    getCurrentUser: vi.fn().mockResolvedValue(profile),
+    putUser: vi.fn().mockResolvedValue(profile),
+    deleteUser: vi.fn(),
     ...overrides,
   } as unknown as Api
 }
@@ -52,7 +52,7 @@ describe('EditProfile', () => {
   // Nothing is prefilled before a profile exists: the username is assigned server-side on save.
   it('leaves the form empty when no profile exists yet', async () => {
     const api = fakeApi({
-      getCurrentUser: jest.fn().mockRejectedValue(new ApiError(404, 'user not found')),
+      getCurrentUser: vi.fn().mockRejectedValue(new ApiError(404, 'user not found')),
     })
     renderEditor({ api, user: me })
 
@@ -63,7 +63,7 @@ describe('EditProfile', () => {
   // blank one would overwrite a real bio with an empty string.
   it('withholds the form when the profile cannot be loaded', async () => {
     const api = fakeApi({
-      getCurrentUser: jest.fn().mockRejectedValue(new ApiError(500, 'internal error')),
+      getCurrentUser: vi.fn().mockRejectedValue(new ApiError(500, 'internal error')),
     })
     renderEditor({ api, user: me })
 
@@ -92,7 +92,7 @@ describe('EditProfile', () => {
   // sending "" would ask for an empty name, which is rejected, rather than for a generated one.
   it('asks for a generated username when creating a profile', async () => {
     const api = fakeApi({
-      getCurrentUser: jest.fn().mockRejectedValue(new ApiError(404, 'user not found')),
+      getCurrentUser: vi.fn().mockRejectedValue(new ApiError(404, 'user not found')),
     })
     renderEditor({ api, user: me })
 
@@ -146,9 +146,9 @@ describe('EditProfile', () => {
   // The confirmation has to say that deleting the account takes its content with it, and signing
   // out afterwards is what stops the app recreating an empty profile for the still-signed-in user.
   it('deletes the account and signs out once the user confirms', async () => {
-    const api = fakeApi({ deleteUser: jest.fn().mockResolvedValue(undefined) })
-    const signOut = jest.fn()
-    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true)
+    const api = fakeApi({ deleteUser: vi.fn().mockResolvedValue(undefined) })
+    const signOut = vi.fn()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     renderEditor({ api, user: me, signOut })
 
     await screen.findByDisplayValue('calm-smiling-kestrel')
@@ -161,7 +161,7 @@ describe('EditProfile', () => {
 
   it('keeps the account when the user declines the confirmation', async () => {
     const api = fakeApi()
-    jest.spyOn(window, 'confirm').mockReturnValue(false)
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
     renderEditor({ api, user: me })
 
     await screen.findByDisplayValue('calm-smiling-kestrel')

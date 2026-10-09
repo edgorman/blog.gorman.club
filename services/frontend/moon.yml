@@ -16,7 +16,7 @@ toolchains:
 # depends on.
 
 fileGroups:
-  sources: ['src/**/*', 'public/**/*', 'index.html', 'vite.config.ts']
+  sources: ['src/**/*', 'public/**/*', 'e2e/**/*', 'index.html', 'vite.config.ts', 'playwright.config.ts']
   configs: ['package.json', 'package-lock.json', 'tsconfig*.json', '.oxlintrc.json']
 
 tasks:

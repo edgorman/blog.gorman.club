@@ -56,7 +56,7 @@ branches:
         dismiss_stale_reviews: true
         require_code_owner_reviews: true
 
-      # The jobs of .github/workflows/pull-request.yaml, named by their job ids
+      # The jobs of .github/workflows/pull-request.yaml and conventions.yaml, named by their job ids
       # (none of them set a `name:`, so that is what the check run is called).
       #
       # Every one of these is safe to require even though most are conditional
@@ -65,6 +65,11 @@ branches:
       # check run - with conclusion "skipped", which branch protection counts
       # as passing. It is a workflow that never runs at all that leaves a
       # required check pending forever, and this one always runs.
+      #
+      # `strict: true` makes each PR re-run CI after every merge ahead of it. A merge queue would
+      # batch that, but GitHub only offers merge queues to organization-owned repositories, and
+      # this one is user-owned, so there is no queue to configure here (#275). pull-request.yaml
+      # already runs on merge_group for when the repository moves to an organization.
       required_status_checks:
         strict: true
         contexts:
@@ -75,7 +80,12 @@ branches:
           - infrastructure-root
           - infrastructure-staging
           - infrastructure-prod
+          - pr-title
+          - protos-breaking
 
+      # Stays false on purpose (#275): Claude Code opens PRs as @edgorman, GitHub never lets an
+      # author approve their own PR, so the owner merges those with the admin override. Revisit
+      # once a second code owner can approve them.
       enforce_admins: false
       required_linear_history: true
       required_conversation_resolution: true

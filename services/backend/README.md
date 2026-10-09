@@ -580,7 +580,7 @@ go build -o bin/backend ./cmd/backend  # build
 | `CORS_ALLOWED_ORIGIN`  | Origin allowed to call this API from a browser (the frontend's URL). Unset disables CORS headers entirely. |
 | `GOOGLE_CLIENT_ID`     | OAuth 2.0 client ID that ID tokens must be minted for. Set by Terraform from the `GOOGLE_CLIENT_ID` GitHub Actions variable; unset means no request can authenticate. |
 | `GCP_PROJECT_ID`       | Project the model is called through and billed to. Unset disables the writing assistant. |
-| `ASSISTANT_MODEL`      | Model id, e.g. `gemini-3.7-flash`. It has to be one the platform serves in `ASSISTANT_LOCATION`. Unset disables the writing assistant. |
+| `ASSISTANT_MODEL`      | Model id, e.g. `gemini-3.8-flash`. It has to be one the platform serves in `ASSISTANT_LOCATION`. Unset disables the writing assistant. |
 | `ASSISTANT_LOCATION`   | Location the model is called in: a region such as `europe-west1`, or `global` for the multi-region endpoint. Defaults to `global`. |
 
 `commit` is not an env var — it's baked into the binary at build time via

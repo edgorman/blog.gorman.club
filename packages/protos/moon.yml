@@ -17,6 +17,14 @@ tasks:
   format:
     command: 'buf format -d --exit-code'
     inputs: ['@group(sources)']
+  breaking:
+    # Against main's copy of this module. The `conventions` workflow skips it for a PR marked
+    # breaking (`!` in the title or a `BREAKING CHANGE:` footer). Not cached: main moves without
+    # this project's inputs changing.
+    script: 'buf breaking --against "$(git rev-parse --show-toplevel)/.git#branch=origin/main,subdir=packages/protos"'
+    inputs: ['@group(sources)']
+    options:
+      cache: false
   drift:
     # buf.gen.yaml's plugin/output paths (../../services/...) are relative to packages/protos, so
     # buf generate runs from the project root (the task default) rather than the workspace root.

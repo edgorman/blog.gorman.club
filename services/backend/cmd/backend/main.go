@@ -20,6 +20,7 @@ import (
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/logging"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/cache"
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/devauth"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/firestore"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/gemini"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository/google"
@@ -47,10 +48,9 @@ func run() error {
 	environment := envOr("ENVIRONMENT", "development")
 	port := envOr("PORT", "8080")
 
-	// The OAuth 2.0 client ID ID tokens must be minted for; unset means no request can authenticate.
-	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
-	if googleClientID == "" {
-		slog.Warn("GOOGLE_CLIENT_ID is unset, so no request can authenticate")
+	verifier, err := tokenVerifier(environment, os.Getenv("DEV_AUTH") == "true", os.Getenv("GOOGLE_CLIENT_ID"))
+	if err != nil {
+		return err
 	}
 
 	ctx := context.Background()
@@ -122,7 +122,7 @@ func run() error {
 		firestore.NewCommentRepository(client),
 		firestore.NewReactionRepository(client),
 		embeddings,
-		google.NewTokenVerifier(googleClientID),
+		verifier,
 		assistant,
 	)
 
@@ -148,6 +148,24 @@ func run() error {
 
 	slog.Info("backend listening", "port", port, "environment", environment, "commit", commit)
 	return server.ListenAndServe()
+}
+
+// tokenVerifier picks how ID tokens are checked. DEV_AUTH swaps Google sign-in for fixed development
+// tokens (see internal/repository/devauth), which would let anybody sign in as anybody, so it is
+// refused outside ENVIRONMENT=local rather than trusted to be left unset everywhere else.
+func tokenVerifier(environment string, devAuth bool, googleClientID string) (repository.TokenVerifier, error) {
+	if devAuth {
+		if environment != "local" {
+			return nil, fmt.Errorf("DEV_AUTH is only allowed with ENVIRONMENT=local, not %q", environment)
+		}
+		slog.Warn("DEV_AUTH is set, so the development token signs anybody in", "token", devauth.Token)
+		return devauth.TokenVerifier{}, nil
+	}
+	// The OAuth 2.0 client ID ID tokens must be minted for; unset means no request can authenticate.
+	if googleClientID == "" {
+		slog.Warn("GOOGLE_CLIENT_ID is unset, so no request can authenticate")
+	}
+	return google.NewTokenVerifier(googleClientID), nil
 }
 
 func envOr(key, fallback string) string {

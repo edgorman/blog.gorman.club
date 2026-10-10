@@ -25,6 +25,7 @@ internal/
   entity/             Domain types and their rules - no I/O, no HTTP, no persistence tags
   repository/         Interfaces for everything external, plus ErrNotFound
     cache/            A short-TTL in-process cache decorating the Blog repository's anonymous listing
+    devauth/          Development-token TokenVerifier for running locally (ENVIRONMENT=local only)
     firestore/        Firestore implementations of the Blog, User, Chat, Comment and Reaction repositories
     google/           Google Identity Services implementation of TokenVerifier
     gemini/           Gemini Enterprise Agent Platform implementation of Assistant
@@ -571,12 +572,55 @@ go build -o bin/backend ./cmd/backend  # build
 
 `go run ./cmd/backend` starts the server directly on `:8080`. CI runs the same checks via moon (`lint-check`'s `moon ci :format :vet :build` and `test`'s `moon ci :test`, see .github/AGENTS.md's "Building with moon").
 
+### Running locally
+
+`moon run services/backend:dev` talks to real Firestore and verifies real Google ID tokens, so it
+needs GCP credentials. `dev-local` needs none: Firestore is the emulator and sign-in is a fixed
+development token. With the pinned toolchain plus the emulator
+(`gcloud components install cloud-firestore-emulator`, which needs Java 21):
+
+```sh
+gcloud emulators firestore start --host-port=127.0.0.1:8081   # terminal 1
+moon run services/backend:dev-local                            # terminal 2, serves :8080
+```
+
+Then sign in with `Authorization: Bearer dev` and `Authorization-Provider: google` (the
+development verifier stands in for Google's); `Bearer dev:<uid>` signs in as another account, for
+trying a whitelisted post or someone else's comment:
+
+```sh
+auth=(-H 'Authorization: Bearer dev' -H 'Authorization-Provider: google' -H 'Content-Type: application/json')
+curl "${auth[@]}" -X PUT -d '{"username":"dev"}' localhost:8080/users/me
+curl "${auth[@]}" -X POST -d '{"title":"Hello","content":"First post","visibility":"public"}' localhost:8080/blogs
+curl localhost:8080/blogs
+```
+
+The emulator keeps data in memory, so restarting it starts empty. With no model configured the
+writing assistant is disabled and search is the substring scan, as in any deployment without
+them. `DEV_AUTH=true` is what enables the development token, and `cmd/backend` refuses to start
+with it unless `ENVIRONMENT=local`, so no deployed environment can accept it.
+
+### Firestore adapter tests
+
+`internal/repository/firestore` has tests that run against the emulator and skip without it, so
+`go test ./...` passes either way. CI's `test` job starts the emulator for them. To run them
+locally, with the emulator from above running:
+
+```sh
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8081 go test ./internal/repository/firestore -cover
+```
+
+Each test uses a project of its own, so they need no cleanup and don't see `dev-local`'s data.
+The emulator doesn't enforce composite indexes, so a query missing one still only fails in
+staging.
+
 ## Configuration
 
 | Env var               | Description                                                                 |
 | ---------------------- | ---------------------------------------------------------------------------- |
 | `PORT`                 | Port to listen on. Defaults to `8080` (Cloud Run sets this itself).        |
 | `ENVIRONMENT`          | Deployment environment reported by `/debug` (e.g. `stag`, `prod`). Defaults to `development`. |
+| `DEV_AUTH`             | `true` accepts the development token instead of Google ID tokens (see Running locally). Refused unless `ENVIRONMENT=local`. |
 | `CORS_ALLOWED_ORIGIN`  | Origin allowed to call this API from a browser (the frontend's URL). Unset disables CORS headers entirely. |
 | `GOOGLE_CLIENT_ID`     | OAuth 2.0 client ID that ID tokens must be minted for. Set by Terraform from the `GOOGLE_CLIENT_ID` GitHub Actions variable; unset means no request can authenticate. |
 | `GCP_PROJECT_ID`       | Project the model is called through and billed to. Unset disables the writing assistant. |

@@ -100,6 +100,20 @@ jobs:
         with:
           auto-install: true
           cache: false # see `changed`'s identical setup step above for why
+      # internal/repository/firestore's emulator tests skip unless FIRESTORE_EMULATOR_HOST is set.
+      # The jar is the one `gcloud emulators firestore` runs, fetched directly (checksum from
+      # firebase-tools' downloadableEmulatorInfo.json) rather than through a gcloud component
+      # install; it needs Java 21, which the runner image ships beside its default.
+      - name: Start the Firestore emulator
+        if: matrix.check == 'test'
+        shell: bash
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/firestore-emulator.jar" \
+            https://storage.googleapis.com/firebase-preview-drop/emulator/cloud-firestore-emulator-v1.22.0.jar
+          echo "9b6498b7f62714d67f48f59b3818883cd682dbcd46b9f59511de81c97bb5166c  $RUNNER_TEMP/firestore-emulator.jar" | sha256sum -c -
+          nohup "$JAVA_HOME_21_X64/bin/java" -jar "$RUNNER_TEMP/firestore-emulator.jar" --host=127.0.0.1 --port=8081 > "$RUNNER_TEMP/firestore-emulator.log" 2>&1 &
+          timeout 60 bash -c 'until curl -sf http://127.0.0.1:8081 > /dev/null; do sleep 1; done'
+          echo 'FIRESTORE_EMULATOR_HOST=127.0.0.1:8081' >> "$GITHUB_ENV"
       - name: moon ci
         shell: bash
         run: moon ci ${{ matrix.targets }}

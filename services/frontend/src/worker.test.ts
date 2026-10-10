@@ -1,5 +1,5 @@
 /**
- * @jest-environment node
+ * @vitest-environment node
  */
 // public/_worker.js, the Cloudflare Pages worker that serves crawlers (#221). Node rather than
 // jsdom, for the fetch API's Request/Response the worker is written against.
@@ -24,7 +24,7 @@ const publicPost = {
 function env(config: object | null = { backendUrl: BACKEND }) {
   return {
     ASSETS: {
-      fetch: jest.fn(async (input: Request | URL) => {
+      fetch: vi.fn(async (input: Request | URL) => {
         const path = new URL(input instanceof Request ? input.url : input).pathname
         if (path === '/config.json' && config) return Response.json(config)
         return new Response(SHELL, { headers: { 'Content-Type': 'text/html', 'Content-Security-Policy': "default-src 'self'" } })
@@ -36,7 +36,7 @@ function env(config: object | null = { backendUrl: BACKEND }) {
 // The backend as a signed-out reader sees it: one public post, everything else a 404.
 function backend(pages: object[] = [{ posts: [publicPost], hasMore: false }]) {
   const calls: string[] = []
-  global.fetch = jest.fn(async (input: string | URL | Request) => {
+  global.fetch = vi.fn(async (input: string | URL | Request) => {
     const url = new URL(String(input))
     calls.push(url.pathname + url.search)
     if (url.pathname === `/blogs/${publicPost.slug}`) return Response.json(publicPost)
@@ -72,7 +72,7 @@ const STATIC_ONLY = [
 describe('_worker.js', () => {
   afterEach(() => {
     delete (global as unknown as { caches?: unknown }).caches
-    jest.restoreAllMocks()
+    vi.restoreAllMocks()
   })
 
   it('injects the post title, description, Open Graph and canonical tags into the shell', async () => {
@@ -108,7 +108,7 @@ describe('_worker.js', () => {
   // A string replacement would expand $' into the rest of the shell and $& into the matched <title>.
   it("keeps $' and $& in a title literal", async () => {
     backend()
-    global.fetch = jest.fn(async () => Response.json({ ...publicPost, title: "What $' and $& mean in sed" })) as typeof fetch
+    global.fetch = vi.fn(async () => Response.json({ ...publicPost, title: "What $' and $& mean in sed" })) as typeof fetch
     const html = await (await get('https://blog.gorman.club/post/hello-world')).text()
     expect(html).toContain("<title>What $&#39; and $&amp; mean in sed · Gorman Club</title>")
     expect(html.match(/<body>/g)).toHaveLength(1)
@@ -116,8 +116,8 @@ describe('_worker.js', () => {
 
   it('serves the plain shell once the post lookup misses its deadline', async () => {
     const deadline = new AbortController()
-    const timeout = jest.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
-    global.fetch = jest.fn(
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
+    global.fetch = vi.fn(
       (_input: unknown, init?: RequestInit) =>
         new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))),
     ) as typeof fetch
@@ -178,8 +178,8 @@ describe('_worker.js', () => {
     expect(await store.get('https://blog.gorman.club/sitemap.xml?last-good')?.clone().text()).toBe(good)
     expect(store.get('https://blog.gorman.club/sitemap.xml?last-good')?.headers.get('Cache-Control')).toBe('public, max-age=604800')
 
-    global.fetch = jest.fn(async () => new Response('boom', { status: 500 })) as typeof fetch
-    jest.spyOn(console, 'error').mockImplementation(() => {})
+    global.fetch = vi.fn(async () => new Response('boom', { status: 500 })) as typeof fetch
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     const response = await get('https://blog.gorman.club/sitemap.xml')
     expect(response.status).toBe(200)
     expect(response.headers.get('Content-Type')).toBe('application/xml; charset=utf-8')
@@ -189,8 +189,8 @@ describe('_worker.js', () => {
 
   it('serves the static pages when the backend fails and nothing is cached', async () => {
     cache()
-    global.fetch = jest.fn(async () => { throw new TypeError('fetch failed') }) as typeof fetch
-    jest.spyOn(console, 'error').mockImplementation(() => {})
+    global.fetch = vi.fn(async () => { throw new TypeError('fetch failed') }) as typeof fetch
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     const response = await get('https://blog.gorman.club/sitemap.xml')
     expect(response.status).toBe(200)
     expect(response.headers.get('Content-Type')).toBe('application/xml; charset=utf-8')
@@ -199,7 +199,7 @@ describe('_worker.js', () => {
 
   it('serves the static pages without a backend or a Cache API', async () => {
     backend()
-    jest.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     const response = await get('https://blog.gorman.club/sitemap.xml', env(null))
     expect(response.status).toBe(200)
     expect(await response.text()).toBe(STATIC_ONLY)
@@ -208,13 +208,13 @@ describe('_worker.js', () => {
   it('falls back once the backend misses its deadline', async () => {
     cache()
     const deadline = new AbortController()
-    const timeout = jest.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
     // A cold backend: it never answers, and only the deadline ends the wait.
-    global.fetch = jest.fn(
+    global.fetch = vi.fn(
       (_input: unknown, init?: RequestInit) =>
         new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))),
     ) as typeof fetch
-    jest.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     const pending = get('https://blog.gorman.club/sitemap.xml')
     await new Promise((resolve) => setTimeout(resolve, 0))
     deadline.abort(new DOMException('timed out', 'TimeoutError'))
@@ -228,7 +228,7 @@ describe('_worker.js', () => {
   it('describes a post the same way the SPA does', async () => {
     const content = `> quote\n\n- item\n\n\`\`\`go\ncode\n\`\`\`\n\n![img](x.png) ${'word '.repeat(60)}`
     backend()
-    global.fetch = jest.fn(async () => Response.json({ ...publicPost, content })) as typeof fetch
+    global.fetch = vi.fn(async () => Response.json({ ...publicPost, content })) as typeof fetch
     const html = await (await get('https://blog.gorman.club/post/hello-world')).text()
     expect(html).toContain(`<meta name="description" content="${excerpt(content)}" />`)
     expect(excerpt(content).length).toBeLessThanOrEqual(160)

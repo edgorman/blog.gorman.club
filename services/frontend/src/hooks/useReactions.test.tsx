@@ -13,9 +13,9 @@ const page: PageReactions = {
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
-    getReactions: jest.fn().mockResolvedValue(page),
-    addReaction: jest.fn().mockResolvedValue([{ emoji: '👍', count: 3, reacted: true }]),
-    removeReaction: jest.fn().mockResolvedValue([]),
+    getReactions: vi.fn().mockResolvedValue(page),
+    addReaction: vi.fn().mockResolvedValue([{ emoji: '👍', count: 3, reacted: true }]),
+    removeReaction: vi.fn().mockResolvedValue([]),
     ...overrides,
   } as unknown as Api
 }
@@ -71,7 +71,7 @@ describe('useReactions', () => {
   })
 
   it('reports a reaction it could not save', async () => {
-    const api = fakeApi({ addReaction: jest.fn().mockRejectedValue(new ApiError(429, 'slow down')) })
+    const api = fakeApi({ addReaction: vi.fn().mockRejectedValue(new ApiError(429, 'slow down')) })
     const { result } = renderUseReactions(api)
     await waitFor(() => expect(result.current.countsFor()).toHaveLength(1))
 
@@ -83,7 +83,7 @@ describe('useReactions', () => {
   // The post and its comments are the point of the page; a bar nobody can load is not worth an
   // error above them.
   it('leaves the page readable when the reactions cannot be loaded', async () => {
-    const api = fakeApi({ getReactions: jest.fn().mockRejectedValue(new ApiError(500, 'nope')) })
+    const api = fakeApi({ getReactions: vi.fn().mockRejectedValue(new ApiError(500, 'nope')) })
     const { result } = renderUseReactions(api)
 
     await waitFor(() => expect(api.getReactions).toHaveBeenCalled())

@@ -116,5 +116,5 @@ echo 'export MOON_TOOLCHAIN_FORCE_GLOBALS=true' >>"$CLAUDE_ENV_FILE"
 # exactly what package-lock.json records and never rewrites it, so a session can't start with an
 # unrelated lockfile diff that then rides along into its PR.
 # Installs ts-proto (services/frontend/package.json devDependency), which packages/protos/buf.gen.yaml
-# invokes from services/frontend/node_modules/.bin, plus everything `tsc`/`vite`/`jest` need.
+# invokes from services/frontend/node_modules/.bin, plus everything `tsc`/`vite`/`vitest` need.
 (cd services/frontend && npm ci)

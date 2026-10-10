@@ -8,16 +8,16 @@ const author = { id: 'uid-1', email: 'a@b.com', name: 'Ada' }
 
 function fakeApi(overrides: Partial<Api> = {}): Api {
   return {
-    listBlogs: jest.fn(),
-    getBlog: jest.fn(),
-    createBlog: jest
+    listBlogs: vi.fn(),
+    getBlog: vi.fn(),
+    createBlog: vi
       .fn()
       .mockResolvedValue({ slug: 'my-post', authorUsername: 'calm-smiling-kestrel', title: 'My post' } as Blog),
-    updateBlog: jest.fn(),
-    deleteBlog: jest.fn(),
-    getUser: jest.fn(),
-    putUser: jest.fn(),
-    deleteUser: jest.fn(),
+    updateBlog: vi.fn(),
+    deleteBlog: vi.fn(),
+    getUser: vi.fn(),
+    putUser: vi.fn(),
+    deleteUser: vi.fn(),
     ...overrides,
   } as unknown as Api
 }

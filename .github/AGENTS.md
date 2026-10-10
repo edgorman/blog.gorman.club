@@ -28,7 +28,7 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 
 ### Pre-Release Generation
 
-- `pre-release` runs on every merge, checks each direct need for `success` (`services-backend`, `services-worker`, `services-frontend`, `smoke`, `version`), and takes its tag from `version` ([23](../docs/decisions/0023-pre-release-gates.md)).
+- `pre-release` runs on every merge, checks each direct need for `success` (`services-backend`, a matrix over both images, `services-frontend`, `smoke`, `version`), and takes its tag from `version` ([23](../docs/decisions/0023-pre-release-gates.md)).
 - The prod plan in a pre-release runs with `-lock=false` ([23](../docs/decisions/0023-pre-release-gates.md)).
 
 ### Production Releases

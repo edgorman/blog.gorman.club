@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// debugResponse is the Debug Endpoint Contract from `docs/architecture.md`'s "Health Verification Strategy" -
+// debugResponse is the Debug Endpoint Contract (`docs/decisions/0031-debug-endpoint-contract.md`) -
 // the one deliberate exception #173's sweep left hand-written, rather than a leftover it missed.
 // Nothing in this repository declares a second copy of this shape to drift against: the frontend
 // has no dashboard reading it (that half of the health-check design was never built), and its one

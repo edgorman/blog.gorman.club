@@ -24,11 +24,14 @@ A demo of a small, cloud-deployed full-stack web service - a blog with a Gemini-
 | `packages/protos` | Protobuf API contract; `buf generate` writes the Go and TypeScript types |
 | `infrastructure` | Terraform for the shared root, staging and prod environments (GCP, Cloudflare, GitHub) |
 | `.github` | Workflows and composite actions: PR checks, staging deploy on merge, release promotion to prod |
-| `docs/architecture.md` | Why things are the way they are |
+| `docs/decisions` | Why things are the way they are, one decision per file |
 
 Every merge to `main` deploys to staging; production releases are promoted from there. Nothing is ever applied or deployed by hand.
 
 ## Developing with moon
+
+New here? [`docs/start-here.md`](docs/start-here.md) goes from a fresh clone to an open pull request, with no GCP access needed.
+
 
 [moon](https://moonrepo.dev) runs every task, and [proto](https://moonrepo.dev/proto) pins the toolchain (`.prototools`: Go, Node, npm, buf, Terraform, moon itself).
 
@@ -36,7 +39,7 @@ Every merge to `main` deploys to staging; production releases are promoted from 
 proto install                                   # install the pinned toolchain
 
 moon run services/frontend:dev                  # frontend dev server
-moon run services/backend:dev                   # backend on :8080 - needs GCP credentials for Firestore
+moon run services/backend:dev-local             # backend on :8080 against the Firestore emulator, no GCP needed
 
 moon run services/backend:test                  # one task in one project
 moon run :lint                                  # one task across every project

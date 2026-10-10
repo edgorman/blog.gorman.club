@@ -5,7 +5,7 @@ description: This repo's conventions for driving a pull request to green - what 
 
 # Stewarding a PR in this repo
 
-Why things are set up this way lives in the `AGENTS.md` files; this is only what to do. Build and CI: `.github/AGENTS.md`. Wire contract: `packages/protos/AGENTS.md`.
+Rules live in the `AGENTS.md` files and their reasoning in `docs/decisions/`; this is only what to do. Build and CI: `.github/AGENTS.md`. Wire contract: `packages/protos/AGENTS.md`.
 
 ## Before any push
 
@@ -36,7 +36,7 @@ All seven jobs of `.github/workflows/pull-request.yaml` and both jobs of `.githu
 | `test` → `services/backend:image` | The Docker build | Usually a Go version or a file missing from the build context |
 | `protos-drift` | Generated code doesn't match the `.proto` | `cd packages/protos && buf generate`, then commit `services/backend/internal/gen` and `services/frontend/src/gen`. **Never hand-edit either folder** |
 | `pr-title` | The PR title isn't a Conventional Commit: `type(scope)?!?: description`, type one of `feat`, `fix`, `build`, `chore`, `ci`, `docs`, `perf`, `refactor`, `revert`, `style`, `test` (root `AGENTS.md`) | Edit the title. The check reruns on the edit, no push needed |
-| `protos-breaking` → `packages/protos:breaking` | `buf breaking` against `origin/main` found a wire break (a field removed, renumbered or retyped, ...) | Make the change additive (see "A wire change is a two-release problem" in `packages/protos/AGENTS.md`). If the break is deliberate, ask the user: marking the PR breaking (`!` in the title or a `BREAKING CHANGE:` footer in the body) skips the check and bumps major. Local repro: `moon run packages/protos:breaking` |
+| `protos-breaking` → `packages/protos:breaking` | `buf breaking` against `origin/main` found a wire break (a field removed, renumbered or retyped, ...) | Make the change additive (see `docs/decisions/0010-wire-changes-across-releases.md`). If the break is deliberate, ask the user: marking the PR breaking (`!` in the title or a `BREAKING CHANGE:` footer in the body) skips the check and bumps major. Local repro: `moon run packages/protos:breaking` |
 | `changed` | `moon query affected` failed | A `moon.yml` is invalid. `MOON_BASE=origin/main moon query affected` reproduces it |
 | `infrastructure-{root,staging,prod}` | `terraform init/fmt/validate/plan` with real credentials | See below |
 

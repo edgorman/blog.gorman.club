@@ -41,33 +41,26 @@ jobs:
   protos-breaking:
     runs-on: ubuntu-latest
     steps:
-      - id: marker
-        name: Check for a breaking-change marker
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        # Full history and no blob:none filter: buf clones this checkout locally to read main's
+        # .proto files, and a partial clone can't serve the blobs it never fetched.
+        with:
+          fetch-depth: 0
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+          cache: false # see pull-request.yaml's `changed` job for why
+      - name: moon ci
         shell: bash
         env:
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body || github.event.merge_group.head_commit.message }}
+          MOON_BASE: origin/main
         run: |
           subject="${TITLE:-${BODY%%$'\n'*}}"
           re='^[a-z]+(\([^)]+\))?!:'
           if [[ "$subject" =~ $re ]] || grep -qE '^BREAKING[ -]CHANGE:' <<<"$BODY"; then
             echo "Marked breaking; skipping buf breaking."
-            echo "breaking=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-      - if: steps.marker.outputs.breaking != 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        # Full history and no blob:none filter: buf clones this checkout locally to read main's
-        # .proto files, and a partial clone can't serve the blobs it never fetched.
-        with:
-          fetch-depth: 0
-      - if: steps.marker.outputs.breaking != 'true'
-        uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
-        with:
-          auto-install: true
-          cache: false # see pull-request.yaml's `changed` job for why
-      - if: steps.marker.outputs.breaking != 'true'
-        name: moon ci
-        shell: bash
-        run: moon ci packages/protos:breaking
-        env:
-          MOON_BASE: origin/main
+          moon ci packages/protos:breaking

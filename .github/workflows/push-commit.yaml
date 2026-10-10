@@ -89,13 +89,14 @@ jobs:
   # therefore every release tag, has a folder in both buckets. One build feeds both buckets and
   # Cloudflare Pages, so the live staging site is never rebuilt separately from what's stored.
   services-frontend:
-    needs: [changed, infrastructure-root, infrastructure-staging, services-backend, version]
+    # services-backend only succeeds once `changed` and infrastructure-staging have; infrastructure-root
+    # is checked on its own because infrastructure-staging skips (rather than fails) after it when
+    # staging isn't affected.
+    needs: [infrastructure-root, services-backend, version]
     if: |
       always() &&
-      needs.changed.result == 'success' &&
       (needs.infrastructure-root.result == 'success' || needs.infrastructure-root.result == 'skipped') &&
-      (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped') &&
-      (needs.services-backend.result == 'success' || needs.services-backend.result == 'skipped') &&
+      needs.services-backend.result == 'success' &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -112,8 +113,8 @@ jobs:
           secrets_list: |
             CLOUDFLARE_API_TOKEN=cloudflare_api_token
             CLOUDFLARE_ACCOUNT_ID=cloudflare_account_id
-      # Looked up directly (reusing gcp-secret-manager's auth) since services-backend's output is
-      # unavailable when that job is skipped.
+      # Looked up directly (reusing gcp-secret-manager's auth): services-backend is a matrix, and a
+      # matrix job's outputs don't say which leg wrote them.
       - id: backend
         name: Get Backend URL
         shell: bash
@@ -198,14 +199,21 @@ jobs:
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
 
   # Runs on every merge - not gated on the services-backend diff - so every commit on `main`, and
-  # therefore every release tag, has a commit-SHA image in both registries. Must still follow
+  # therefore every release tag, has a commit-SHA image in both registries. One leg per image: the
+  # API and the worker, built from the same Dockerfile with CMD=<image>. Must still follow
   # infrastructure-staging so the staging deploy target exists.
   services-backend:
+    name: services-${{ matrix.image }}
     needs: [changed, infrastructure-staging]
     if: |
       always() &&
       needs.changed.result == 'success' &&
       (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
+    strategy:
+      # A failed build in one leg shouldn't cancel the other's staging deploy halfway through.
+      fail-fast: false
+      matrix:
+        image: [backend, worker]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -217,32 +225,8 @@ jobs:
           gcp_project_id: 'blog-gorman-club-stag'
           prod_project_id: 'blog-gorman-club-prod'
           gcp_region: 'europe-west1'
-          service_name: 'backend-stag'
-          image_tag: ${{ github.sha }}
-          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.SERVICE_ACCOUNT }}
-
-  # The worker, published and deployed exactly like services-backend above (every merge, both
-  # registries, staging only), from the same Dockerfile with CMD=worker.
-  services-worker:
-    needs: [changed, infrastructure-staging]
-    if: |
-      always() &&
-      needs.changed.result == 'success' &&
-      (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/backend-deploy
-        with:
-          gcp_project_id: 'blog-gorman-club-stag'
-          prod_project_id: 'blog-gorman-club-prod'
-          gcp_region: 'europe-west1'
-          service_name: 'worker-stag'
-          image_name: 'worker'
+          service_name: '${{ matrix.image }}-stag'
+          image_name: ${{ matrix.image }}
           image_tag: ${{ github.sha }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
@@ -289,12 +273,11 @@ jobs:
   # uses above; the explicit `== 'success'` (not `'success' || 'skipped'`) keeps the fix #156 made -
   # no publish job has a benign skip path, so a skip of any of them here is still not tag-worthy.
   pre-release:
-    needs: [services-backend, services-worker, services-frontend, smoke, version]
+    needs: [services-backend, services-frontend, smoke, version]
     if: |
       always() &&
       needs.smoke.result == 'success' &&
       needs.services-backend.result == 'success' &&
-      needs.services-worker.result == 'success' &&
       needs.services-frontend.result == 'success' &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest
@@ -322,27 +305,16 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+      # The same read-only, -lock=false plan a PR runs against prod (it only comments on a
+      # pull_request event), leaving infrastructure/env/tfplan.txt for the notes below.
+      - uses: ./.github/actions/terraform-pull-request
         with:
-          terraform_version: "1.15.8"
-
-      - name: Terraform Plan (prod preview)
-        shell: bash
-        env:
+          terraform_directory: 'infrastructure/env'
+          config_directory: 'infrastructure/config/prod'
           # Same as every other prod plan/apply, or this plan shows GOOGLE_CLIENT_ID being blanked.
-          TF_VAR_google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
-        working-directory: infrastructure/env
-        run: |
-          terraform init \
-            -backend-config="${{ github.workspace }}/infrastructure/config/prod/terraform.tfbackend"
-          terraform plan \
-            -var-file="${{ github.workspace }}/infrastructure/config/prod/terraform.tfvars" \
-            -lock=false \
-            -no-color \
-            -input=false \
-            -out=tfplan.binary
-          terraform show -no-color tfplan.binary > tfplan.txt
+          secrets: |
+            TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Write Release Notes
         shell: bash

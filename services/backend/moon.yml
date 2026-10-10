@@ -20,7 +20,9 @@ tasks:
     command: 'go test ./...'
     # An external project input, not a dependsOn/-g relation: v2 --affected doesn't follow graph
     # relations by default, and a .proto-only edit must still mark this task affected (#155).
-    inputs: ['@group(sources)', 'project://packages/protos']
+    # The emulator's address is an input too: with it set, internal/repository/firestore's emulator
+    # tests run instead of skipping, so a cached run without it must not stand in for one with it.
+    inputs: ['@group(sources)', 'project://packages/protos', '$FIRESTORE_EMULATOR_HOST']
   build:
     command: 'go build ./...'
     inputs: ['@group(sources)']
@@ -35,4 +37,15 @@ tasks:
       runInCI: true
   dev:
     command: 'go run ./cmd/backend'
+    preset: 'server'
+  # The backend with no GCP credentials: Firestore is the emulator, which must already be running
+  # (`gcloud emulators firestore start --host-port=127.0.0.1:8081`), and sign-in is the development
+  # token (internal/repository/devauth). See "Running locally" in README.md.
+  dev-local:
+    command: 'go run ./cmd/backend'
+    env:
+      FIRESTORE_EMULATOR_HOST: '127.0.0.1:8081'
+      GOOGLE_CLOUD_PROJECT: 'demo-blog-gorman-club'
+      ENVIRONMENT: 'local'
+      DEV_AUTH: 'true'
     preset: 'server'

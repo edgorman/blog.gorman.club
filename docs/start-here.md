@@ -51,7 +51,7 @@ git fetch origin main
 moon ci --base origin/main
 ```
 
-This runs every check your branch affects. On a fresh branch nothing is affected yet; to run everything once, use `moon run :format :lint :vet :typecheck :build :test`. With `FIRESTORE_EMULATOR_HOST=127.0.0.1:8081` set, the backend tests also run the Firestore adapter tests against the emulator, as CI does. `infra-*:validate` needs Terraform's registry and `services/backend:image` needs Docker; CI runs both if you don't.
+This runs every check your branch affects. On a fresh branch nothing is affected yet; to run everything once, use `moon run :format :lint :vet :typecheck :build :test`. With `FIRESTORE_EMULATOR_HOST=127.0.0.1:8081` set, the backend tests also run the Firestore adapter tests against the emulator, as CI does. `infra-*:validate` needs Terraform's registry and the `:image` tasks need Docker; CI runs those if you can't.
 
 ## 5. Make one change
 

@@ -578,7 +578,8 @@ resource "google_monitoring_dashboard" "backend" {
           title = "Requests by response class"
           xyChart = {
             dataSets = [{
-              plotType = "STACKED_BAR"
+              plotType   = "STACKED_BAR"
+              targetAxis = "Y1"
               timeSeriesQuery = {
                 timeSeriesFilter = {
                   filter = join(" AND ", [
@@ -601,7 +602,8 @@ resource "google_monitoring_dashboard" "backend" {
           title = "95th percentile latency (ms)"
           xyChart = {
             dataSets = [{
-              plotType = "LINE"
+              plotType   = "LINE"
+              targetAxis = "Y1"
               timeSeriesQuery = {
                 timeSeriesFilter = {
                   filter = join(" AND ", [
@@ -625,7 +627,8 @@ resource "google_monitoring_dashboard" "backend" {
           title = "Assistant turns by outcome"
           xyChart = {
             dataSets = [{
-              plotType = "STACKED_BAR"
+              plotType   = "STACKED_BAR"
+              targetAxis = "Y1"
               timeSeriesQuery = {
                 timeSeriesFilter = {
                   filter = "metric.type=\"${local.assistant_turns_metric}\" AND resource.type=\"cloud_run_revision\""
@@ -644,7 +647,8 @@ resource "google_monitoring_dashboard" "backend" {
           title = "Assistant failures by upstream status"
           xyChart = {
             dataSets = [{
-              plotType = "STACKED_BAR"
+              plotType   = "STACKED_BAR"
+              targetAxis = "Y1"
               timeSeriesQuery = {
                 timeSeriesFilter = {
                   filter = "metric.type=\"${local.assistant_turns_metric}\" AND resource.type=\"cloud_run_revision\" AND metric.label.outcome=\"error\""
@@ -664,6 +668,7 @@ resource "google_monitoring_dashboard" "backend" {
           xyChart = {
             dataSets = [for percentile in ["50", "95"] : {
               plotType       = "LINE"
+              targetAxis     = "Y1"
               legendTemplate = "p${percentile}"
               timeSeriesQuery = {
                 timeSeriesFilter = {
@@ -682,7 +687,8 @@ resource "google_monitoring_dashboard" "backend" {
           title = "Instances"
           xyChart = {
             dataSets = [{
-              plotType = "STACKED_AREA"
+              plotType   = "STACKED_AREA"
+              targetAxis = "Y1"
               timeSeriesQuery = {
                 timeSeriesFilter = {
                   filter = join(" AND ", [
@@ -701,14 +707,13 @@ resource "google_monitoring_dashboard" "backend" {
             }]
           }
         },
-        ] : {
-        # Two tiles to a row, each half the width.
-        xPos   = (i % 2) * 6
-        yPos   = floor(i / 2) * 4
-        width  = 6
-        height = 4
-        widget = widget
-      }]
+        # Two tiles to a row, each half the width. The API drops zero positions and fills in
+        # targetAxis = "Y1" on each dataSet, so both are written the way it stores them, or
+        # every plan shows the dashboard changing when nothing has.
+        ] : merge(
+        { width = 6, height = 4, widget = widget },
+        { for k, v in { xPos = (i % 2) * 6, yPos = floor(i / 2) * 4 } : k => v if v != 0 },
+      )]
     }
   })
 }

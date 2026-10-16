@@ -169,6 +169,7 @@ jobs:
         with:
           terraform_directory: 'infrastructure/root'
           config_directory: 'infrastructure/config/root'
+          plan_dir: 'gs://blog-gorman-club-root-terraform-state/plans/root'
           secrets: ${{ steps.secrets.outputs.secrets }}
 
   # Waits on infrastructure-root so any IAM grants or API enablement it applies land first.
@@ -194,6 +195,7 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/staging'
+          plan_dir: 'gs://blog-gorman-club-stag-terraform-state/plans/staging'
           # One client ID, defined in infrastructure/root, serves every environment.
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
@@ -306,11 +308,13 @@ jobs:
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 
       # The same read-only, -lock=false plan a PR runs against prod (it only comments on a
-      # pull_request event), leaving infrastructure/env/tfplan.txt for the notes below.
+      # pull_request event), leaving infrastructure/env/tfplan.txt for the notes below and saving
+      # the binary plan that promoting this pre-release applies.
       - uses: ./.github/actions/terraform-pull-request
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/prod'
+          plan_dir: 'gs://blog-gorman-club-prod-terraform-state/plans/prod'
           # Same as every other prod plan/apply, or this plan shows GOOGLE_CLIENT_ID being blanked.
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}

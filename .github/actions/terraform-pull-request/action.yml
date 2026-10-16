@@ -15,6 +15,10 @@ inputs:
   github_token:
     description: 'GitHub token for posting comments'
     required: true
+  plan_dir:
+    description: 'gs:// directory to save the binary plan under, named by the checkout''s git tree hash, for terraform-push-commit to apply later. Omit to keep the plan local.'
+    required: false
+    default: ''
 
 runs:
   using: "composite"
@@ -66,6 +70,21 @@ runs:
           -input=false \
           -out=tfplan.binary
         terraform show -no-color tfplan.binary > tfplan.txt
+
+    - name: Set up Cloud SDK
+      if: inputs.plan_dir != ''
+      uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+    # Keyed by tree, not commit: a PR's merge commit and the squash commit it becomes on main have
+    # different SHAs but, with branches required to be up to date, the same tree. The plan holds
+    # every variable in plain text, so it goes to the state bucket, never a workflow artifact.
+    - name: Save Terraform Plan
+      if: inputs.plan_dir != ''
+      shell: bash
+      working-directory: ${{ inputs.terraform_directory }}
+      env:
+        PLAN_DIR: ${{ inputs.plan_dir }}
+      run: gcloud storage cp tfplan.binary "$PLAN_DIR/$(git rev-parse 'HEAD^{tree}').tfplan"
 
     # A merge_group run has no PR to comment on; the plan above still has to succeed.
     - name: Post Terraform Plan Comment

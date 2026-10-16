@@ -35,3 +35,4 @@ One file per decision: its context, the decision, and its consequences. The rule
 | [29](0029-artifact-retention.md) | Artifact retention | infrastructure |
 | [30](0030-monitoring-on-cloud-run-metrics.md) | Monitoring on Cloud Run metrics | infrastructure |
 | [31](0031-debug-endpoint-contract.md) | The debug endpoint contract | backend |
+| [32](0032-apply-saved-plans.md) | Applies use the plan already shown | ci |

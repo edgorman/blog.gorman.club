@@ -7,6 +7,7 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 - Everything builds, tests and deploys through GitHub Actions; infrastructure applies before services update.
 - Every pipeline has an environment-scoped concurrency group.
 - Shared steps live in composite actions under `.github/actions/`.
+- Applies run the saved plan for their tree from `plans/<env>/` in the state bucket, falling back to planning on the spot when it is missing or stale. Pass `plan_dir` to both Terraform actions; never save a plan as a workflow artifact ([32](../docs/decisions/0032-apply-saved-plans.md)).
 
 ### Building with moon
 

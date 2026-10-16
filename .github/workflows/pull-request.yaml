@@ -144,6 +144,7 @@ jobs:
         with:
           terraform_directory: 'infrastructure/root'
           config_directory: 'infrastructure/config/root'
+          plan_dir: 'gs://blog-gorman-club-root-terraform-state/plans/root'
           secrets: ${{ steps.secrets.outputs.secrets }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -168,6 +169,7 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/staging'
+          plan_dir: 'gs://blog-gorman-club-stag-terraform-state/plans/staging'
           # One client ID, defined in infrastructure/root, serves every environment.
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}

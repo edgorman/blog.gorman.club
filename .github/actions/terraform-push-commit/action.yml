@@ -1,5 +1,5 @@
 name: 'Terraform Push Commit'
-description: 'Performs terraform init and apply'
+description: 'Performs terraform init and apply, from a saved plan when there is one'
 
 inputs:
   terraform_directory:
@@ -10,6 +10,10 @@ inputs:
     required: true
   secrets:
     description: 'Newline-separated list of secrets or env vars to export (e.g., KEY=VALUE)'
+    required: false
+    default: ''
+  plan_dir:
+    description: 'gs:// directory terraform-pull-request saved plans under. The plan for this checkout''s tree is applied if it exists and is not stale; otherwise the action plans and applies on the spot. Omit to always plan on the spot.'
     required: false
     default: ''
 
@@ -30,6 +34,9 @@ runs:
       uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
       with:
         terraform_version: "1.15.8"
+        # The wrapper re-prints stdout for step outputs nothing here reads; off so the JSON piped
+        # to jq below is only Terraform's.
+        terraform_wrapper: false
 
     - name: Terraform Init
       shell: bash
@@ -38,11 +45,35 @@ runs:
         terraform init \
           -backend-config="${{ github.workspace }}/${{ inputs.config_directory }}/terraform.tfbackend"
 
+    - name: Set up Cloud SDK
+      if: inputs.plan_dir != ''
+      uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+    # Applies the plan already shown on the PR or in the pre-release notes. Terraform refuses a
+    # saved plan whose state changed since it was made ("Saved plan is stale"), before touching
+    # anything, so a missing or stale plan falls back to planning here, with the plan in the job
+    # summary. A plan with nothing to apply is skipped.
     - name: Terraform Apply
       shell: bash
       working-directory: ${{ inputs.terraform_directory }}
+      env:
+        PLAN_DIR: ${{ inputs.plan_dir }}
+        VAR_FILE: ${{ github.workspace }}/${{ inputs.config_directory }}/terraform.tfvars
       run: |
-        terraform apply \
-          -var-file="${{ github.workspace }}/${{ inputs.config_directory }}/terraform.tfvars" \
-          -auto-approve \
-          -input=false
+        set -o pipefail
+        if [ -n "$PLAN_DIR" ] && gcloud storage cp "$PLAN_DIR/$(git rev-parse 'HEAD^{tree}').tfplan" tfplan.binary; then
+          if [ "$(terraform show -json tfplan.binary | jq '.applyable != false')" = false ]; then
+            echo 'Saved plan has no changes; nothing to apply.'
+            exit 0
+          fi
+          if terraform apply -input=false tfplan.binary 2>&1 | tee apply.log; then
+            exit 0
+          fi
+          grep -q 'Saved plan is stale' apply.log || exit 1
+          echo '::warning::Saved plan is stale; planning and applying on the spot.'
+        elif [ -n "$PLAN_DIR" ]; then
+          echo '::warning::No saved plan for this commit; planning and applying on the spot.'
+        fi
+        terraform plan -var-file="$VAR_FILE" -input=false -no-color -out=tfplan.binary
+        { echo '```hcl'; terraform show -no-color tfplan.binary; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+        terraform apply -input=false tfplan.binary

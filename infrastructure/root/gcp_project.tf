@@ -73,6 +73,7 @@ resource "google_storage_bucket" "gcp_project_terraform_states" {
     condition {
       age            = 90
       matches_prefix = ["plans/"]
+      with_state     = "ANY"
     }
     action {
       type = "Delete"

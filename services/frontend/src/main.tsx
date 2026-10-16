@@ -6,7 +6,7 @@ import App from './App.tsx'
 import { resolveConfig } from './lib/config.ts'
 
 // Resolved before the first render so every page sees settled config values rather than ones that
-// could change underneath it - see lib/config.ts.
+// could change underneath it - see lib/config.ts (config.json is written at deploy time).
 resolveConfig().then(({ backendUrl, version, environment }) => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

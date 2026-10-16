@@ -13,7 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Step 1: infra applies before any service is touched, unconditionally - applies are idempotent.
+  # Step 1: infra applies before any service is touched, from the plan saved when this pre-release
+  # was cut (the one in its notes). If prod changed since, as on any rollback, it plans again here.
   infrastructure-prod:
     runs-on: ubuntu-latest
     permissions:
@@ -32,6 +33,7 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/prod'
+          plan_dir: 'gs://blog-gorman-club-prod-terraform-state/plans/prod'
           # One client ID, defined in infrastructure/root, serves every environment.
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}

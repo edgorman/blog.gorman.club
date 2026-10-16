@@ -36,14 +36,17 @@ jobs:
 
   # #199: cutover - moon decides which Terraform deployment(s) an apply reaches, the same way
   # pull-request.yaml's `changed` job decides which to plan (see its own comment for why the old
-  # github-file-diff blanket glob has no replacement here). There is no services-frontend/
-  # services-backend output here: those jobs below publish artifacts on every merge unconditionally
-  # (see the comment on services-frontend), so nothing gates them.
+  # github-file-diff blanket glob has no replacement here). The publish markers decide which of
+  # the backend, worker and frontend are rebuilt; the rest reuse base_sha's artifacts (decision 33).
   changed:
     runs-on: ubuntu-latest
     outputs:
       infrastructure-root: ${{ steps.moon.outputs.root }}
       infrastructure-staging: ${{ steps.moon.outputs.staging }}
+      backend: ${{ steps.moon.outputs.backend }}
+      worker: ${{ steps.moon.outputs.worker }}
+      frontend: ${{ steps.moon.outputs.frontend }}
+      base_sha: ${{ steps.moon.outputs.base_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -72,27 +75,30 @@ jobs:
           if base=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD~1 2>/dev/null); then
             echo "Diffing against $base"
             export MOON_BASE="$base"
+            echo "base_sha=$(git rev-list -n 1 "$base")" >> "$GITHUB_OUTPUT"
           else
-            echo 'root=true' >> "$GITHUB_OUTPUT"
-            echo 'staging=true' >> "$GITHUB_OUTPUT"
+            printf '%s=true\n' root staging backend worker frontend >> "$GITHUB_OUTPUT"
             exit 0
           fi
           moon query affected > affected.json
-          for env in root staging; do
+          for pair in root=deploy-root:plan staging=deploy-staging:plan backend=services/backend:publish \
+            worker=worker:publish frontend=services/frontend:publish; do
             # .tasks is omitted entirely when nothing is affected (moon's Affected struct skips
             # empty maps on serialize), so `(.tasks // {})` guards against `has` erroring on null.
-            val=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' affected.json)
-            echo "$env=$val" >> "$GITHUB_OUTPUT"
+            val=$(jq -r --arg t "${pair#*=}" '(.tasks // {}) | has($t)' affected.json)
+            echo "${pair%%=*}=$val" >> "$GITHUB_OUTPUT"
           done
 
-  # Runs on every merge - not gated on the services-frontend diff - so every commit on `main`, and
-  # therefore every release tag, has a folder in both buckets. One build feeds both buckets and
-  # Cloudflare Pages, so the live staging site is never rebuilt separately from what's stored.
+  # Runs on every merge so every commit on `main`, and therefore every release tag, has a folder in
+  # both buckets. It only builds when the frontend is affected; otherwise it publishes base_sha's
+  # folder again under this commit (or builds, if that folder has aged out). Either way it deploys,
+  # so staging always shows this commit's version. One folder feeds both buckets and Cloudflare
+  # Pages, so the live staging site is never different from what's stored.
   services-frontend:
     # services-backend only succeeds once `changed` and infrastructure-staging have; infrastructure-root
     # is checked on its own because infrastructure-staging skips (rather than fails) after it when
     # staging isn't affected.
-    needs: [infrastructure-root, services-backend, version]
+    needs: [changed, infrastructure-root, services-backend, version]
     if: |
       always() &&
       (needs.infrastructure-root.result == 'success' || needs.infrastructure-root.result == 'skipped') &&
@@ -125,7 +131,18 @@ jobs:
             --format='value(status.url)')
           test -n "$URL" || { echo '::error::backend-stag URL not found'; exit 1; }
           echo "backend_url=$URL" >> "$GITHUB_OUTPUT"
-      - uses: ./.github/actions/frontend-build
+      - id: reuse
+        name: Reuse the unchanged frontend
+        if: needs.changed.outputs.frontend != 'true'
+        continue-on-error: true
+        uses: ./.github/actions/frontend-fetch
+        with:
+          gcp_project_id: 'blog-gorman-club-stag'
+          sha: ${{ needs.changed.outputs.base_sha }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+      - if: steps.reuse.outcome != 'success'
+        uses: ./.github/actions/frontend-build
         with:
           google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
       - uses: ./.github/actions/frontend-publish
@@ -200,10 +217,11 @@ jobs:
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
 
-  # Runs on every merge - not gated on the services-backend diff - so every commit on `main`, and
-  # therefore every release tag, has a commit-SHA image in both registries. One leg per image: the
-  # API and the worker, built from the same Dockerfile with CMD=<image>. Must still follow
-  # infrastructure-staging so the staging deploy target exists.
+  # Runs on every merge so every commit on `main`, and therefore every release tag, has a commit-SHA
+  # image in both registries. An unaffected image is base_sha's re-tagged, with no build and no
+  # staging deploy (staging already runs it). One leg per image: the API and the worker, built from
+  # the same Dockerfile with CMD=<image>. Must still follow infrastructure-staging so the staging
+  # deploy target exists.
   services-backend:
     name: services-${{ matrix.image }}
     needs: [changed, infrastructure-staging]
@@ -230,6 +248,7 @@ jobs:
           service_name: '${{ matrix.image }}-stag'
           image_name: ${{ matrix.image }}
           image_tag: ${{ github.sha }}
+          reuse_from: ${{ needs.changed.outputs[matrix.image] != 'true' && needs.changed.outputs.base_sha || '' }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.SERVICE_ACCOUNT }}
 

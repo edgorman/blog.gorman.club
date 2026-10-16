@@ -24,7 +24,7 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 
 ### Staging Deployments
 
-- Every merge builds the backend and worker images and the frontend `dist/` once, publishes them by commit SHA to both staging's and prod's stores, and deploys staging from them, whether or not the service changed ([22](../docs/decisions/0022-build-once-promote-by-sha.md)).
+- Every merge publishes the backend and worker images and the frontend `dist/` by commit SHA to both staging's and prod's stores ([22](../docs/decisions/0022-build-once-promote-by-sha.md)). Only what its `publish` marker marks affected is built; the rest is the last release's, re-tagged or re-published, and an unchanged image isn't redeployed. List every action and workflow a service's build uses in its marker ([33](../docs/decisions/0033-build-only-what-changed.md)).
 - The frontend bundle carries nothing environment-specific; `config.json` is written at deploy time ([22](../docs/decisions/0022-build-once-promote-by-sha.md)).
 
 ### Pre-Release Generation

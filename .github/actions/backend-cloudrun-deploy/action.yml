@@ -23,7 +23,29 @@ outputs:
 runs:
   using: "composite"
   steps:
+    # A release whose image is already live (an unchanged backend re-tagged on merge, decision 33)
+    # has nothing to deploy. A missing service or image reads as different, so it deploys.
+    - id: live
+      name: Compare With Live Revision
+      shell: bash
+      env:
+        SERVICE: ${{ inputs.service_name }}
+        REGION: ${{ inputs.gcp_region }}
+        PROJECT: ${{ inputs.gcp_project_id }}
+        IMAGE: ${{ inputs.image }}
+      run: |
+        rev=$(gcloud run services describe "$SERVICE" --region="$REGION" --project="$PROJECT" \
+          --format='value(status.latestReadyRevisionName)' 2>/dev/null) || true
+        live=$(gcloud run revisions describe "$rev" --region="$REGION" --project="$PROJECT" \
+          --format='value(status.imageDigest)' 2>/dev/null) || true
+        want=$(gcloud artifacts docker images describe "$IMAGE" --format='value(image_summary.digest)' 2>/dev/null) || true
+        if [ -n "$want" ] && [ "${live##*@}" = "$want" ]; then
+          echo "$SERVICE already runs $want; skipping the deploy."
+          echo 'current=true' >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Deploy to Cloud Run
+      if: steps.live.outputs.current != 'true'
       shell: bash
       run: |
         gcloud run deploy "${{ inputs.service_name }}" \

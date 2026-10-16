@@ -49,3 +49,18 @@ tasks:
       ENVIRONMENT: 'local'
       DEV_AUTH: 'true'
     preset: 'server'
+  # A marker task, like the deploy-*:plan ones: its 'inputs' decide whether a merge rebuilds the
+  # image or reuses the last release's (push-commit.yaml's `changed` job, decision 33).
+  publish:
+    command: 'noop'
+    inputs:
+      - '@group(sources)'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '/.github/actions/backend-deploy/**/*'
+      - '/.github/actions/backend-cloudrun-deploy/**/*'
+      - '/.github/workflows/push-commit.yaml'
+    options:
+      # Not runInCI: false - see infrastructure/config/root/moon.yml's comment: excluding it from CI
+      # hides it from moon query affected's CI-mode results, which push-commit's `changed` reads.
+      cache: false

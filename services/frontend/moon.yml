@@ -50,3 +50,17 @@ tasks:
     command: 'npm run dev'
     deps: ['install']
     preset: 'server'
+  # A marker task, like the deploy-*:plan ones: its 'inputs' decide whether a merge rebuilds the
+  # bundle or reuses the last release's (push-commit.yaml's `changed` job, decision 33).
+  publish:
+    command: 'noop'
+    inputs:
+      - '@group(sources)'
+      - '@group(configs)'
+      - '/.github/actions/frontend-build/**/*'
+      - '/.github/actions/frontend-publish/**/*'
+      - '/.github/workflows/push-commit.yaml'
+    options:
+      # Not runInCI: false - see infrastructure/config/root/moon.yml's comment: excluding it from CI
+      # hides it from moon query affected's CI-mode results, which push-commit's `changed` reads.
+      cache: false

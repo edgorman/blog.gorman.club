@@ -22,3 +22,21 @@ tasks:
     options:
       cache: false
       runInCI: true
+  # A marker task, like the deploy-*:plan ones: its 'inputs' decide whether a merge rebuilds the
+  # image or reuses the last release's (push-commit.yaml's `changed` job, decision 33).
+  publish:
+    command: 'noop'
+    inputs:
+      - '**/*.go'
+      - '/services/backend/internal/**/*.go'
+      - '/services/backend/go.mod'
+      - '/services/backend/go.sum'
+      - '/services/backend/Dockerfile'
+      - '/services/backend/.dockerignore'
+      - '/.github/actions/backend-deploy/**/*'
+      - '/.github/actions/backend-cloudrun-deploy/**/*'
+      - '/.github/workflows/push-commit.yaml'
+    options:
+      # Not runInCI: false - see infrastructure/config/root/moon.yml's comment: excluding it from CI
+      # hides it from moon query affected's CI-mode results, which push-commit's `changed` reads.
+      cache: false

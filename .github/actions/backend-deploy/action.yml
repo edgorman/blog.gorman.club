@@ -1,5 +1,5 @@
 name: 'Backend Deploy'
-description: 'Builds a backend-module image (the API or the worker), pushes it to both environments'' Artifact Registries tagged with the commit SHA, and deploys it to staging Cloud Run'
+description: 'Builds a backend-module image (the API or the worker), pushes it to both environments'' Artifact Registries tagged with the commit SHA, and deploys it to staging Cloud Run - or, given reuse_from, re-tags that commit''s image instead'
 
 inputs:
   gcp_project_id:
@@ -21,6 +21,10 @@ inputs:
   image_tag:
     description: 'Tag to push the image under - the commit SHA, per the Staging Deployments section of `.github/AGENTS.md`'
     required: true
+  reuse_from:
+    description: 'Commit SHA of an earlier image to tag as image_tag in both registries instead of building, with no staging deploy (staging already runs it). Falls back to building if that image is missing. Omit to build.'
+    required: false
+    default: ''
   workload_identity_provider:
     description: 'The Workload Identity Provider resource name'
     required: true
@@ -55,7 +59,26 @@ runs:
         echo "staging_ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/backend/${{ inputs.image_name }}:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
         echo "prod_ref=${{ inputs.gcp_region }}-docker.pkg.dev/${{ inputs.prod_project_id }}/backend/${{ inputs.image_name }}:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
 
+    # Adds a tag to the existing image version in each registry: no new bytes, so retention's
+    # keep-N window (decision 29) only counts real builds.
+    - id: reuse
+      name: Reuse Image
+      if: inputs.reuse_from != ''
+      shell: bash
+      env:
+        STAGING_REF: ${{ steps.image.outputs.staging_ref }}
+        PROD_REF: ${{ steps.image.outputs.prod_ref }}
+        REUSE_FROM: ${{ inputs.reuse_from }}
+      run: |
+        if gcloud artifacts docker tags add "${STAGING_REF%:*}:$REUSE_FROM" "$STAGING_REF" --quiet &&
+          gcloud artifacts docker tags add "${PROD_REF%:*}:$REUSE_FROM" "$PROD_REF" --quiet; then
+          echo 'reused=true' >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::No image at $REUSE_FROM to reuse; building instead."
+        fi
+
     - name: Build Image
+      if: steps.reuse.outputs.reused != 'true'
       shell: bash
       run: |
         docker build \
@@ -68,16 +91,19 @@ runs:
     # to rebuild or copy, only a `gcloud run deploy` against the tag already sitting in prod's own
     # registry.
     - name: Tag Image For Prod
+      if: steps.reuse.outputs.reused != 'true'
       shell: bash
       run: docker tag "${{ steps.image.outputs.staging_ref }}" "${{ steps.image.outputs.prod_ref }}"
 
     - name: Push Image
+      if: steps.reuse.outputs.reused != 'true'
       shell: bash
       run: |
         docker push "${{ steps.image.outputs.staging_ref }}"
         docker push "${{ steps.image.outputs.prod_ref }}"
 
     - id: deploy
+      if: steps.reuse.outputs.reused != 'true'
       uses: ./.github/actions/backend-cloudrun-deploy
       with:
         gcp_project_id: ${{ inputs.gcp_project_id }}

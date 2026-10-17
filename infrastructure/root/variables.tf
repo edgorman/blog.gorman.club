@@ -67,3 +67,15 @@ variable "google_site_verification" {
   description = "Token from Google Search Console's DNS verification for the gorman.club Domain property (the part after `google-site-verification=`). Not a secret."
   type        = string
 }
+
+variable "backend_registry_keep_count" {
+  description = "How many of the most recent versions of each image every environment's backend Artifact Registry repository keeps; everything older is deleted by the repository's cleanup_policies. See the Artifact Stores section of infrastructure/AGENTS.md for how this number was chosen."
+  type        = number
+  default     = 30
+}
+
+variable "frontend_retention_days" {
+  description = "How many days a commit-SHA folder survives in every environment's frontend bucket before the bucket's lifecycle rule deletes it. See the Artifact Stores section of infrastructure/AGENTS.md for how this number was chosen."
+  type        = number
+  default     = 90
+}

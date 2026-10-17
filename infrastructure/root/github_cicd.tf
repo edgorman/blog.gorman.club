@@ -71,7 +71,7 @@ resource "google_project_iam_member" "github_actions_service_usage_consumer" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# The backend repository's writer binding in env/artifact_registry.tf needs
+# The backend repository's writer binding in artifact_stores.tf needs
 # artifactregistry.repositories.setIamPolicy, which roles/editor excludes. repoAdmin isn't enough
 # for this despite the name - it covers repository content administration (deleting images,
 # managing tags, cleanup policies) but not IAM policy on the repository itself; only
@@ -85,7 +85,7 @@ resource "google_project_iam_member" "github_actions_artifact_registry_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# The frontend bucket's writer binding in env/storage.tf needs storage.buckets.setIamPolicy,
+# The frontend bucket's writer binding in artifact_stores.tf needs storage.buckets.setIamPolicy,
 # which roles/editor excludes the same way it excludes setIamPolicy on the resources above.
 # storage.buckets.create itself needs no extra grant - that part is already covered by editor.
 resource "google_project_iam_member" "github_actions_storage_admin" {
@@ -96,10 +96,13 @@ resource "google_project_iam_member" "github_actions_storage_admin" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+# A deleted pool, and every provider in it, is soft-deleted for 30 days and keeps its id, so
+# recreating it under the same id straight after a teardown fails. It was github-pool until the
+# 2026 rebuild (docs/bootstrap.md); change it again to rebuild within 30 days of a teardown.
 resource "google_iam_workload_identity_pool" "github_pool" {
   project                   = var.gcp_provider_project_id
-  workload_identity_pool_id = "github-pool"
-  display_name              = "GitHub Pool"
+  workload_identity_pool_id = "github-actions"
+  display_name              = "GitHub Actions"
 }
 
 resource "google_iam_workload_identity_pool_provider" "github_provider" {

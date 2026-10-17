@@ -1,6 +1,6 @@
 # Start here
 
-From a fresh clone to an open pull request. None of it needs GCP access.
+From a fresh clone to an open pull request. None of it needs GCP access. Building the cloud environments themselves from nothing is [`bootstrap.md`](bootstrap.md).
 
 ## 1. Clone and install the toolchain
 

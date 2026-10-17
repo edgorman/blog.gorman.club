@@ -1,6 +1,6 @@
 # 28. Each environment has its own artifact stores
 
-Status: Accepted
+Status: Accepted; where the stores are defined is superseded by [34](0034-artifact-stores-in-root.md)
 
 ## Context
 

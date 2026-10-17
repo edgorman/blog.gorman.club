@@ -44,20 +44,8 @@ resource "cloudflare_dns_record" "frontend" {
 }
 
 # Proves ownership of gorman.club to Google Search Console (a Domain property), so the blog can be
-# submitted for indexing (#221). Search Console created this record itself when the property was
-# verified, so it is imported rather than created; the import is a no-op once it is in state.
-data "cloudflare_dns_records" "google_site_verification" {
-  zone_id = data.cloudflare_zone.gorman_club.id
-  type    = "TXT"
-  name    = { exact = data.cloudflare_zone.gorman_club.name }
-  content = { contains = var.google_site_verification }
-}
-
-import {
-  to = cloudflare_dns_record.google_site_verification
-  id = "${data.cloudflare_zone.gorman_club.id}/${one(data.cloudflare_dns_records.google_site_verification.result).id}"
-}
-
+# submitted for indexing (#221). Created here rather than imported, so a rebuild after a teardown
+# (docs/bootstrap.md), which deletes it, puts it back with the same token and stays verified.
 resource "cloudflare_dns_record" "google_site_verification" {
   zone_id = data.cloudflare_zone.gorman_club.id
   name    = data.cloudflare_zone.gorman_club.name

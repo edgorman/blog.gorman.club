@@ -224,10 +224,13 @@ jobs:
   # deploy target exists.
   services-backend:
     name: services-${{ matrix.image }}
-    needs: [changed, infrastructure-staging]
+    # infrastructure-root is checked on its own, as in services-frontend: it creates the registries
+    # this publishes into, and infrastructure-staging skips rather than fails after it.
+    needs: [changed, infrastructure-root, infrastructure-staging]
     if: |
       always() &&
       needs.changed.result == 'success' &&
+      (needs.infrastructure-root.result == 'success' || needs.infrastructure-root.result == 'skipped') &&
       (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
     strategy:
       # A failed build in one leg shouldn't cancel the other's staging deploy halfway through.

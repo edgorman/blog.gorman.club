@@ -3,16 +3,6 @@ output "backend_url" {
   value       = google_cloud_run_v2_service.backend.uri
 }
 
-output "artifact_registry_repository" {
-  description = "Full resource name of the backend Artifact Registry repository"
-  value       = google_artifact_registry_repository.backend.name
-}
-
-output "frontend_bucket" {
-  description = "Name of this environment's frontend static-build bucket"
-  value       = google_storage_bucket.frontend.name
-}
-
 output "firestore_database" {
   description = "Full resource name of the Firestore database"
   value       = google_firestore_database.database.name

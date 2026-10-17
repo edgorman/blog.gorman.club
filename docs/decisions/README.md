@@ -37,3 +37,4 @@ One file per decision: its context, the decision, and its consequences. The rule
 | [31](0031-debug-endpoint-contract.md) | The debug endpoint contract | backend |
 | [32](0032-apply-saved-plans.md) | Applies use the plan already shown | ci |
 | [33](0033-build-only-what-changed.md) | Build only what changed, reuse the rest | ci |
+| [34](0034-artifact-stores-in-root.md) | Artifact stores are created by root, not by each environment | infrastructure |

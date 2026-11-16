@@ -5,14 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
-	"google.golang.org/protobuf/types/known/timestamppb"
-
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/api"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
-	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
@@ -29,39 +25,50 @@ const blogSlugAttempts = 5
 // uid, which is never public. Resolving it on read rather than storing it on the post means
 // renaming reaches every post at once instead of leaving old ones attributed to a name nobody
 // holds. It is empty when the owner never created a profile, which a post does not require.
-// The json tag blogResponse carried here before #173 was vestigial: blogMessage always builds the
-// wire shape by reading these fields directly rather than by marshaling this struct itself, so
-// nothing ever read it.
 type blogResponse struct {
 	entity.Blog
 	AuthorUsername string
 }
 
 // blogMessage is the wire shape of a single post: what GetBlog, CreateBlog, and UpdateBlog answer
-// with, and what each entry of a BlogPage carries. DeletedAt has no field on blogv1.Blog at all,
-// so a soft-deleted post - which readAccess already keeps out of every response - could not leak
-// through here even by oversight.
-func blogMessage(response blogResponse) *blogv1.Blog {
-	return &blogv1.Blog{
+// with, and what each entry of a BlogPage carries. DeletedAt has no field on api.Blog at all, so a
+// soft-deleted post - which readAccess already keeps out of every response - could not leak through
+// here even by oversight. Times are UTC, so they always render with a "Z", and the lists are never
+// nil, so an empty one is `[]` rather than `null`.
+func blogMessage(response blogResponse) api.Blog {
+	return api.Blog{
 		Slug:           response.Slug,
 		AuthorUsername: response.AuthorUsername,
 		Title:          response.Title,
 		Content:        response.Content,
-		Tags:           response.Tags,
-		Visibility:     string(response.Visibility),
-		AllowedUserIds: response.AllowedUserIDs,
-		CreatedAt:      timestamppb.New(response.CreatedAt),
-		UpdatedAt:      timestamppb.New(response.UpdatedAt),
+		Tags:           nonNil(response.Tags),
+		Visibility:     api.Visibility(response.Visibility),
+		AllowedUserIds: nonNil(response.AllowedUserIDs),
+		CreatedAt:      response.CreatedAt.UTC(),
+		UpdatedAt:      response.UpdatedAt.UTC(),
 	}
 }
 
-// blogPageMessage is one page of ListBlogs, converting each post the same way blogMessage does.
-func blogPageMessage(responses []blogResponse, hasMore bool) *blogv1.BlogPage {
-	posts := make([]*blogv1.Blog, 0, len(responses))
+// nonNil is items, or an empty slice when there are none, so it encodes as `[]` rather than `null`.
+func nonNil[T any](items []T) []T {
+	if items == nil {
+		return []T{}
+	}
+	return items
+}
+
+// blogMessages converts each post the same way blogMessage does.
+func blogMessages(responses []blogResponse) []api.Blog {
+	posts := make([]api.Blog, 0, len(responses))
 	for _, response := range responses {
 		posts = append(posts, blogMessage(response))
 	}
-	return &blogv1.BlogPage{Posts: posts, HasMore: hasMore}
+	return posts
+}
+
+// blogPageMessage is one page of ListBlogs.
+func blogPageMessage(responses []blogResponse, hasMore bool) api.BlogPage {
+	return api.BlogPage{Posts: blogMessages(responses), HasMore: hasMore}
 }
 
 // usernamesFor resolves the username behind each uid, looking up each distinct one once. That is
@@ -179,25 +186,25 @@ func (s *Service) ensureAuthor(ctx context.Context, uid string) error {
 }
 
 // applyBlogRequest validates every field through the entity's setters before touching blog. The
-// slug, ownerId, and the timestamps are decided by the server, so blogv1.BlogRequest carries none
+// slug, ownerId, and the timestamps are decided by the server, so api.BlogRequest carries none
 // of them - they are left untouched on blog rather than decoded and then overwritten.
-func applyBlogRequest(req *blogv1.BlogRequest, blog *entity.Blog) error {
+func applyBlogRequest(req *api.BlogRequest, blog *entity.Blog) error {
 	candidate := *blog
-	if err := candidate.SetTitle(req.GetTitle()); err != nil {
+	if err := candidate.SetTitle(req.Title); err != nil {
 		return err
 	}
-	if err := candidate.SetContent(req.GetContent()); err != nil {
+	if err := candidate.SetContent(req.Content); err != nil {
 		return err
 	}
-	if err := candidate.SetTags(req.GetTags()); err != nil {
+	if err := candidate.SetTags(req.Tags); err != nil {
 		return err
 	}
 	// Visibility and the whitelist below are what a post's read audience is made of; Tags above is
 	// only what it is filed under, and narrows a feed rather than widening who may see one.
-	if err := candidate.SetVisibility(entity.Visibility(req.GetVisibility())); err != nil {
+	if err := candidate.SetVisibility(entity.Visibility(req.Visibility)); err != nil {
 		return err
 	}
-	if err := candidate.SetAllowedUserIDs(req.GetAllowedUserIds()); err != nil {
+	if err := candidate.SetAllowedUserIDs(req.AllowedUserIds); err != nil {
 		return err
 	}
 
@@ -208,8 +215,8 @@ func applyBlogRequest(req *blogv1.BlogRequest, blog *entity.Blog) error {
 // decodeBlogRequest reads a blog body and applies it to blog, writing the error response and
 // returning false if it's malformed.
 func decodeBlogRequest(w http.ResponseWriter, r *http.Request, blog *entity.Blog) bool {
-	var body blogv1.BlogRequest
-	if !readProto(w, r, &body) {
+	var body api.BlogRequest
+	if !readJSON(w, r, &body) {
 		return false
 	}
 	if err := applyBlogRequest(&body, blog); err != nil {
@@ -227,14 +234,14 @@ func decodeBlogRequest(w http.ResponseWriter, r *http.Request, blog *entity.Blog
 // private post looks like from the outside - so it is folded into the same "nothing here" every
 // other kind of miss gets, rather than distinguished from them. A slug the frontend reserves
 // (/post/new) is refused by SetSlug and so lands here too, which is right: no post holds one.
-func (s *Service) blogFromPath(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
+func (s *Service) blogFromPath(w http.ResponseWriter, r *http.Request, slug api.Slug) (entity.Blog, bool) {
 	notFound := func() (entity.Blog, bool) {
 		writeError(w, http.StatusNotFound, "blog not found")
 		return entity.Blog{}, false
 	}
 
 	var candidate entity.Blog
-	if err := candidate.SetSlug(r.PathValue("slug")); err != nil {
+	if err := candidate.SetSlug(slug); err != nil {
 		return notFound()
 	}
 
@@ -259,8 +266,8 @@ func (s *Service) blogFromPath(w http.ResponseWriter, r *http.Request) (entity.B
 // guess. Only once a post is visible to the caller does a failed check become a 403, which reveals
 // nothing they did not already know. Asking for ActionRead therefore checks the same thing twice
 // and answers 404 either way, which is what makes requireReadableBlog below only a name for it.
-func (s *Service) requireBlogPermission(w http.ResponseWriter, r *http.Request, action entity.Action) (entity.Blog, bool) {
-	blog, ok := s.blogFromPath(w, r)
+func (s *Service) requireBlogPermission(w http.ResponseWriter, r *http.Request, slug api.Slug, action entity.Action) (entity.Blog, bool) {
+	blog, ok := s.blogFromPath(w, r, slug)
 	if !ok {
 		return entity.Blog{}, false
 	}
@@ -278,8 +285,8 @@ func (s *Service) requireBlogPermission(w http.ResponseWriter, r *http.Request, 
 }
 
 // requireReadableBlog loads the post the request addresses and checks the caller may read it.
-func (s *Service) requireReadableBlog(w http.ResponseWriter, r *http.Request) (entity.Blog, bool) {
-	return s.requireBlogPermission(w, r, entity.ActionRead)
+func (s *Service) requireReadableBlog(w http.ResponseWriter, r *http.Request, slug api.Slug) (entity.Blog, bool) {
+	return s.requireBlogPermission(w, r, slug, entity.ActionRead)
 }
 
 // listBlogsDefaultLimit is the page size ListBlogs applies when a caller sends no `limit`, keeping
@@ -287,48 +294,51 @@ func (s *Service) requireReadableBlog(w http.ResponseWriter, r *http.Request) (e
 // to avoid.
 const listBlogsDefaultLimit = 20
 
-// parseBlogListParams reads ListBlogs' paging, scope and filters out of the query string: `limit`
-// bounds the page, `startAfter` (an RFC3339 timestamp) continues one, `tag` narrows to one topic, and `q` narrows to posts
-// holding a term. Each is optional, and a malformed one is reported as a 400 rather than silently
-// ignored - a client sending garbage here is the one case among List's callers where that garbage
-// should not be read as "no preference".
+// listParams turns ListBlogs' paging, scope and filters into the repository's: `limit` bounds the
+// page, `startAfter` continues one, `tag` narrows to one topic, and `q` narrows to posts holding a
+// term. Each is optional, and a malformed one is reported as a 400 rather than silently ignored -
+// a client sending garbage here is the one case among List's callers where that garbage should not
+// be read as "no preference".
 //
 // They compose rather than exclude each other, because each answers a different question and a
 // reader asking two at once ("posts of mine about Go") means both.
-func parseBlogListParams(r *http.Request) (repository.ListParams, error) {
-	query := r.URL.Query()
+func listParams(query api.ListBlogsParams) (repository.ListParams, error) {
 	params := repository.ListParams{
 		Limit: listBlogsDefaultLimit,
-		Query: strings.TrimSpace(query.Get("q")),
+		Query: strings.TrimSpace(deref(query.Q)),
 	}
 
 	// The tag is normalized here rather than in the repository, so what reaches Firestore is
 	// already the one form a post stores it in. A tag that normalizes away was still asked for -
 	// answering the unfiltered feed to it would silently ignore the filter - so it is a 400.
-	if raw := query.Get("tag"); strings.TrimSpace(raw) != "" {
+	if raw := deref(query.Tag); strings.TrimSpace(raw) != "" {
 		params.Tag = entity.NormalizeTag(raw)
 		if params.Tag == "" {
 			return repository.ListParams{}, errors.New("tag must hold at least one letter or digit")
 		}
 	}
 
-	if raw := query.Get("limit"); raw != "" {
-		limit, err := strconv.Atoi(raw)
-		if err != nil || limit <= 0 {
+	if query.Limit != nil {
+		if *query.Limit <= 0 {
 			return repository.ListParams{}, errors.New("limit must be a positive integer")
 		}
-		params.Limit = limit
+		params.Limit = *query.Limit
 	}
 
-	if raw := query.Get("startAfter"); raw != "" {
-		startAfter, err := time.Parse(time.RFC3339Nano, raw)
-		if err != nil {
-			return repository.ListParams{}, errors.New("startAfter must be an RFC3339 timestamp")
-		}
-		params.StartAfter = startAfter
+	if query.StartAfter != nil {
+		params.StartAfter = *query.StartAfter
 	}
 
 	return params, nil
+}
+
+// deref is the value a pointer holds, or the zero value when it is absent.
+func deref[T any](value *T) T {
+	var zero T
+	if value == nil {
+		return zero
+	}
+	return *value
 }
 
 // ListBlogs returns one page of the blogs the caller is allowed to read, newest first - the whole
@@ -338,8 +348,17 @@ func parseBlogListParams(r *http.Request) (repository.ListParams, error) {
 // Filtering never widens what comes back: every narrowing is applied on top of the same
 // entity.Blog.CanBeReadBy the unfiltered feed uses, so searching cannot surface a post a reader
 // could not have found by scrolling.
-func (s *Service) ListBlogs(w http.ResponseWriter, r *http.Request) {
-	params, err := parseBlogListParams(r)
+//
+// A search calls a paid embedding model (see internal/repository/search), so it is metered on its
+// own budget as well, by account or by address for a caller who is not signed in.
+func (s *Service) ListBlogs(w http.ResponseWriter, r *http.Request, query api.ListBlogsParams) {
+	searchLimited(s.searchLimiter, func(w http.ResponseWriter, r *http.Request) {
+		s.listBlogs(w, r, query)
+	})(w, r)
+}
+
+func (s *Service) listBlogs(w http.ResponseWriter, r *http.Request, query api.ListBlogsParams) {
+	params, err := listParams(query)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -347,10 +366,10 @@ func (s *Service) ListBlogs(w http.ResponseWriter, r *http.Request) {
 
 	// A profile feed names its author by username, the only handle a client holds for one, and is
 	// resolved to the uid posts are stored under here. A name nobody holds has no posts.
-	if author := strings.TrimSpace(r.URL.Query().Get("author")); author != "" {
+	if author := strings.TrimSpace(deref(query.Author)); author != "" {
 		user, err := s.users.GetByUsername(r.Context(), author)
 		if errors.Is(err, repository.ErrNotFound) {
-			writeProto(w, http.StatusOK, blogPageMessage(nil, false))
+			writeJSON(w, http.StatusOK, blogPageMessage(nil, false))
 			return
 		}
 		if err != nil {
@@ -365,20 +384,18 @@ func (s *Service) ListBlogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	// withAuthors always builds its slice, and blogPageMessage does the same with Posts, so an
-	// empty page stays an empty JSON array rather than becoming null.
 	responses, err := s.withAuthors(r.Context(), blogs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	writeProto(w, http.StatusOK, blogPageMessage(responses, hasMore))
+	writeJSON(w, http.StatusOK, blogPageMessage(responses, hasMore))
 }
 
 // GetBlog returns a single blog, provided the caller is allowed to read it.
-func (s *Service) GetBlog(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireReadableBlog(w, r)
+func (s *Service) GetBlog(w http.ResponseWriter, r *http.Request, slug api.Slug) {
+	blog, ok := s.requireReadableBlog(w, r, slug)
 	if !ok {
 		return
 	}
@@ -389,7 +406,7 @@ func (s *Service) GetBlog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeProto(w, http.StatusOK, blogMessage(response))
+	writeJSON(w, http.StatusOK, blogMessage(response))
 }
 
 // CreateBlog makes a new blog owned by the caller, addressed by a slug taken from its title (see
@@ -425,14 +442,14 @@ func (s *Service) CreateBlog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeProto(w, http.StatusCreated, blogMessage(response))
+	writeJSON(w, http.StatusCreated, blogMessage(response))
 }
 
 // UpdateBlog replaces a blog's client-settable fields. Only the owner may update it, and because
 // the request is applied to the stored blog, the slug, ownerId, and createdAt carry over untouched
 // - so retitling a post changes what readers see without moving the URL it lives at.
-func (s *Service) UpdateBlog(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireBlogPermission(w, r, entity.ActionUpdate)
+func (s *Service) UpdateBlog(w http.ResponseWriter, r *http.Request, slug api.Slug) {
+	blog, ok := s.requireBlogPermission(w, r, slug, entity.ActionUpdate)
 	if !ok {
 		return
 	}
@@ -452,7 +469,7 @@ func (s *Service) UpdateBlog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeProto(w, http.StatusOK, blogMessage(response))
+	writeJSON(w, http.StatusOK, blogMessage(response))
 }
 
 // writeUpdateError answers a failed BlogRepository.Update: a post deleted since it was read is gone
@@ -470,8 +487,8 @@ func writeUpdateError(w http.ResponseWriter, err error) {
 }
 
 // DeleteBlog removes a blog. Only the owner may delete it.
-func (s *Service) DeleteBlog(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireBlogPermission(w, r, entity.ActionDelete)
+func (s *Service) DeleteBlog(w http.ResponseWriter, r *http.Request, slug api.Slug) {
+	blog, ok := s.requireBlogPermission(w, r, slug, entity.ActionDelete)
 	if !ok {
 		return
 	}

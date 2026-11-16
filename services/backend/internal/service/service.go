@@ -6,6 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/getkin/kin-openapi/openapi3"
+
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/api"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
@@ -49,6 +52,50 @@ type Service struct {
 	callerLimiter    *rateLimiter
 	assistantLimiter *rateLimiter
 	searchLimiter    *rateLimiter
+	// authModes is how each route treats a credential, keyed by its mux pattern ("GET /blogs/{slug}").
+	authModes map[string]authMode
+}
+
+// authMode is how a route treats a credential. It is read from the route's `security` in
+// packages/api/openapi.yaml, so the contract is the one place that says which routes need a caller.
+type authMode int
+
+const (
+	// authNone routes never look at a credential: /health and /debug.
+	authNone authMode = iota
+	// authOptional routes verify a credential if one is sent, for reads that admit anonymous callers
+	// but still authorize a signed-in one. Their `security` lists an empty requirement ({}).
+	authOptional
+	// authRequired routes need a verified caller, and meter it per account.
+	authRequired
+)
+
+// routeAuthModes reads every operation's authMode out of the embedded OpenAPI spec.
+func routeAuthModes() (map[string]authMode, error) {
+	spec, err := api.GetSwagger()
+	if err != nil {
+		return nil, err
+	}
+
+	modes := make(map[string]authMode)
+	for path, item := range spec.Paths.Map() {
+		for method, operation := range item.Operations() {
+			modes[method+" "+path] = authModeOf(operation.Security)
+		}
+	}
+	return modes, nil
+}
+
+func authModeOf(security *openapi3.SecurityRequirements) authMode {
+	if security == nil || len(*security) == 0 {
+		return authNone
+	}
+	for _, requirement := range *security {
+		if len(requirement) == 0 {
+			return authOptional
+		}
+	}
+	return authRequired
 }
 
 func New(
@@ -62,7 +109,15 @@ func New(
 	verifier repository.TokenVerifier,
 	assistant repository.Assistant,
 ) *Service {
+	// The spec is generated into the binary, so failing to read it is a broken build, not a
+	// condition to handle at runtime.
+	modes, err := routeAuthModes()
+	if err != nil {
+		panic("service: reading the embedded OpenAPI spec: " + err.Error())
+	}
+
 	return &Service{
+		authModes:        modes,
 		cfg:              cfg,
 		blogs:            blogs,
 		users:            users,
@@ -87,84 +142,12 @@ func (s *Service) logger() *slog.Logger {
 	return slog.Default()
 }
 
-// Handler returns the fully-wired API, ready to serve.
+// Handler returns the fully-wired API, ready to serve. The routes come from the generated
+// api.HandlerWithOptions, so a route exists exactly when packages/api/openapi.yaml declares it and
+// this Service implements the operation (the compiler checks api.ServerInterface).
 func (s *Service) Handler() http.Handler {
-	// Every write requires a verified caller, since it always resolves to a specific owner. The
-	// per-account budget sits inside the verification rather than in front of it, because the
-	// account it meters is not known until the credential has been checked; an unverified flood is
-	// already bounded by the per-IP budget below, which is what keeps it from reaching the
-	// verifier in the first place.
-	authed := func(h http.HandlerFunc) http.Handler {
-		return requireAuth(s.verifier, rateLimited(s.callerLimiter, callerKey, h))
-	}
-	// GET /blogs, GET /blogs/{slug}, and GET /users/{username} admit anonymous callers. Blog visibility is
-	// enforced downstream: entity.Blog.CanBeReadBy already treats the zero Caller as seeing only
-	// public posts, so no handler change was needed to support this - only relaxing which requests
-	// reach it. A profile has nothing caller-specific to hide, so GetUser needed no change either -
-	// a display name and bio are meant to be public (e.g. so a signed-out visitor sees an author's
-	// name on a post instead of their raw id).
-	optional := func(h http.HandlerFunc) http.Handler {
-		return optionalAuth(s.verifier, h)
-	}
-
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", s.Debug)
-	mux.HandleFunc("/debug", s.Debug)
-	// A search calls a paid embedding model (see internal/repository/search), so it is metered on
-	// its own budget as well, by account or by address for a caller who is not signed in.
-	mux.Handle("GET /blogs", optional(searchLimited(s.searchLimiter, s.ListBlogs)))
-	// A post is addressed by its slug alone, since slugs are unique across every author rather than
-	// only within one: "hello-world" names at most one post anywhere, and the second post under
-	// that title takes a suffixed slug instead (see entity.NewBlogSlug). The author is reported as
-	// a field on the response rather than as part of the address - the uid a post records its owner
-	// by is never public, and now nothing has to resolve one to reach a post.
-	mux.Handle("GET /blogs/{slug}", optional(s.GetBlog))
-	// Related posts are read like the post they hang under: anonymous callers get the public ones.
-	mux.Handle("GET /blogs/{slug}/related", optional(s.RelatedBlogs))
-	mux.Handle("POST /blogs", authed(s.CreateBlog))
-	mux.Handle("PUT /blogs/{slug}", authed(s.UpdateBlog))
-	mux.Handle("DELETE /blogs/{slug}", authed(s.DeleteBlog))
-	// A profile is addressed by its username, never by the Google `sub` it is keyed by, so the id
-	// stays an internal detail rather than a public handle. "me" is the one exception, for a client
-	// that holds a credential but does not yet know which name it was given; ServeMux prefers that
-	// literal over the wildcard, so it wins without any ordering care here.
-	mux.Handle("GET /users/me", authed(s.GetCurrentUser))
-	mux.Handle("PUT /users/me", authed(s.PutUser))
-	mux.Handle("DELETE /users/me", authed(s.DeleteUser))
-	mux.Handle("GET /users/{username}", optional(s.GetUser))
-	// The assistant conversation hangs off the post it is about rather than living at a collection
-	// of its own, because that is exactly what it is: a chat has no identity apart from its post,
-	// and no route here could name one that a /blogs/{slug} route would not have resolved first.
-	// Every one of them requires the caller to own the post and to hold the assistant entitlement.
-	mux.Handle("GET /blogs/{slug}/chat", authed(s.GetChat))
-	// A chat turn is metered a second time, against a much smaller budget: it is the only request
-	// here that calls a paid model and can hold a connection open for two minutes, so the general
-	// per-account allowance is far too loose to be the only thing standing in front of it.
-	mux.Handle("POST /blogs/{slug}/chat", authed(rateLimited(s.assistantLimiter, callerKey, s.SendChatMessage)))
-	mux.Handle("DELETE /blogs/{slug}/chat", authed(s.DeleteChat))
-	// Comments hang off their post for the same reason the chat above does - a comment has no
-	// identity apart from the post it replies to - but they are the readers' half rather than the
-	// author's, so the rules are the post's own: whoever may read a post may read and write its
-	// comments, and a signed-out reader sees a public thread without being able to add to it.
-	// Deleting one is neither, being the comment's own rule (see entity.Comment.Permission).
-	mux.Handle("GET /blogs/{slug}/comments", optional(s.ListComments))
-	mux.Handle("POST /blogs/{slug}/comments", authed(s.CreateComment))
-	mux.Handle("DELETE /blogs/{slug}/comments/{id}", authed(s.DeleteComment))
-	// The post's owner overrules the classifier here; see ApproveComment.
-	mux.Handle("PUT /blogs/{slug}/comments/{id}/moderation", authed(s.ApproveComment))
-	// Reactions to a post and to its comments are read together, because they are stored together
-	// and a reader opening a post wants the whole page's worth: one route answers what would
-	// otherwise be a field on the post plus a field on every comment.
-	//
-	// Writing one is addressed rather than toggled - PUT puts it there, DELETE takes it back - so
-	// a retried click or a stale page lands where it was aiming instead of undoing itself. The
-	// emoji is the last segment of the address because it is what identifies the reaction, in the
-	// same way the comment id identifies a comment.
-	mux.Handle("GET /blogs/{slug}/reactions", optional(s.GetReactions))
-	mux.Handle("PUT /blogs/{slug}/reactions/{emoji}", authed(s.PutReaction))
-	mux.Handle("DELETE /blogs/{slug}/reactions/{emoji}", authed(s.DeleteReaction))
-	mux.Handle("PUT /blogs/{slug}/comments/{id}/reactions/{emoji}", authed(s.PutReaction))
-	mux.Handle("DELETE /blogs/{slug}/comments/{id}/reactions/{emoji}", authed(s.DeleteReaction))
+	api.HandlerWithOptions(s, api.StdHTTPServerOptions{BaseRouter: mux, ErrorHandlerFunc: badRequest})
 
 	// The per-IP budget wraps the whole mux, so it applies to the routes that admit anonymous
 	// callers too - the ones with no account to meter - and to a request for a path that does not
@@ -176,5 +159,33 @@ func (s *Service) Handler() http.Handler {
 	// sends one per request it makes, and charging for both would halve every budget here - and
 	// that a 429 still carries the CORS headers, without which the browser would show the frontend
 	// a network error instead of the reason it was refused.
-	return withCORS(s.cfg.AllowedOrigin, rateLimited(s.ipLimiter, clientIP, mux.ServeHTTP))
+	return withCORS(s.cfg.AllowedOrigin, rateLimited(s.ipLimiter, clientIP, s.authenticate(mux)))
+}
+
+// authenticate applies each route's authMode before the mux dispatches to it, so a bad credential
+// is refused before the route's parameters are even read.
+//
+// Every write requires a verified caller, since it always resolves to a specific owner. The
+// per-account budget sits inside the verification rather than in front of it, because the account
+// it meters is not known until the credential has been checked; an unverified flood is already
+// bounded by the per-IP budget, which is what keeps it from reaching the verifier in the first
+// place. Reads that admit anonymous callers are authorized downstream: entity.Blog.CanBeReadBy
+// treats the zero Caller as seeing only public posts, and a profile has nothing to hide.
+//
+// The two routes that call a paid model are metered a second time inside their handlers (see
+// ListBlogs and SendChatMessage), since that needs the verified caller this has just resolved.
+func (s *Service) authenticate(mux *http.ServeMux) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// The pattern is empty for a path or method the mux does not serve, which is authNone: the
+		// mux answers it with its own 404 or 405.
+		_, pattern := mux.Handler(r)
+		switch s.authModes[pattern] {
+		case authRequired:
+			requireAuth(s.verifier, rateLimited(s.callerLimiter, callerKey, mux.ServeHTTP))(w, r)
+		case authOptional:
+			optionalAuth(s.verifier, mux.ServeHTTP)(w, r)
+		default:
+			mux.ServeHTTP(w, r)
+		}
+	}
 }

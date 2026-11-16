@@ -1,6 +1,6 @@
 # 7. Visibility is a string, not an enum
 
-Status: Accepted
+Status: Superseded by [34](0034-openapi-is-the-api-contract.md)
 
 ## Context
 

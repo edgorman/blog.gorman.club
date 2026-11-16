@@ -17,17 +17,15 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/api"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
-	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
-func blogRequestBody(t *testing.T, body *blogv1.BlogRequest) *bytes.Reader {
+func blogRequestBody(t *testing.T, body *api.BlogRequest) *bytes.Reader {
 	t.Helper()
 
-	encoded, err := protojson.Marshal(body)
+	encoded, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}
@@ -63,8 +61,7 @@ func author(uid, username string) entity.User {
 // than decoded into blogResponse - see wireUser in user_test.go for why: reusing the production
 // type would hide the wire, since both sides would move together and a field leaving the body
 // would assert nothing. Declared separately, a rename fails here. CreatedAt/UpdatedAt stay strings
-// rather than time.Time, matching what protojson actually puts on the wire (see blog.proto's
-// useDate=string).
+// rather than time.Time, matching what the body actually carries (the contract's date-time).
 type wireBlog struct {
 	Slug           string   `json:"slug"`
 	AuthorUsername string   `json:"authorUsername"`
@@ -126,7 +123,7 @@ func TestListBlogs_OnlyReadableBlogs(t *testing.T) {
 
 	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "caller")
 	rec := httptest.NewRecorder()
-	s.ListBlogs(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -153,7 +150,7 @@ func TestListBlogs_NewestFirst(t *testing.T) {
 
 	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "caller")
 	rec := httptest.NewRecorder()
-	s.ListBlogs(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	got := decodeBlogPage(t, rec)
 	if len(got.Posts) != 2 || got.Posts[0].Slug != "newer" || got.Posts[1].Slug != "older" {
@@ -167,7 +164,7 @@ func TestListBlogs_EmptyIsArray(t *testing.T) {
 
 	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "caller")
 	rec := httptest.NewRecorder()
-	s.ListBlogs(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	got := decodeBlogPage(t, rec)
 	if body, err := json.Marshal(got.Posts); err != nil || string(body) != "[]" {
@@ -178,8 +175,7 @@ func TestListBlogs_EmptyIsArray(t *testing.T) {
 	}
 }
 
-// hasMore is exactly the field that vanishes under bare protojson: a false bool is a zero value,
-// which protojson drops by default. Asserted against the literal body, not a decoded struct, so
+// hasMore is the field an `omitempty` tag would drop: a false bool is a zero value. Asserted against the literal body, not a decoded struct, so
 // the field's presence - not just its decoded value - is what is being checked; a decode alone
 // cannot tell "false" from "absent, so Go zeroed it".
 func TestListBlogs_WireBodyCarriesHasMoreFalse(t *testing.T) {
@@ -187,12 +183,9 @@ func TestListBlogs_WireBodyCarriesHasMoreFalse(t *testing.T) {
 
 	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "caller")
 	rec := httptest.NewRecorder()
-	s.ListBlogs(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
-	want := `{"posts":[],"hasMore":false}`
-	if got := strings.TrimSpace(rec.Body.String()); got != want {
-		t.Errorf("body =\n%s\nwant\n%s", got, want)
-	}
+	assertJSONBody(t, rec, `{"posts":[],"hasMore":false}`)
 }
 
 // The page size is capped at the caller's `limit`, and hasMore says whether a further page exists
@@ -211,7 +204,7 @@ func TestListBlogs_Paginates(t *testing.T) {
 
 	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?limit=2", nil), "caller")
 	rec := httptest.NewRecorder()
-	s.ListBlogs(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	page1 := decodeBlogPage(t, rec)
 	if len(page1.Posts) != 2 || page1.Posts[0].Slug != "post-2" || page1.Posts[1].Slug != "post-1" {
@@ -224,7 +217,7 @@ func TestListBlogs_Paginates(t *testing.T) {
 	cursor := page1.Posts[len(page1.Posts)-1].CreatedAt
 	req2 := withUID(httptest.NewRequest(http.MethodGet, "/blogs?limit=2&startAfter="+url.QueryEscape(cursor), nil), "caller")
 	rec2 := httptest.NewRecorder()
-	s.ListBlogs(rec2, req2)
+	routed(s).ServeHTTP(rec2, req2)
 
 	page2 := decodeBlogPage(t, rec2)
 	if len(page2.Posts) != 1 || page2.Posts[0].Slug != "post-0" {
@@ -252,7 +245,7 @@ func TestListBlogs_RejectsMalformedParams(t *testing.T) {
 			s := newTestService(nil, nil)
 			req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?"+tt.query, nil), "caller")
 			rec := httptest.NewRecorder()
-			s.ListBlogs(rec, req)
+			routed(s).ServeHTTP(rec, req)
 
 			if rec.Result().StatusCode != http.StatusBadRequest {
 				t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
@@ -275,7 +268,7 @@ func TestListBlogs_AuthorScopesToOneAuthor(t *testing.T) {
 	for query, want := range map[string]int{"calm-smiling-kestrel": 1, "nobody-holds-this": 0} {
 		req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?author="+query, nil), "reader")
 		rec := httptest.NewRecorder()
-		s.ListBlogs(rec, req)
+		routed(s).ServeHTTP(rec, req)
 
 		got := decodeBlogPage(t, rec)
 		if len(got.Posts) != want || (want == 1 && got.Posts[0].Slug != "mine-public") {
@@ -293,7 +286,7 @@ func TestGetBlog_WhitelistOnlyForTheOwner(t *testing.T) {
 
 	for uid, want := range map[string]int{"owner": 2, "reader": 0} {
 		rec := httptest.NewRecorder()
-		s.GetBlog(rec, withUID(blogPathRequest(http.MethodGet, "shared", nil), uid))
+		routed(s).ServeHTTP(rec, withUID(blogPathRequest(http.MethodGet, "shared", nil), uid))
 		if got := decodeBlog(t, rec).AllowedUserIDs; len(got) != want {
 			t.Errorf("%s was sent allowedUserIds %v, want %d entries", uid, got, want)
 		}
@@ -316,7 +309,7 @@ func TestGetBlog_Readable(t *testing.T) {
 
 			req := blogPathRequest(http.MethodGet, "hello-world", nil)
 			rec := httptest.NewRecorder()
-			s.GetBlog(rec, withUID(req, "caller"))
+			routed(s).ServeHTTP(rec, withUID(req, "caller"))
 
 			if rec.Result().StatusCode != http.StatusOK {
 				t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -344,7 +337,7 @@ func TestGetBlog_ResolvesTheSlugWithoutAnAuthor(t *testing.T) {
 	} {
 		req := blogPathRequest(http.MethodGet, slug, nil)
 		rec := httptest.NewRecorder()
-		s.GetBlog(rec, withUID(req, "reader"))
+		routed(s).ServeHTTP(rec, withUID(req, "reader"))
 
 		if rec.Result().StatusCode != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -365,7 +358,7 @@ func TestGetBlog_NotFoundForUnreadablePrivatePost(t *testing.T) {
 
 	req := blogPathRequest(http.MethodGet, "hello-world", nil)
 	rec := httptest.NewRecorder()
-	s.GetBlog(rec, withUID(req, "caller"))
+	routed(s).ServeHTTP(rec, withUID(req, "caller"))
 
 	if rec.Result().StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
@@ -380,7 +373,7 @@ func TestGetBlog_NotFound(t *testing.T) {
 
 	req := blogPathRequest(http.MethodGet, "missing", nil)
 	rec := httptest.NewRecorder()
-	s.GetBlog(rec, withUID(req, "caller"))
+	routed(s).ServeHTTP(rec, withUID(req, "caller"))
 
 	if rec.Result().StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
@@ -395,7 +388,6 @@ func TestGetBlog_NotFound(t *testing.T) {
 func TestGetBlog_NotFoundForMalformedAddresses(t *testing.T) {
 	for _, tt := range []struct{ name, slug string }{
 		{"bad slug", "Hello World"},
-		{"empty slug", ""},
 		{"reserved slug", "new"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -403,7 +395,7 @@ func TestGetBlog_NotFoundForMalformedAddresses(t *testing.T) {
 
 			req := blogPathRequest(http.MethodGet, tt.slug, nil)
 			rec := httptest.NewRecorder()
-			s.GetBlog(rec, withUID(req, "caller"))
+			routed(s).ServeHTTP(rec, withUID(req, "caller"))
 
 			if rec.Result().StatusCode != http.StatusNotFound {
 				t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
@@ -413,7 +405,7 @@ func TestGetBlog_NotFoundForMalformedAddresses(t *testing.T) {
 	}
 }
 
-// ownerId is not part of blogv1.BlogRequest at all, so a client cannot express one - the handler
+// ownerId is not part of api.BlogRequest at all, so a client cannot express one - the handler
 // takes it from the verified caller.
 func TestCreateBlog_OwnerIDFromCaller(t *testing.T) {
 	repo := newFakeBlogRepository()
@@ -422,7 +414,7 @@ func TestCreateBlog_OwnerIDFromCaller(t *testing.T) {
 	body := []byte(`{"title":"New post","visibility":"public","ownerId":"someone-else"}`)
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", bytes.NewReader(body)), "caller")
 	rec := httptest.NewRecorder()
-	s.CreateBlog(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if rec.Result().StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -438,10 +430,10 @@ func TestCreateBlog_SlugFromTitle(t *testing.T) {
 	repo := newFakeBlogRepository()
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello, world!", Visibility: string(entity.VisibilityPublic)})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "Hello, world!", Visibility: api.Visibility(entity.VisibilityPublic)})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
-	s.CreateBlog(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if rec.Result().StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -467,10 +459,10 @@ func TestCreateBlog_SlugsAreUniqueAcrossAuthors(t *testing.T) {
 
 	slugs := make(map[string]string, 2)
 	for _, uid := range []string{"first", "second"} {
-		body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello world", Visibility: string(entity.VisibilityPublic)})
+		body := blogRequestBody(t, &api.BlogRequest{Title: "Hello world", Visibility: api.Visibility(entity.VisibilityPublic)})
 		req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), uid)
 		rec := httptest.NewRecorder()
-		s.CreateBlog(rec, req)
+		routed(s).ServeHTTP(rec, req)
 
 		if rec.Result().StatusCode != http.StatusCreated {
 			t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -497,10 +489,10 @@ func TestCreateBlog_UntitledPostsAreStillAddressable(t *testing.T) {
 
 	slugs := make([]string, 0, 2)
 	for range 2 {
-		body := blogRequestBody(t, &blogv1.BlogRequest{Visibility: string(entity.VisibilityPublic)})
+		body := blogRequestBody(t, &api.BlogRequest{Visibility: api.Visibility(entity.VisibilityPublic)})
 		req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 		rec := httptest.NewRecorder()
-		s.CreateBlog(rec, req)
+		routed(s).ServeHTTP(rec, req)
 
 		if rec.Result().StatusCode != http.StatusCreated {
 			t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -525,10 +517,10 @@ func TestCreateBlog_SuffixesATitleAlreadyUsed(t *testing.T) {
 	create := func() wireBlog {
 		t.Helper()
 
-		body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello world", Content: "Body", Visibility: string(entity.VisibilityPublic)})
+		body := blogRequestBody(t, &api.BlogRequest{Title: "Hello world", Content: "Body", Visibility: api.Visibility(entity.VisibilityPublic)})
 		req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 		rec := httptest.NewRecorder()
-		s.CreateBlog(rec, req)
+		routed(s).ServeHTTP(rec, req)
 
 		if rec.Result().StatusCode != http.StatusCreated {
 			t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -563,10 +555,10 @@ func TestCreateBlog_AvoidsSlugsTheFrontendReserves(t *testing.T) {
 	repo := newFakeBlogRepository()
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "New", Visibility: string(entity.VisibilityPublic)})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "New", Visibility: api.Visibility(entity.VisibilityPublic)})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
-	s.CreateBlog(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if rec.Result().StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -587,10 +579,10 @@ func TestCreateBlog_FailsWhenNoSlugIsFree(t *testing.T) {
 	repo.beforeCreate = func(entity.Blog) error { return repository.ErrSlugTaken }
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello world", Visibility: string(entity.VisibilityPublic)})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "Hello world", Visibility: api.Visibility(entity.VisibilityPublic)})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
-	s.CreateBlog(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if rec.Result().StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusInternalServerError)
@@ -606,10 +598,10 @@ func TestCreateBlog_NamesAnAuthorWhoHasNoProfile(t *testing.T) {
 	users := newFakeUserRepository()
 	s := newTestService(blogs, users)
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello world", Visibility: string(entity.VisibilityPublic)})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "Hello world", Visibility: api.Visibility(entity.VisibilityPublic)})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
-	s.CreateBlog(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if rec.Result().StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -639,9 +631,9 @@ func TestCreateBlog_KeepsAProfileWrittenMeanwhile(t *testing.T) {
 	}
 	s := newTestService(blogs, users)
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello world", Visibility: string(entity.VisibilityPublic)})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "Hello world", Visibility: api.Visibility(entity.VisibilityPublic)})
 	rec := httptest.NewRecorder()
-	s.CreateBlog(rec, withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller"))
+	routed(s).ServeHTTP(rec, withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller"))
 
 	if rec.Result().StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -657,10 +649,10 @@ func TestCreateBlog_KeepsAProfileWrittenMeanwhile(t *testing.T) {
 func TestCreateBlog_RejectsInvalidVisibility(t *testing.T) {
 	s := newTestService(nil, nil)
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "New post", Visibility: "everyone"})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "New post", Visibility: "everyone"})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
-	s.CreateBlog(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if rec.Result().StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
@@ -673,13 +665,13 @@ func TestCreateBlog_RejectsInvalidVisibility(t *testing.T) {
 func TestCreateBlog_RejectsOverlongTitle(t *testing.T) {
 	s := newTestService(nil, nil)
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{
+	body := blogRequestBody(t, &api.BlogRequest{
 		Title:      strings.Repeat("a", entity.MaxTitleLength+1),
-		Visibility: string(entity.VisibilityPublic),
+		Visibility: api.Visibility(entity.VisibilityPublic),
 	})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
-	s.CreateBlog(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if rec.Result().StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
@@ -704,7 +696,7 @@ func TestListBlogs_TagNarrowsToOneTopic(t *testing.T) {
 		t.Run(query, func(t *testing.T) {
 			req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?"+query, nil), "reader")
 			rec := httptest.NewRecorder()
-			s.ListBlogs(rec, req)
+			routed(s).ServeHTTP(rec, req)
 
 			if rec.Result().StatusCode != http.StatusOK {
 				t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -729,7 +721,7 @@ func TestListBlogs_QuerySearchesTitleAndContent(t *testing.T) {
 
 	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?q=FIRESTORE", nil), "reader")
 	rec := httptest.NewRecorder()
-	s.ListBlogs(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	got := decodeBlogPage(t, rec)
 	slugs := make([]string, 0, len(got.Posts))
@@ -755,7 +747,7 @@ func TestListBlogs_SearchNeverSurfacesUnreadablePosts(t *testing.T) {
 		t.Run(query, func(t *testing.T) {
 			req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?"+query, nil), "reader")
 			rec := httptest.NewRecorder()
-			s.ListBlogs(rec, req)
+			routed(s).ServeHTTP(rec, req)
 
 			got := decodeBlogPage(t, rec)
 			if len(got.Posts) != 0 {
@@ -778,7 +770,7 @@ func TestListBlogs_FiltersCompose(t *testing.T) {
 
 	req := withUID(httptest.NewRequest(http.MethodGet, "/blogs?author=calm-smiling-kestrel&tag=go&q=generics", nil), "reader")
 	rec := httptest.NewRecorder()
-	s.ListBlogs(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	got := decodeBlogPage(t, rec)
 	if len(got.Posts) != 1 || got.Posts[0].Slug != "wanted" {
@@ -792,14 +784,14 @@ func TestCreateBlog_NormalizesTags(t *testing.T) {
 	repo := newFakeBlogRepository()
 	s := newBlogService(repo, author("caller", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{
+	body := blogRequestBody(t, &api.BlogRequest{
 		Title:      "Hello, world!",
-		Visibility: string(entity.VisibilityPublic),
+		Visibility: api.Visibility(entity.VisibilityPublic),
 		Tags:       []string{"Go", " Web Dev ", "go", "!!!"},
 	})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
-	s.CreateBlog(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if rec.Result().StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusCreated)
@@ -824,10 +816,10 @@ func TestCreateBlog_RejectsTooManyTags(t *testing.T) {
 	for i := range tags {
 		tags[i] = fmt.Sprintf("tag%d", i)
 	}
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "New post", Visibility: string(entity.VisibilityPublic), Tags: tags})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "New post", Visibility: api.Visibility(entity.VisibilityPublic), Tags: tags})
 	req := withUID(httptest.NewRequest(http.MethodPost, "/blogs", body), "caller")
 	rec := httptest.NewRecorder()
-	s.CreateBlog(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if rec.Result().StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
@@ -846,10 +838,10 @@ func TestUpdateBlog_ReplacesTags(t *testing.T) {
 	})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello", Visibility: string(entity.VisibilityPublic), Tags: []string{"Rust"}})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "Hello", Visibility: api.Visibility(entity.VisibilityPublic), Tags: []string{"Rust"}})
 	req := withUID(blogPathRequest(http.MethodPut, "hello-world", body), "owner")
 	rec := httptest.NewRecorder()
-	s.UpdateBlog(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -863,10 +855,10 @@ func TestUpdateBlog_ReplacesTags(t *testing.T) {
 	}
 
 	// An update carrying no tags at all clears them, since a blog request is a full replace.
-	body = blogRequestBody(t, &blogv1.BlogRequest{Title: "Hello", Visibility: string(entity.VisibilityPublic)})
+	body = blogRequestBody(t, &api.BlogRequest{Title: "Hello", Visibility: api.Visibility(entity.VisibilityPublic)})
 	req = withUID(blogPathRequest(http.MethodPut, "hello-world", body), "owner")
 	rec = httptest.NewRecorder()
-	s.UpdateBlog(rec, req)
+	routed(s).ServeHTTP(rec, req)
 
 	if stored, _ = repo.stored("hello-world"); stored.Tags != nil {
 		t.Errorf("tags = %v, want nil", stored.Tags)
@@ -878,10 +870,10 @@ func TestUpdateBlog_ForbiddenForNonOwner(t *testing.T) {
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Edited", Visibility: string(entity.VisibilityPublic)})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "Edited", Visibility: api.Visibility(entity.VisibilityPublic)})
 	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
-	s.UpdateBlog(rec, withUID(req, "not-the-owner"))
+	routed(s).ServeHTTP(rec, withUID(req, "not-the-owner"))
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
@@ -897,10 +889,10 @@ func TestUpdateBlog_NotFoundForUnreadablePrivatePost(t *testing.T) {
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPrivate, AllowedUserIDs: []string{"another"}})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Edited", Visibility: string(entity.VisibilityPublic)})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "Edited", Visibility: api.Visibility(entity.VisibilityPublic)})
 	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
-	s.UpdateBlog(rec, withUID(req, "not-the-owner"))
+	routed(s).ServeHTTP(rec, withUID(req, "not-the-owner"))
 
 	if rec.Result().StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
@@ -911,10 +903,10 @@ func TestUpdateBlog_NotFoundForUnreadablePrivatePost(t *testing.T) {
 func TestUpdateBlog_NotFound(t *testing.T) {
 	s := newBlogService(newFakeBlogRepository(), author("caller", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Edited", Visibility: string(entity.VisibilityPublic)})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "Edited", Visibility: api.Visibility(entity.VisibilityPublic)})
 	req := blogPathRequest(http.MethodPut, "missing", body)
 	rec := httptest.NewRecorder()
-	s.UpdateBlog(rec, withUID(req, "caller"))
+	routed(s).ServeHTTP(rec, withUID(req, "caller"))
 
 	if rec.Result().StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNotFound)
@@ -932,7 +924,7 @@ func TestUpdateBlog_PreservesOwnerAndCreatedAt(t *testing.T) {
 	body := []byte(`{"title":"Edited","visibility":"public","ownerId":"someone-else","createdAt":"1999-01-01T00:00:00Z"}`)
 	req := blogPathRequest(http.MethodPut, "hello-world", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	s.UpdateBlog(rec, withUID(req, "owner"))
+	routed(s).ServeHTTP(rec, withUID(req, "owner"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -954,10 +946,10 @@ func TestUpdateBlog_Owner(t *testing.T) {
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic, Title: "Original"})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Edited", Visibility: string(entity.VisibilityPrivate)})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "Edited", Visibility: api.Visibility(entity.VisibilityPrivate)})
 	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
-	s.UpdateBlog(rec, withUID(req, "owner"))
+	routed(s).ServeHTTP(rec, withUID(req, "owner"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -979,10 +971,10 @@ func TestUpdateBlog_RetitlingKeepsTheSlug(t *testing.T) {
 	repo.seed(entity.Blog{Slug: "hello-world", OwnerID: "owner", Visibility: entity.VisibilityPublic, Title: "Hello world"})
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Something else entirely", Visibility: string(entity.VisibilityPublic)})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "Something else entirely", Visibility: api.Visibility(entity.VisibilityPublic)})
 	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
-	s.UpdateBlog(rec, withUID(req, "owner"))
+	routed(s).ServeHTTP(rec, withUID(req, "owner"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -1006,10 +998,10 @@ func TestUpdateBlog_InvalidBodyLeavesBlogUntouched(t *testing.T) {
 	repo.seed(original)
 	s := newBlogService(repo, author("owner", "sly-dancing-monkey"))
 
-	body := blogRequestBody(t, &blogv1.BlogRequest{Title: "Edited", Visibility: "everyone"})
+	body := blogRequestBody(t, &api.BlogRequest{Title: "Edited", Visibility: "everyone"})
 	req := blogPathRequest(http.MethodPut, "hello-world", body)
 	rec := httptest.NewRecorder()
-	s.UpdateBlog(rec, withUID(req, "owner"))
+	routed(s).ServeHTTP(rec, withUID(req, "owner"))
 
 	if rec.Result().StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadRequest)
@@ -1027,7 +1019,7 @@ func TestDeleteBlog_ForbiddenForNonOwner(t *testing.T) {
 
 	req := blogPathRequest(http.MethodDelete, "hello-world", nil)
 	rec := httptest.NewRecorder()
-	s.DeleteBlog(rec, withUID(req, "not-the-owner"))
+	routed(s).ServeHTTP(rec, withUID(req, "not-the-owner"))
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
@@ -1047,7 +1039,7 @@ func TestDeleteBlog_Owner(t *testing.T) {
 
 	req := blogPathRequest(http.MethodDelete, "hello-world", nil)
 	rec := httptest.NewRecorder()
-	s.DeleteBlog(rec, withUID(req, "owner"))
+	routed(s).ServeHTTP(rec, withUID(req, "owner"))
 
 	if rec.Result().StatusCode != http.StatusNoContent {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
@@ -1072,20 +1064,20 @@ func TestDeleteBlog_PostIsNoLongerReadableOrListed(t *testing.T) {
 
 	req := blogPathRequest(http.MethodDelete, "hello-world", nil)
 	rec := httptest.NewRecorder()
-	s.DeleteBlog(rec, withUID(req, "owner"))
+	routed(s).ServeHTTP(rec, withUID(req, "owner"))
 	if rec.Result().StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
 	}
 
 	getReq := blogPathRequest(http.MethodGet, "hello-world", nil)
 	getRec := httptest.NewRecorder()
-	s.GetBlog(getRec, withUID(getReq, "owner"))
+	routed(s).ServeHTTP(getRec, withUID(getReq, "owner"))
 	if getRec.Result().StatusCode != http.StatusNotFound {
 		t.Errorf("GetBlog after delete status = %d, want %d", getRec.Result().StatusCode, http.StatusNotFound)
 	}
 
 	listRec := httptest.NewRecorder()
-	s.ListBlogs(listRec, withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "owner"))
+	routed(s).ServeHTTP(listRec, withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "owner"))
 	got := decodeBlogPage(t, listRec)
 	if len(got.Posts) != 0 {
 		t.Errorf("ListBlogs after delete = %v, want the deleted post excluded", got.Posts)
@@ -1096,7 +1088,7 @@ func TestDeleteBlog_PostIsNoLongerReadableOrListed(t *testing.T) {
 // same reasoning TestGetUser_WireBody documents in user_test.go. tags and allowedUserIds are empty
 // arrays rather than absent: EmitDefaultValues emits a zero-valued repeated field as `[]`, where
 // the hand-written `omitempty` this replaced left it out entirely. deletedAt never appears at all:
-// blogv1.Blog has no field for it, so a soft-delete marker cannot leak through by oversight.
+// api.Blog has no field for it, so a soft-delete marker cannot leak through by oversight.
 func TestGetBlog_WireBody(t *testing.T) {
 	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	blogs := newFakeBlogRepository()
@@ -1107,12 +1099,10 @@ func TestGetBlog_WireBody(t *testing.T) {
 	s := newBlogService(blogs, author("owner", "sly-dancing-monkey"))
 
 	rec := httptest.NewRecorder()
-	s.GetBlog(rec, withUID(blogPathRequest(http.MethodGet, "hello-world", nil), "reader"))
+	routed(s).ServeHTTP(rec, withUID(blogPathRequest(http.MethodGet, "hello-world", nil), "reader"))
 
 	want := `{"slug":"hello-world","authorUsername":"sly-dancing-monkey","title":"Hello","content":"World","tags":[],"visibility":"public","allowedUserIds":[],"createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z"}`
-	if got := strings.TrimSpace(rec.Body.String()); got != want {
-		t.Errorf("body =\n%s\nwant\n%s", got, want)
-	}
+	assertJSONBody(t, rec, want)
 }
 
 // A post carries its author's username, because a client cannot resolve one: profiles are
@@ -1125,7 +1115,7 @@ func TestGetBlog_CarriesTheAuthor(t *testing.T) {
 
 	req := blogPathRequest(http.MethodGet, "hello-world", nil)
 	rec := httptest.NewRecorder()
-	s.GetBlog(rec, withUID(req, "reader"))
+	routed(s).ServeHTTP(rec, withUID(req, "reader"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -1143,7 +1133,7 @@ func TestListBlogs_EmptyAuthorWhenTheOwnerHasNoProfile(t *testing.T) {
 	s := newTestService(blogs, nil)
 
 	rec := httptest.NewRecorder()
-	s.ListBlogs(rec, withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "reader"))
+	routed(s).ServeHTTP(rec, withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "reader"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -1168,7 +1158,7 @@ func TestListBlogs_ResolvesEachAuthorOnce(t *testing.T) {
 	s := newTestService(blogs, users)
 
 	rec := httptest.NewRecorder()
-	s.ListBlogs(rec, withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "reader"))
+	routed(s).ServeHTTP(rec, withUID(httptest.NewRequest(http.MethodGet, "/blogs", nil), "reader"))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)

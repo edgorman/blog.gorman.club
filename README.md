@@ -7,7 +7,7 @@
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](services/backend)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](services/frontend)
 [![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)](services/frontend)
-[![Protobuf](https://img.shields.io/badge/Protobuf-buf_1.47-4285F4?logo=google&logoColor=white)](packages/protos)
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0-6BA539?logo=openapiinitiative&logoColor=white)](packages/api)
 [![Terraform](https://img.shields.io/badge/Terraform-1.15-844FBA?logo=terraform&logoColor=white)](infrastructure)
 [![Cloud Run](https://img.shields.io/badge/GCP-Cloud_Run-4285F4?logo=googlecloud&logoColor=white)](infrastructure)
 [![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages-F38020?logo=cloudflare&logoColor=white)](infrastructure)
@@ -21,7 +21,7 @@ A demo of a small, cloud-deployed full-stack web service - a blog with a Gemini-
 | --- | --- |
 | `services/backend` | Go API (Firestore, Gemini), shipped as a container to GCP Cloud Run |
 | `services/frontend` | Vite/React single-page app, deployed to Cloudflare Pages |
-| `packages/protos` | Protobuf API contract; `buf generate` writes the Go and TypeScript types |
+| `packages/api` | OpenAPI API contract; `moon run packages/api:generate` writes the Go and TypeScript types |
 | `infrastructure` | Terraform for the shared root, staging and prod environments (GCP, Cloudflare, GitHub) |
 | `.github` | Workflows and composite actions: PR checks, staging deploy on merge, release promotion to prod |
 | `docs/decisions` | Why things are the way they are, one decision per file |
@@ -49,7 +49,7 @@ moon query projects                             # list projects
 moon project services/backend                   # list a project's tasks
 ```
 
-Each project's tasks live in its `moon.yml` (e.g. `services/backend/moon.yml`). If you change a `.proto`, regenerate with `buf generate` in `packages/protos` and commit the output alongside it.
+Each project's tasks live in its `moon.yml` (e.g. `services/backend/moon.yml`). If you change `packages/api/openapi.yaml`, regenerate with `moon run packages/api:generate` and commit the output alongside it.
 
 
 ## Contributing and licence

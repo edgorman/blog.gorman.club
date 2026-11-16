@@ -7,18 +7,16 @@ workspace:
     include: []
 
 tasks:
-  # #173: keeps hand-written wire types from coming back now that they've been swept - api.ts's
-  # whole job is declaring API types, so any `export interface` there duplicates what src/gen
-  # already generates; internal/service is checked the same way, with debug.go's own health-check
-  # envelope the one accepted exception (see packages/protos/AGENTS.md's Contract Layer).
+  # Keeps hand-written wire types out: api.ts and internal/service declare none, so a shape is always
+  # a generated one (packages/api/AGENTS.md).
   wire-types:
     script: |
       if grep -n '^export interface' services/frontend/src/lib/api.ts; then
-        echo "::error file=services/frontend/src/lib/api.ts::api.ts declares a hand-written interface - wire types must come from src/gen (see packages/protos/AGENTS.md's Contract Layer)."
+        echo "::error file=services/frontend/src/lib/api.ts::api.ts declares a hand-written interface - wire types must come from src/gen (see packages/api/AGENTS.md)."
         exit 1
       fi
-      if grep -rn 'json:"' services/backend/internal/service --include='*.go' | grep -v '_test.go' | grep -v '/debug.go:'; then
-        echo "::error::internal/service declares a hand-written json-tagged struct outside debug.go - wire types must come from packages/protos (see packages/protos/AGENTS.md's Contract Layer)."
+      if grep -rn 'json:"' services/backend/internal/service --include='*.go' | grep -v '_test.go'; then
+        echo "::error::internal/service declares a hand-written json-tagged struct - wire types must come from packages/api (see packages/api/AGENTS.md)."
         exit 1
       fi
     inputs:
@@ -63,3 +61,18 @@ tasks:
     inputs:
       - '/.prototools'
       - '/services/backend/go.mod'
+
+  # Every docs/decisions/NNNN-*.md a Markdown file links must exist.
+  decision-links:
+    description: 'Every decision record linked from a Markdown file exists'
+    script: |
+      missing=0
+      while IFS=: read -r file link; do
+        if [ ! -f "docs/decisions/${link#decisions/}" ]; then
+          echo "::error file=$file::links ${link}, which does not exist in docs/decisions/."
+          missing=1
+        fi
+      done < <(grep -rEo --include='*.md' --exclude-dir=node_modules --exclude-dir=.git 'decisions/[0-9]{4}-[a-z0-9-]+\.md' . | sed 's|^\./||')
+      exit "$missing"
+    inputs:
+      - '/**/*.md'

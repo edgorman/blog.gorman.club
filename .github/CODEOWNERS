@@ -5,7 +5,7 @@
 
 /services/backend/ @edgorman
 /services/frontend/ @edgorman
-/packages/protos/ @edgorman
+/packages/api/ @edgorman
 /infrastructure/ @edgorman
 /.github/ @edgorman
 /services/backend/internal/entity/access.go @edgorman

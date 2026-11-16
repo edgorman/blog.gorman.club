@@ -56,11 +56,11 @@ This runs every check your branch affects. On a fresh branch nothing is affected
 ## 5. Make one change
 
 - Read the root [`AGENTS.md`](../AGENTS.md) and the `AGENTS.md` of the area you're changing. They're short rules; each links to the decision record in [`decisions/`](decisions/README.md) that explains it.
-- Changing the API shape? Edit the `.proto` in `packages/protos`, run `buf generate` there, and commit the generated code with it.
+- Changing the API shape? Edit `packages/api/openapi.yaml`, run `moon run packages/api:generate`, and commit the generated code with it.
 - Run step 4 again.
 
 ## 6. Open a pull request
 
 - Start from an issue (see [`CONTRIBUTING.md`](../.github/CONTRIBUTING.md)).
 - Title it as a Conventional Commit, e.g. `fix(frontend): keep the draft when sign-in expires`. The title becomes the commit on `main` and decides the version.
-- Fill in the PR template. CI runs the checks from step 4, plus the title check and `buf breaking`. A code owner reviews, and on merge the change deploys to staging. Production is a separate promotion; nothing is deployed by hand.
+- Fill in the PR template. CI runs the checks from step 4, plus the title check and the API breaking-change check. A code owner reviews, and on merge the change deploys to staging. Production is a separate promotion; nothing is deployed by hand.

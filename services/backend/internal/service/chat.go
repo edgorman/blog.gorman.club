@@ -6,10 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"google.golang.org/protobuf/types/known/timestamppb"
-
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/api"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
-	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
@@ -18,39 +16,29 @@ import (
 // assistant having crashed rather than having failed to understand.
 const assistantSilentReply = "I wasn't sure what to change there. Could you say it another way?"
 
-// chatEditMessage is the wire shape of one change the assistant made.
-func chatEditMessage(edit entity.ChatEdit) *blogv1.ChatEdit {
-	return &blogv1.ChatEdit{Tool: edit.Tool, Summary: edit.Summary}
-}
-
 // chatMessageMessage is the wire shape of one turn - what GetChat's history and SendChatMessage's
 // reply both carry.
-func chatMessageMessage(message entity.ChatMessage) *blogv1.ChatMessage {
-	edits := make([]*blogv1.ChatEdit, 0, len(message.Edits))
+func chatMessageMessage(message entity.ChatMessage) api.ChatMessage {
+	edits := make([]api.ChatEdit, 0, len(message.Edits))
 	for _, edit := range message.Edits {
-		edits = append(edits, chatEditMessage(edit))
+		edits = append(edits, api.ChatEdit{Tool: edit.Tool, Summary: edit.Summary})
 	}
-	return &blogv1.ChatMessage{
-		Role:      string(message.Role),
+	return api.ChatMessage{
+		Role:      api.ChatRole(message.Role),
 		Content:   message.Content,
 		Edits:     edits,
-		CreatedAt: timestamppb.New(message.CreatedAt),
+		CreatedAt: message.CreatedAt.UTC(),
 	}
 }
 
 // chatMessagesMessage converts a run of turns the same way chatMessageMessage does, for the two
 // responses - ChatHistory and ChatReply - that each carry a list of them.
-func chatMessagesMessage(messages []entity.ChatMessage) []*blogv1.ChatMessage {
-	converted := make([]*blogv1.ChatMessage, 0, len(messages))
+func chatMessagesMessage(messages []entity.ChatMessage) []api.ChatMessage {
+	converted := make([]api.ChatMessage, 0, len(messages))
 	for _, message := range messages {
 		converted = append(converted, chatMessageMessage(message))
 	}
 	return converted
-}
-
-// chatHistoryMessage is the whole conversation GetChat answers with.
-func chatHistoryMessage(messages []entity.ChatMessage) *blogv1.ChatHistory {
-	return &blogv1.ChatHistory{Messages: chatMessagesMessage(messages)}
 }
 
 // chatReplyMessage is one exchange: what was said on both sides, and the post as it now stands.
@@ -60,8 +48,8 @@ func chatHistoryMessage(messages []entity.ChatMessage) *blogv1.ChatHistory {
 // next save would write the pre-assistant text back over it. Updated says whether that happened,
 // so an editor whose author is still typing is only interrupted when there is really something to
 // show them.
-func chatReplyMessage(messages []entity.ChatMessage, blog blogResponse, updated bool) *blogv1.ChatReply {
-	return &blogv1.ChatReply{
+func chatReplyMessage(messages []entity.ChatMessage, blog blogResponse, updated bool) api.ChatReply {
+	return api.ChatReply{
 		Messages: chatMessagesMessage(messages),
 		Blog:     blogMessage(blog),
 		Updated:  updated,
@@ -111,8 +99,8 @@ func (s *Service) requireAssistantAccess(w http.ResponseWriter, r *http.Request,
 // conversation: a chat is an author's working notes on a post, so being allowed to hold one is
 // being allowed to change what it is about. action is what the conversation is being asked of,
 // which is the assistant's entitlement to check rather than the post's.
-func (s *Service) assistantBlog(w http.ResponseWriter, r *http.Request, action entity.Action) (entity.Blog, bool) {
-	blog, ok := s.requireBlogPermission(w, r, entity.ActionUpdate)
+func (s *Service) assistantBlog(w http.ResponseWriter, r *http.Request, slug api.Slug, action entity.Action) (entity.Blog, bool) {
+	blog, ok := s.requireBlogPermission(w, r, slug, entity.ActionUpdate)
 	if !ok {
 		return entity.Blog{}, false
 	}
@@ -125,8 +113,8 @@ func (s *Service) assistantBlog(w http.ResponseWriter, r *http.Request, action e
 // GetChat returns the conversation about a post. A post nobody has discussed answers with an empty
 // conversation rather than a 404: there is nothing missing, it simply has not been started, and a
 // client opening the panel would only have to translate the 404 back into the same empty list.
-func (s *Service) GetChat(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.assistantBlog(w, r, entity.ActionRead)
+func (s *Service) GetChat(w http.ResponseWriter, r *http.Request, slug api.Slug) {
+	blog, ok := s.assistantBlog(w, r, slug, entity.ActionRead)
 	if !ok {
 		return
 	}
@@ -137,13 +125,13 @@ func (s *Service) GetChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeProto(w, http.StatusOK, chatHistoryMessage(chat.Messages))
+	writeJSON(w, http.StatusOK, api.ChatHistory{Messages: chatMessagesMessage(chat.Messages)})
 }
 
 // DeleteChat throws the conversation away, so the author can start the assistant over without
 // starting the post over. The post itself is untouched, including any edit the assistant made.
-func (s *Service) DeleteChat(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.assistantBlog(w, r, entity.ActionDelete)
+func (s *Service) DeleteChat(w http.ResponseWriter, r *http.Request, slug api.Slug) {
+	blog, ok := s.assistantBlog(w, r, slug, entity.ActionDelete)
 	if !ok {
 		return
 	}
@@ -159,7 +147,7 @@ func (s *Service) DeleteChat(w http.ResponseWriter, r *http.Request) {
 // draftFromRequest builds the draft the assistant works on: the stored post, with whatever the
 // author has unsaved in front of them applied over it. Both fields go through the draft's setters,
 // so a body the post itself would reject is refused here rather than reaching the model.
-func draftFromRequest(blog entity.Blog, body *blogv1.ChatRequest) (entity.Draft, error) {
+func draftFromRequest(blog entity.Blog, body *api.ChatRequest) (entity.Draft, error) {
 	draft := entity.DraftOf(blog)
 	if body.Title != nil {
 		if err := draft.SetTitle(*body.Title); err != nil {
@@ -180,20 +168,30 @@ func draftFromRequest(blog entity.Blog, body *blogv1.ChatRequest) (entity.Draft,
 // The post is written before the conversation is, and both only after the model has answered.
 // Nothing is stored for a turn that failed, so a request the model never answered leaves the post
 // as it was and the author's message still in the box to send again.
-func (s *Service) SendChatMessage(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.assistantBlog(w, r, entity.ActionUpdate)
+//
+// A turn is metered a second time, against a much smaller budget: it is the only request here that
+// calls a paid model and can hold a connection open for two minutes, so the general per-account
+// allowance is far too loose to be the only thing standing in front of it.
+func (s *Service) SendChatMessage(w http.ResponseWriter, r *http.Request, slug api.Slug) {
+	rateLimited(s.assistantLimiter, callerKey, func(w http.ResponseWriter, r *http.Request) {
+		s.sendChatMessage(w, r, slug)
+	})(w, r)
+}
+
+func (s *Service) sendChatMessage(w http.ResponseWriter, r *http.Request, slug api.Slug) {
+	blog, ok := s.assistantBlog(w, r, slug, entity.ActionUpdate)
 	if !ok {
 		return
 	}
 
-	var body blogv1.ChatRequest
-	if !readProto(w, r, &body) {
+	var body api.ChatRequest
+	if !readJSON(w, r, &body) {
 		return
 	}
 
 	// Validated before anything is spent on it: an empty or oversized message is the author's
 	// mistake, and it would be stored as a turn if the model answered it.
-	asked, err := entity.NewChatMessage(entity.ChatRoleUser, body.GetMessage())
+	asked, err := entity.NewChatMessage(entity.ChatRoleUser, body.Message)
 	if err != nil {
 		writeValidationError(w, err)
 		return
@@ -265,7 +263,7 @@ func (s *Service) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeProto(w, http.StatusOK, chatReplyMessage([]entity.ChatMessage{asked, answered}, response, updated))
+	writeJSON(w, http.StatusOK, chatReplyMessage([]entity.ChatMessage{asked, answered}, response, updated))
 }
 
 // assistantTurnMessage is the message of the one line logAssistantTurn writes. The log-based

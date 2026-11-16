@@ -9,10 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/api"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
-	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 )
 
 // commentFixture is a post, its owner's profile, and the thread beneath it, wired the way a real
@@ -57,16 +55,15 @@ func newCommentFixture(t *testing.T) *commentFixture {
 	}
 }
 
-// commentRequestBody marshals a create request the way a real client would, through protojson
-// rather than encoding/json - see blogRequestBody (blog_test.go) for why.
-func commentRequestBody(body *blogv1.CreateCommentRequest) []byte {
-	encoded, _ := protojson.Marshal(body)
+// commentRequestBody marshals a create request the way a real client would, with encoding/json.
+func commentRequestBody(body *api.CreateCommentRequest) []byte {
+	encoded, _ := json.Marshal(body)
 	return encoded
 }
 
 // post sends a comment as uid, or anonymously when uid is empty.
 func (f *commentFixture) post(uid, body string) *httptest.ResponseRecorder {
-	encoded := commentRequestBody(&blogv1.CreateCommentRequest{Body: body})
+	encoded := commentRequestBody(&api.CreateCommentRequest{Body: body})
 	req := httptest.NewRequest(http.MethodPost, "/blogs/"+commentSlug+"/comments", bytes.NewReader(encoded))
 	req.SetPathValue("slug", commentSlug)
 	if uid != "" {
@@ -74,7 +71,7 @@ func (f *commentFixture) post(uid, body string) *httptest.ResponseRecorder {
 	}
 
 	rec := httptest.NewRecorder()
-	f.service.CreateComment(rec, req)
+	routed(f.service).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -86,7 +83,7 @@ func (f *commentFixture) list(uid string) *httptest.ResponseRecorder {
 	}
 
 	rec := httptest.NewRecorder()
-	f.service.ListComments(rec, req)
+	routed(f.service).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -99,7 +96,7 @@ func (f *commentFixture) delete(uid, id string) *httptest.ResponseRecorder {
 	}
 
 	rec := httptest.NewRecorder()
-	f.service.DeleteComment(rec, req)
+	routed(f.service).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -353,8 +350,7 @@ func TestDeleteComment_Missing(t *testing.T) {
 		{"no such comment", "cmt404"},
 		// A malformed id is folded into the same "nothing here" a missing one gets, exactly as a
 		// malformed slug is: the path is a link somebody followed, not a form they filled in.
-		{"malformed", "not/an/id"},
-		{"empty", ""},
+		{"malformed", "Not-An-Id"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newCommentFixture(t)
@@ -381,7 +377,7 @@ func TestDeleteComment_FromAnotherPostsThread(t *testing.T) {
 	req.SetPathValue("slug", "other-post")
 	req.SetPathValue("id", created.ID)
 	rec := httptest.NewRecorder()
-	f.service.DeleteComment(rec, withUID(req, "somebody-else"))
+	routed(f.service).ServeHTTP(rec, withUID(req, "somebody-else"))
 
 	assertStatus(t, rec, http.StatusNotFound)
 	if len(f.comments.threads[commentSlug]) != 1 {
@@ -400,15 +396,15 @@ func TestComments_OnAMissingPost(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/blogs/missing/comments", nil)
 			req.SetPathValue("slug", "missing")
 			rec := httptest.NewRecorder()
-			f.service.ListComments(rec, req)
+			routed(f.service).ServeHTTP(rec, req)
 			return rec
 		}},
 		{"create", func() *httptest.ResponseRecorder {
-			encoded := commentRequestBody(&blogv1.CreateCommentRequest{Body: "nicely put"})
+			encoded := commentRequestBody(&api.CreateCommentRequest{Body: "nicely put"})
 			req := httptest.NewRequest(http.MethodPost, "/blogs/missing/comments", bytes.NewReader(encoded))
 			req.SetPathValue("slug", "missing")
 			rec := httptest.NewRecorder()
-			f.service.CreateComment(rec, withUID(req, commentReader))
+			routed(f.service).ServeHTTP(rec, withUID(req, commentReader))
 			return rec
 		}},
 	} {

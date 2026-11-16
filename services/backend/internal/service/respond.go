@@ -1,83 +1,27 @@
 package service
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
-
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/api"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
-	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 )
-
-// protoJSON is how every generated message reaches the wire. The options are the whole of the
-// compatibility story between encoding/json and protojson, so they are set once here rather than
-// per call site:
-//
-//   - EmitDefaultValues keeps a zero-valued scalar in the body. protojson drops one by default,
-//     which would silently turn `"assistantEnabled": false` into an absent field and a client's
-//     `undefined`. Its narrower cousin EmitUnpopulated would go further and emit `null` for unset
-//     message fields too, which would start sending `"subscribedUntil": null` where the field is
-//     absent today - a change with no upside, so this is the one that matches encoding/json most
-//     closely.
-//   - UseProtoNames stays off (the default), so field names are lowerCamelCase on the wire -
-//     `createdAt`, not `created_at` - which is what the hand-written `json` tags already produced
-//     and what the frontend already reads.
-//
-// See `packages/protos/AGENTS.md`'s "Contract Layer" for why responses are built from generated messages at all.
-var protoJSON = protojson.MarshalOptions{EmitDefaultValues: true}
-
-// writeProto is writeJSON for a generated message. It exists because encoding/json cannot
-// serialize one correctly: it would walk the struct's own fields - including protoimpl state - and
-// ignore the `protobuf` tags that decide names, presence and well-known-type encoding.
-func writeProto(w http.ResponseWriter, status int, message proto.Message) {
-	body, err := protoJSON.Marshal(message)
-	if err != nil {
-		// A message this service built itself failing to marshal is a bug, not a client error, and
-		// there is nothing useful to say about it beyond the status.
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
-	// protojson deliberately varies its whitespace between builds, so the same message marshals to
-	// `{"id":"x","bio":""}` in one binary and `{"id":"x", "bio":""}` in the next - upstream does
-	// this to stop callers depending on exact bytes. Two identical requests answering with
-	// byte-different bodies is a poor property for an HTTP API to have (it would quietly defeat
-	// any response caching or ETag added later), and compacting costs one pass, so the wire is
-	// normalized here instead.
-	var compact bytes.Buffer
-	if err := json.Compact(&compact, body); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_, _ = w.Write(compact.Bytes())
-}
-
-// protoJSONUnmarshal is the request-side counterpart. DiscardUnknown matters more than it looks:
-// protojson rejects an unrecognized field by default, where encoding/json ignores one, so without
-// it a client sending a field this version does not know - an older or newer frontend, or anything
-// speculative - would start getting a 400 where it used to be accepted. Tolerating unknown fields
-// is also what makes an additive proto change safe to deploy before the client that sends it.
-var protoJSONUnmarshal = protojson.UnmarshalOptions{DiscardUnknown: true}
 
 // maxRequestBody caps every body readProto reads. The largest legitimate one is a post at
 // entity.MaxContentLength runes, which even at the 6 bytes a JSON-escaped control character takes
 // stays well under this.
 const maxRequestBody = 1 << 20
 
-// readProto decodes a request body into a generated message, the counterpart to writeProto,
-// writing the error response and returning false if it is too large or malformed.
+// readJSON decodes a request body into a generated request type, writing the error response and
+// returning false if it is too large or malformed. A field the type does not know is ignored, so
+// an additive change to the contract is safe to deploy before the client that sends it.
 //
-// It reads the body whole because protojson has no streaming decoder, so the cap is what stops a
-// caller making a write route buffer whatever it sends.
-func readProto(w http.ResponseWriter, r *http.Request, message proto.Message) bool {
+// It reads the body whole, so the cap is what stops a caller making a write route buffer whatever
+// it sends.
+func readJSON(w http.ResponseWriter, r *http.Request, into any) bool {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &tooLarge) {
@@ -85,7 +29,7 @@ func readProto(w http.ResponseWriter, r *http.Request, message proto.Message) bo
 		return false
 	}
 	if err == nil {
-		err = protoJSONUnmarshal.Unmarshal(body, message)
+		err = json.Unmarshal(body, into)
 	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -100,11 +44,10 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-// writeError answers with the wire's one error envelope (blogv1.ErrorResponse, #173), shared
-// across every resource rather than declared per one: every handler fails the same way regardless
-// of what it was doing, so there is exactly one shape to keep in sync with api.ts's own read of it.
+// writeError answers with the contract's one error envelope (api.ErrorResponse), shared across
+// every route: every handler fails the same way regardless of what it was doing.
 func writeError(w http.ResponseWriter, status int, message string) {
-	writeProto(w, status, &blogv1.ErrorResponse{Error: message})
+	writeJSON(w, status, api.ErrorResponse{Error: message})
 }
 
 // writeValidationError reports a failed entity rule as a 400 carrying the field and reason.
@@ -115,4 +58,20 @@ func writeValidationError(w http.ResponseWriter, err error) {
 		return
 	}
 	writeError(w, http.StatusBadRequest, "invalid request body")
+}
+
+// badRequest answers a query or path parameter the generated routes could not bind.
+func badRequest(w http.ResponseWriter, _ *http.Request, err error) {
+	var invalid *api.InvalidParamFormatError
+	if errors.As(err, &invalid) {
+		switch invalid.ParamName {
+		case "limit":
+			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		case "startAfter":
+			writeError(w, http.StatusBadRequest, "startAfter must be an RFC3339 timestamp")
+			return
+		}
+	}
+	writeError(w, http.StatusBadRequest, "invalid request")
 }

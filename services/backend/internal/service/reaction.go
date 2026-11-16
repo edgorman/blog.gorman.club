@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/api"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
-	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 )
 
 // reactionCount is one emoji as a bar renders it: the glyph, how many readers chose it, and
@@ -23,18 +23,18 @@ type reactionCount struct {
 }
 
 // reactionCountMessage is the wire shape of a single count.
-func reactionCountMessage(count reactionCount) *blogv1.ReactionCount {
-	return &blogv1.ReactionCount{Emoji: count.Emoji, Count: int32(count.Count), Reacted: count.Reacted}
+func reactionCountMessage(count reactionCount) api.ReactionCount {
+	return api.ReactionCount{Emoji: count.Emoji, Count: int32(count.Count), Reacted: count.Reacted}
 }
 
 // targetReactionsMessage is every count on one target - what PutReaction/DeleteReaction answer
 // with, and what each entry of PageReactions.comments holds.
-func targetReactionsMessage(counts []reactionCount) *blogv1.TargetReactions {
-	reactions := make([]*blogv1.ReactionCount, 0, len(counts))
+func targetReactionsMessage(counts []reactionCount) api.TargetReactions {
+	reactions := make([]api.ReactionCount, 0, len(counts))
 	for _, count := range counts {
 		reactions = append(reactions, reactionCountMessage(count))
 	}
-	return &blogv1.TargetReactions{Reactions: reactions}
+	return api.TargetReactions{Reactions: reactions}
 }
 
 // reactionsResponse is every reaction on a page: the post's, and each commented-on comment's by
@@ -46,18 +46,18 @@ type reactionsResponse struct {
 }
 
 // pageReactionsMessage is the wire shape GetReactions answers with.
-func pageReactionsMessage(response reactionsResponse) *blogv1.PageReactions {
-	post := make([]*blogv1.ReactionCount, 0, len(response.Post))
+func pageReactionsMessage(response reactionsResponse) api.PageReactions {
+	post := make([]api.ReactionCount, 0, len(response.Post))
 	for _, count := range response.Post {
 		post = append(post, reactionCountMessage(count))
 	}
 
-	comments := make(map[string]*blogv1.TargetReactions, len(response.Comments))
+	comments := make(map[string]api.TargetReactions, len(response.Comments))
 	for commentID, counts := range response.Comments {
 		comments[commentID] = targetReactionsMessage(counts)
 	}
 
-	return &blogv1.PageReactions{Post: post, Comments: comments}
+	return api.PageReactions{Post: post, Comments: comments}
 }
 
 // countReactions folds the readers' rows into the counts a bar is drawn from. Ordering is by count
@@ -112,8 +112,8 @@ func forTarget(reactions []entity.Reaction, target entity.ReactionTarget) []enti
 // splitting them across the responses that carry a post and its comments would mean reading them
 // twice to say the same thing. A reader who may read the post may read them; one who may not gets
 // the post's own 404.
-func (s *Service) GetReactions(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireReadableBlog(w, r)
+func (s *Service) GetReactions(w http.ResponseWriter, r *http.Request, slug api.Slug) {
+	blog, ok := s.requireReadableBlog(w, r, slug)
 	if !ok {
 		return
 	}
@@ -139,25 +139,24 @@ func (s *Service) GetReactions(w http.ResponseWriter, r *http.Request) {
 		response.Comments[reaction.Target.CommentID] = countReactions(forTarget(reactions, reaction.Target), uid)
 	}
 
-	writeProto(w, http.StatusOK, pageReactionsMessage(response))
+	writeJSON(w, http.StatusOK, pageReactionsMessage(response))
 }
 
 // reactionTargetFromPath resolves what a reaction route addresses, along with the emoji it names.
 // A comment target is checked to exist rather than taken from the path on trust: a reaction to a
 // comment nobody wrote would be counted by nothing and shown nowhere, and would outlive every
 // cleanup that runs when a comment is deleted.
-func (s *Service) reactionTargetFromPath(w http.ResponseWriter, r *http.Request, blog entity.Blog) (entity.ReactionTarget, string, bool) {
-	emoji := r.PathValue("emoji")
+func (s *Service) reactionTargetFromPath(w http.ResponseWriter, r *http.Request, blog entity.Blog, id api.CommentId, emoji api.Emoji) (entity.ReactionTarget, string, bool) {
 	if !entity.ValidEmoji(emoji) {
 		writeError(w, http.StatusBadRequest, "emoji must be one of the allowed reactions")
 		return entity.ReactionTarget{}, "", false
 	}
 
-	if r.PathValue("id") == "" {
+	if id == "" {
 		return entity.PostReaction(blog.Slug), emoji, true
 	}
 
-	comment, ok := s.commentFromPath(w, r, blog)
+	comment, ok := s.commentFromPath(w, r, blog, id)
 	if !ok {
 		return entity.ReactionTarget{}, "", false
 	}
@@ -175,7 +174,7 @@ func (s *Service) writeTargetReactions(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 
-	writeProto(w, http.StatusOK, targetReactionsMessage(countReactions(forTarget(reactions, target), uidFromContext(r.Context()))))
+	writeJSON(w, http.StatusOK, targetReactionsMessage(countReactions(forTarget(reactions, target), uidFromContext(r.Context()))))
 }
 
 // PutReaction adds the caller's reaction to a post or to one of its comments. It is a PUT rather
@@ -186,12 +185,21 @@ func (s *Service) writeTargetReactions(w http.ResponseWriter, r *http.Request, t
 // Anyone who may read the post may react to it, its author included, and reacting needs a
 // credential for the same reason commenting does - a reaction is one reader, counted once, which
 // there is no way to mean without knowing who they are.
-func (s *Service) PutReaction(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireReadableBlog(w, r)
+func (s *Service) PutReaction(w http.ResponseWriter, r *http.Request, slug api.Slug, emoji api.Emoji) {
+	s.putReaction(w, r, slug, "", emoji)
+}
+
+// PutCommentReaction is PutReaction for one of the post's comments.
+func (s *Service) PutCommentReaction(w http.ResponseWriter, r *http.Request, slug api.Slug, id api.CommentId, emoji api.Emoji) {
+	s.putReaction(w, r, slug, id, emoji)
+}
+
+func (s *Service) putReaction(w http.ResponseWriter, r *http.Request, slug api.Slug, id api.CommentId, emoji api.Emoji) {
+	blog, ok := s.requireReadableBlog(w, r, slug)
 	if !ok {
 		return
 	}
-	target, emoji, ok := s.reactionTargetFromPath(w, r, blog)
+	target, emoji, ok := s.reactionTargetFromPath(w, r, blog, id, emoji)
 	if !ok {
 		return
 	}
@@ -217,12 +225,21 @@ func (s *Service) PutReaction(w http.ResponseWriter, r *http.Request) {
 
 // DeleteReaction takes the caller's reaction back. Like PutReaction it says what the caller wants
 // to be true rather than asking for a flip, so removing one that is already gone succeeds.
-func (s *Service) DeleteReaction(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireReadableBlog(w, r)
+func (s *Service) DeleteReaction(w http.ResponseWriter, r *http.Request, slug api.Slug, emoji api.Emoji) {
+	s.deleteReaction(w, r, slug, "", emoji)
+}
+
+// DeleteCommentReaction is DeleteReaction for one of the post's comments.
+func (s *Service) DeleteCommentReaction(w http.ResponseWriter, r *http.Request, slug api.Slug, id api.CommentId, emoji api.Emoji) {
+	s.deleteReaction(w, r, slug, id, emoji)
+}
+
+func (s *Service) deleteReaction(w http.ResponseWriter, r *http.Request, slug api.Slug, id api.CommentId, emoji api.Emoji) {
+	blog, ok := s.requireReadableBlog(w, r, slug)
 	if !ok {
 		return
 	}
-	target, emoji, ok := s.reactionTargetFromPath(w, r, blog)
+	target, emoji, ok := s.reactionTargetFromPath(w, r, blog, id, emoji)
 	if !ok {
 		return
 	}

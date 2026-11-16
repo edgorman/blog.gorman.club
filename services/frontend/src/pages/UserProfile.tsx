@@ -10,11 +10,7 @@ interface ProfileInfo {
   /** Taken from the fetched profile rather than the URL, so it carries the casing as stored. */
   username: string
   bio: string
-  /**
-   * Optional because the wire says so: `createdAt` is a `google.protobuf.Timestamp`, and protojson
-   * may leave a message field out of the body, so the generated `User` types it as possibly
-   * absent. The render below already guards on it.
-   */
+  /** When the profile was created, if the render below has one to show. */
   memberSince?: string
 }
 

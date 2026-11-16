@@ -1,0 +1,53 @@
+$schema: '../../.moon/cache/schemas/project.json'
+layer: 'library'
+tags: ['contract']
+
+fileGroups:
+  sources: ['openapi.yaml', 'package.json', 'package-lock.json']
+  # A leading '/' makes these workspace-relative, so a hand edit to generated output marks drift
+  # affected too.
+  generated:
+    - '/services/backend/oapi-codegen.yaml'
+    - '/services/backend/internal/api/**/*'
+    - '/services/frontend/src/gen/**/*'
+
+tasks:
+  install:
+    command: 'npm ci'
+    inputs: ['package.json', 'package-lock.json']
+    options:
+      internal: true
+  # Both generators, from the one spec: `oapi-codegen` is a `go tool` pinned in go.mod,
+  # `openapi-typescript` is pinned in this project's package.json.
+  generate:
+    script: |
+      (cd ../../services/backend && go tool oapi-codegen -config oapi-codegen.yaml ../../packages/api/openapi.yaml)
+      npx openapi-typescript openapi.yaml -o ../../services/frontend/src/gen/schema.d.ts
+    deps: ['install']
+    inputs: ['@group(sources)', '/services/backend/oapi-codegen.yaml', '/services/backend/go.mod']
+    options:
+      cache: false
+  drift:
+    # Regenerates and fails on any difference from what is committed; `git status`, not `git add`, so
+    # a local run never stages anything.
+    script: |
+      npx openapi-typescript openapi.yaml -o ../../services/frontend/src/gen/schema.d.ts
+      (cd ../../services/backend && go tool oapi-codegen -config oapi-codegen.yaml ../../packages/api/openapi.yaml)
+      root="$(git rev-parse --show-toplevel)"
+      paths="packages/api services/backend/internal/api services/frontend/src/gen"
+      test -z "$(git -C "$root" status --porcelain -- $paths)" || { git -C "$root" status --porcelain -- $paths; exit 1; }
+    deps: ['install']
+    inputs: ['@group(sources)', '@group(generated)', '/services/backend/go.mod']
+    options:
+      cache: false
+  breaking:
+    # Against main's copy of the spec, skipped for a PR marked breaking (conventions.yaml). Not cached:
+    # main moves without this project's inputs changing. No spec on main yet means nothing to break.
+    script: |
+      base="$(mktemp)"
+      git show origin/main:packages/api/openapi.yaml > "$base" 2>/dev/null || { echo 'No spec on origin/main yet; nothing to compare.'; exit 0; }
+      # renovate: datasource=go depName=github.com/oasdiff/oasdiff
+      go run github.com/oasdiff/oasdiff@v1.38.0 breaking "$base" openapi.yaml --fail-on ERR
+    inputs: ['openapi.yaml']
+    options:
+      cache: false

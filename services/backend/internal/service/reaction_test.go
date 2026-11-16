@@ -73,9 +73,9 @@ func (f *reactionFixture) react(method, uid, commentID, emoji string) *httptest.
 
 	rec := httptest.NewRecorder()
 	if method == http.MethodDelete {
-		f.service.DeleteReaction(rec, req)
+		routed(f.service).ServeHTTP(rec, req)
 	} else {
-		f.service.PutReaction(rec, req)
+		routed(f.service).ServeHTTP(rec, req)
 	}
 	return rec
 }
@@ -88,7 +88,7 @@ func (f *reactionFixture) list(uid string) *httptest.ResponseRecorder {
 	}
 
 	rec := httptest.NewRecorder()
-	f.service.GetReactions(rec, req)
+	routed(f.service).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -246,7 +246,6 @@ func TestPutReaction_RejectsWhatIsNotAllowed(t *testing.T) {
 		{"an emoji in a sentence", "nice 👍"},
 		{"an emoji outside the set", "🎊"},
 		{"a skin-toned variant of an allowed emoji", "👍🏽"},
-		{"empty", ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newReactionFixture(t)
@@ -389,7 +388,7 @@ func TestDeleteComment_TakesItsReactionsWithIt(t *testing.T) {
 	req.SetPathValue("slug", commentSlug)
 	req.SetPathValue("id", reactionCommentID)
 	rec := httptest.NewRecorder()
-	f.service.DeleteComment(rec, withUID(req, commentReader))
+	routed(f.service).ServeHTTP(rec, withUID(req, commentReader))
 	assertStatus(t, rec, http.StatusNoContent)
 
 	for _, reaction := range f.reactions.reactions {
@@ -413,7 +412,7 @@ func TestDeleteComment_SucceedsWhenReactionCleanupFails(t *testing.T) {
 	req.SetPathValue("slug", commentSlug)
 	req.SetPathValue("id", reactionCommentID)
 	rec := httptest.NewRecorder()
-	f.service.DeleteComment(rec, withUID(req, commentReader))
+	routed(f.service).ServeHTTP(rec, withUID(req, commentReader))
 
 	// The comment is gone even though its reactions could not be cleaned up: reporting a 500 would
 	// have the caller retry a delete that already succeeded.

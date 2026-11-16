@@ -5,10 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"google.golang.org/protobuf/types/known/timestamppb"
-
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/api"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
-	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
@@ -25,28 +23,28 @@ type commentResponse struct {
 //
 // Moderation is carried whenever the comment holds one, so a caller who may not see it has to have
 // it cleared first (see ListComments).
-func commentMessage(response commentResponse) *blogv1.Comment {
-	message := &blogv1.Comment{
+func commentMessage(response commentResponse) api.Comment {
+	message := api.Comment{
 		Id:             response.ID,
 		BlogSlug:       response.BlogSlug,
 		AuthorUsername: response.AuthorUsername,
 		Body:           response.Body,
-		CreatedAt:      timestamppb.New(response.CreatedAt),
+		CreatedAt:      response.CreatedAt.UTC(),
 	}
 	if m := response.Moderation; m != nil {
-		message.Moderation = &blogv1.CommentModeration{Status: string(m.Status), Category: m.Category}
+		message.Moderation = &api.CommentModeration{Status: api.ModerationStatus(m.Status), Category: m.Category}
 	}
 	return message
 }
 
 // commentThreadMessage is the whole thread ListComments answers with, converting each comment the
 // same way commentMessage does.
-func commentThreadMessage(responses []commentResponse) *blogv1.CommentThread {
-	comments := make([]*blogv1.Comment, 0, len(responses))
+func commentThreadMessage(responses []commentResponse) api.CommentThread {
+	comments := make([]api.Comment, 0, len(responses))
 	for _, response := range responses {
 		comments = append(comments, commentMessage(response))
 	}
-	return &blogv1.CommentThread{Comments: comments}
+	return api.CommentThread{Comments: comments}
 }
 
 // withCommentAuthors pairs every comment with its author's username, resolving each distinct
@@ -72,14 +70,14 @@ func (s *Service) withCommentAuthors(r *http.Request, comments []entity.Comment)
 // commentFromPath loads the comment named by the {id} it is addressed by, beneath the post it
 // hangs off. A malformed id answers as a 404 for exactly the reason blogFromPath gives one for a
 // malformed slug: the path is a link somebody followed, not a form they filled in.
-func (s *Service) commentFromPath(w http.ResponseWriter, r *http.Request, blog entity.Blog) (entity.Comment, bool) {
+func (s *Service) commentFromPath(w http.ResponseWriter, r *http.Request, blog entity.Blog, id api.CommentId) (entity.Comment, bool) {
 	notFound := func() (entity.Comment, bool) {
 		writeError(w, http.StatusNotFound, "comment not found")
 		return entity.Comment{}, false
 	}
 
 	var candidate entity.Comment
-	if err := candidate.SetID(r.PathValue("id")); err != nil {
+	if err := candidate.SetID(id); err != nil {
 		return notFound()
 	}
 
@@ -98,8 +96,8 @@ func (s *Service) commentFromPath(w http.ResponseWriter, r *http.Request, blog e
 // read the post: a private post's comments are as private as the post, and a caller who cannot see
 // one is answered with the same 404 the post itself gives rather than an empty thread, which would
 // admit the post exists.
-func (s *Service) ListComments(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireReadableBlog(w, r)
+func (s *Service) ListComments(w http.ResponseWriter, r *http.Request, slug api.Slug) {
+	blog, ok := s.requireReadableBlog(w, r, slug)
 	if !ok {
 		return
 	}
@@ -125,15 +123,13 @@ func (s *Service) ListComments(w http.ResponseWriter, r *http.Request) {
 	}
 	comments = visible
 
-	// withCommentAuthors always builds its slice, and commentThreadMessage does the same with
-	// Comments, so a post nobody has commented on answers with an empty JSON array rather than null.
 	responses, err := s.withCommentAuthors(r, comments)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	writeProto(w, http.StatusOK, commentThreadMessage(responses))
+	writeJSON(w, http.StatusOK, commentThreadMessage(responses))
 }
 
 // CreateComment adds a comment to a post, authored by the caller.
@@ -142,20 +138,20 @@ func (s *Service) ListComments(w http.ResponseWriter, r *http.Request) {
 // its whitelist and nobody else. Commenting requires a credential either way: a comment is signed
 // by whoever wrote it, and an anonymous one would be attributable to nobody and moderable only by
 // deleting it.
-func (s *Service) CreateComment(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireReadableBlog(w, r)
+func (s *Service) CreateComment(w http.ResponseWriter, r *http.Request, slug api.Slug) {
+	blog, ok := s.requireReadableBlog(w, r, slug)
 	if !ok {
 		return
 	}
 
-	var body blogv1.CreateCommentRequest
-	if !readProto(w, r, &body) {
+	var body api.CreateCommentRequest
+	if !readJSON(w, r, &body) {
 		return
 	}
 
 	// Validated before the profile below is created, so an empty or oversized comment does not
 	// leave a profile behind for a caller who never successfully said anything.
-	comment, err := entity.NewComment(blog.Slug, uidFromContext(r.Context()), body.GetBody())
+	comment, err := entity.NewComment(blog.Slug, uidFromContext(r.Context()), body.Body)
 	if err != nil {
 		writeValidationError(w, err)
 		return
@@ -187,7 +183,7 @@ func (s *Service) CreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeProto(w, http.StatusCreated, commentMessage(responses[0]))
+	writeJSON(w, http.StatusCreated, commentMessage(responses[0]))
 }
 
 // DeleteComment removes a comment. Who may is decided by the comment's own delete permission: its
@@ -198,13 +194,13 @@ func (s *Service) CreateComment(w http.ResponseWriter, r *http.Request) {
 // A caller who cannot read the post gets the post's own 404 (see requireReadableBlog), so a
 // stranger cannot probe a private thread for which ids exist; only once the thread is visible does
 // a failed check become the 403 it really is.
-func (s *Service) DeleteComment(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireReadableBlog(w, r)
+func (s *Service) DeleteComment(w http.ResponseWriter, r *http.Request, slug api.Slug, id api.CommentId) {
+	blog, ok := s.requireReadableBlog(w, r, slug)
 	if !ok {
 		return
 	}
 
-	comment, ok := s.commentFromPath(w, r, blog)
+	comment, ok := s.commentFromPath(w, r, blog, id)
 	if !ok {
 		return
 	}
@@ -234,13 +230,13 @@ func (s *Service) DeleteComment(w http.ResponseWriter, r *http.Request) {
 // Only the post's owner may, per the comment's moderation permission; a caller who cannot read the
 // post gets its 404 first, as with DeleteComment. Approving is idempotent, so approving a comment
 // that was never flagged, or never screened, simply records the owner's approval.
-func (s *Service) ApproveComment(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireReadableBlog(w, r)
+func (s *Service) ApproveComment(w http.ResponseWriter, r *http.Request, slug api.Slug, id api.CommentId) {
+	blog, ok := s.requireReadableBlog(w, r, slug)
 	if !ok {
 		return
 	}
 
-	comment, ok := s.commentFromPath(w, r, blog)
+	comment, ok := s.commentFromPath(w, r, blog, id)
 	if !ok {
 		return
 	}
@@ -272,5 +268,5 @@ func (s *Service) ApproveComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeProto(w, http.StatusOK, commentMessage(responses[0]))
+	writeJSON(w, http.StatusOK, commentMessage(responses[0]))
 }

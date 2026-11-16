@@ -1,0 +1,8 @@
+# Generates internal/api from the contract in packages/api. Run through `moon run packages/api:generate`,
+# which also generates the frontend's types; never edit internal/api by hand.
+package: api
+output: internal/api/api.gen.go
+generate:
+  models: true
+  std-http-server: true
+  embedded-spec: true

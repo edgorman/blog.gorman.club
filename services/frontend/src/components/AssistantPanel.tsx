@@ -67,10 +67,9 @@ export function AssistantPanel({ slug, title, content, onEdited }: Props) {
       .then((reply) => {
         setMessages((previous) => [...previous, ...reply.messages])
         setMessage('')
-        // reply.blog is optional because the wire says so (see `packages/protos/AGENTS.md`'s "Contract Layer") - the
-        // backend always sends one, but `updated` is the field that actually says whether it
-        // changed, so both are checked before adopting it.
-        if (reply.updated && reply.blog) onEdited({ title: reply.blog.title, content: reply.blog.content })
+        // `updated` says whether the assistant changed the post; only then is the editor's text
+        // replaced with what was stored.
+        if (reply.updated) onEdited({ title: reply.blog.title, content: reply.blog.content })
       })
       // The message is left in the box on failure: nothing was stored, so it is still theirs to send.
       .catch((e: unknown) => setError(errorMessage(e, 'The assistant could not be reached')))

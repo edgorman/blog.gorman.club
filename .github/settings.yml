@@ -76,12 +76,12 @@ branches:
           - changed
           - lint-check
           - test
-          - protos-drift
+          - api-drift
           - infrastructure-root
           - infrastructure-staging
           - infrastructure-prod
           - pr-title
-          - protos-breaking
+          - api-breaking
 
       # Stays false on purpose (#275): Claude Code opens PRs as @edgorman, GitHub never lets an
       # author approve their own PR, so the owner merges those with the admin override. Revisit

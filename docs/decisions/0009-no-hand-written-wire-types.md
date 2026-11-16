@@ -1,6 +1,6 @@
 # 9. No hand-written wire types, enforced in CI
 
-Status: Accepted
+Status: Superseded by [34](0034-openapi-is-the-api-contract.md)
 
 ## Context
 

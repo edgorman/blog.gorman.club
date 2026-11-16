@@ -35,15 +35,14 @@ jobs:
             exit 1
           fi
 
-  # buf breaking against main, unless the PR declares itself breaking, so a deliberate wire break
+  # oasdiff against main's spec, unless the PR declares itself breaking, so a deliberate wire break
   # also bumps major. In a merge queue the squash commit carries the PR title and body, so the
   # same markers are read from it.
-  protos-breaking:
+  api-breaking:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        # Full history and no blob:none filter: buf clones this checkout locally to read main's
-        # .proto files, and a partial clone can't serve the blobs it never fetched.
+        # Full history, so origin/main is there to read main's spec from.
         with:
           fetch-depth: 0
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
@@ -60,7 +59,7 @@ jobs:
           subject="${TITLE:-${BODY%%$'\n'*}}"
           re='^[a-z]+(\([^)]+\))?!:'
           if [[ "$subject" =~ $re ]] || grep -qE '^BREAKING[ -]CHANGE:' <<<"$BODY"; then
-            echo "Marked breaking; skipping buf breaking."
+            echo "Marked breaking; skipping the API breaking-change check."
             exit 0
           fi
-          moon ci packages/protos:breaking
+          moon ci packages/api:breaking

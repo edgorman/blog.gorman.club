@@ -1,0 +1,745 @@
+openapi: 3.0.3
+info:
+  title: blog.gorman.club API
+  description: |
+    The contract the backend serves and the frontend calls. Both generate from this file (see
+    packages/api/AGENTS.md): the backend's models and route table, and the frontend's types and
+    typed client. A route, parameter or body is changed here first.
+
+    Properties the server always sends are `required`; the backend emits every one of them, so a
+    client never has to guard a missing field. A property that is not required is one where
+    "absent" and "empty" mean different things to the server.
+  version: 1.0.0
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness and build information, for the GCP uptime check.
+      description: Same answer as /debug. The uptime check matches the literal `"status":"ok"`.
+      responses:
+        '200': { $ref: '#/components/responses/Debug' }
+
+  /debug:
+    get:
+      operationId: getDebug
+      summary: Liveness and build information.
+      responses:
+        '200': { $ref: '#/components/responses/Debug' }
+
+  /blogs:
+    get:
+      operationId: listBlogs
+      summary: One page of the posts the caller may read, newest first.
+      description: |
+        Anonymous callers see public posts; a signed-in caller also sees their own and those shared
+        with them. Filters and search only narrow the feed, never widen it. A search (`q`) answers
+        by meaning, most relevant first, as a single page; every other call continues a page by
+        sending the `createdAt` of the last post it held as `startAfter`.
+      security:
+        - bearerAuth: []
+          authProvider: []
+        - {}
+      parameters:
+        - name: limit
+          in: query
+          description: How many posts a page holds. The backend applies its own default and cap when omitted.
+          schema: { type: integer, minimum: 1 }
+        - name: startAfter
+          in: query
+          description: Continues a previous page - the `createdAt` of the last post the previous one held.
+          schema: { type: string, format: date-time }
+        - name: author
+          in: query
+          description: Narrows to one author's posts, by username. A name nobody holds answers an empty page.
+          schema: { type: string }
+        - name: tag
+          in: query
+          description: Narrows to one topic. Any spelling works; the backend normalizes it before matching.
+          schema: { type: string }
+        - name: q
+          in: query
+          description: |
+            Searches for posts about this, by meaning rather than by exact words. When the query
+            cannot be embedded, it falls back to posts holding the term in their title or body.
+          schema: { type: string }
+      responses:
+        '200':
+          description: A page of posts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BlogPage' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createBlog
+      summary: Write a new post owned by the caller.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      requestBody: { $ref: '#/components/requestBodies/BlogRequest' }
+      responses:
+        '201':
+          description: The created post.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Blog' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /blogs/{slug}:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      operationId: getBlog
+      summary: A single post, provided the caller may read it.
+      description: A post the caller may not read is a 404, never a 403, so a refusal does not confirm it exists.
+      security:
+        - bearerAuth: []
+          authProvider: []
+        - {}
+      responses:
+        '200':
+          description: The post.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Blog' }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      operationId: updateBlog
+      summary: Replace a post's client-settable fields. Only the owner may.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      requestBody: { $ref: '#/components/requestBodies/BlogRequest' }
+      responses:
+        '200':
+          description: The updated post.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Blog' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteBlog
+      summary: Remove a post. Only the owner may.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      responses:
+        '204': { description: The post is gone. }
+        default: { $ref: '#/components/responses/Error' }
+
+  /blogs/{slug}/related:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      operationId: relatedBlogs
+      summary: The posts nearest in meaning to one post, closest first.
+      description: Narrowed to what the caller may read. A fixed handful, not a feed.
+      security:
+        - bearerAuth: []
+          authProvider: []
+        - {}
+      responses:
+        '200':
+          description: The related posts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RelatedPosts' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /blogs/{slug}/chat:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      operationId: getChat
+      summary: The writing assistant's conversation about a post.
+      description: |
+        Needs the post's owner and the assistant entitlement. A post nobody has discussed answers
+        with an empty conversation.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      responses:
+        '200':
+          description: The conversation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatHistory' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: sendChatMessage
+      summary: Run one turn of the conversation.
+      description: |
+        The message goes to the model with the draft and the history, and whatever the model edits
+        is written back to the post. Metered on its own, much smaller, budget.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatRequest' }
+      responses:
+        '200':
+          description: Both sides of the exchange and the post as it now stands.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatReply' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteChat
+      summary: Throw the conversation away. The post is untouched.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      responses:
+        '204': { description: The conversation is gone. }
+        default: { $ref: '#/components/responses/Error' }
+
+  /blogs/{slug}/comments:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      operationId: listComments
+      summary: The comments on a post, oldest first.
+      description: Whoever may read a post may read its comments. Flagged ones are hidden from all but their author and the post's owner.
+      security:
+        - bearerAuth: []
+          authProvider: []
+        - {}
+      responses:
+        '200':
+          description: The thread.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommentThread' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createComment
+      summary: Add a comment to a post.
+      description: Published immediately and moderated afterwards.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCommentRequest' }
+      responses:
+        '201':
+          description: The created comment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /blogs/{slug}/comments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+      - $ref: '#/components/parameters/CommentId'
+    delete:
+      operationId: deleteComment
+      summary: Remove a comment, with its reactions. Its author or the post's owner may.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      responses:
+        '204': { description: The comment is gone. }
+        default: { $ref: '#/components/responses/Error' }
+
+  /blogs/{slug}/comments/{id}/moderation:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+      - $ref: '#/components/parameters/CommentId'
+    put:
+      operationId: approveComment
+      summary: Overrule the classifier, putting a flagged comment back in its thread.
+      description: Only the post's owner may. Idempotent.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      responses:
+        '200':
+          description: The approved comment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /blogs/{slug}/reactions:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      operationId: getReactions
+      summary: Every reaction on a post and on its comments, in one answer.
+      security:
+        - bearerAuth: []
+          authProvider: []
+        - {}
+      responses:
+        '200':
+          description: The page's reactions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageReactions' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /blogs/{slug}/reactions/{emoji}:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+      - $ref: '#/components/parameters/Emoji'
+    put:
+      operationId: putReaction
+      summary: Put the caller's reaction on a post. Addressed, not toggled, so a retry is harmless.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      responses:
+        '200':
+          description: The post's reactions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetReactions' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteReaction
+      summary: Take the caller's reaction back from a post.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      responses:
+        '200':
+          description: The post's reactions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetReactions' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /blogs/{slug}/comments/{id}/reactions/{emoji}:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+      - $ref: '#/components/parameters/CommentId'
+      - $ref: '#/components/parameters/Emoji'
+    put:
+      operationId: putCommentReaction
+      summary: Put the caller's reaction on a comment.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      responses:
+        '200':
+          description: The comment's reactions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetReactions' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteCommentReaction
+      summary: Take the caller's reaction back from a comment.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      responses:
+        '200':
+          description: The comment's reactions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetReactions' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /users/me:
+    get:
+      operationId: getCurrentUser
+      summary: The caller's own profile.
+      description: |
+        A client holds a credential, not a username: this is how it discovers the name it was given
+        at sign-up.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      responses:
+        '200':
+          description: The caller's profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentUser' }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      operationId: putUser
+      summary: Create or replace the caller's own profile.
+      description: |
+        201 the first time, 200 thereafter. The owner comes from the verified credential, so a caller
+        cannot name another profile to write.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCurrentUserRequest' }
+      responses:
+        '200':
+          description: The updated profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentUser' }
+        '201':
+          description: The created profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentUser' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteUser
+      summary: Erase the caller's account - every post and comment it wrote, then the profile.
+      security:
+        - bearerAuth: []
+          authProvider: []
+      responses:
+        '204': { description: The account is gone. }
+        default: { $ref: '#/components/responses/Error' }
+
+  /users/{username}:
+    get:
+      operationId: getUser
+      summary: The profile holding a username. Any caller may read any profile.
+      description: |
+        A 404 is also the answer to "is this name free?", so there is no separate availability route.
+      security:
+        - bearerAuth: []
+          authProvider: []
+        - {}
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        default: { $ref: '#/components/responses/Error' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: The ID token the provider issued, verified by the backend on every request.
+    authProvider:
+      type: apiKey
+      in: header
+      name: Authorization-Provider
+      description: Which provider issued the token. Only `google` is implemented.
+
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      description: The whole of a post's address, unique across every author.
+      schema: { type: string }
+    CommentId:
+      name: id
+      in: path
+      required: true
+      description: A comment's id, unique within its post.
+      schema: { type: string }
+    Emoji:
+      name: emoji
+      in: path
+      required: true
+      description: One of the five allowed reactions (see entity/emoji.go).
+      schema: { type: string }
+
+  requestBodies:
+    BlogRequest:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/BlogRequest' }
+
+  responses:
+    Debug:
+      description: The service is up.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/DebugResponse' }
+    Error:
+      description: Every non-2xx response has this body.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    Visibility:
+      type: string
+      enum: [public, private]
+      description: Who may read a post. The entity validates it too.
+
+    Blog:
+      type: object
+      description: |
+        A post as a client sees it. It is the wire shape, not the stored entity: `authorUsername` is
+        resolved on read, the owner's uid is never public, and the soft-delete marker has no field.
+      required: [slug, authorUsername, title, content, tags, visibility, allowedUserIds, createdAt, updatedAt]
+      properties:
+        slug:
+          type: string
+          description: |
+            The whole of the post's address, assigned once at creation and never revised. Unique
+            across every author, so it alone identifies a post.
+        authorUsername:
+          type: string
+          description: |
+            The owner's username, resolved on read. Empty for a post whose owner holds no profile.
+        title: { type: string }
+        content: { type: string }
+        tags:
+          type: array
+          description: |
+            The topics a post is filed under, normalized server-side. They narrow a feed and say
+            nothing about who may read it.
+          items: { type: string }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        allowedUserIds:
+          type: array
+          description: Who besides the owner may read a private post. Sent to the owner alone.
+          items: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    BlogPage:
+      type: object
+      description: One page of `GET /blogs`, newest first.
+      required: [posts, hasMore]
+      properties:
+        posts:
+          type: array
+          items: { $ref: '#/components/schemas/Blog' }
+        hasMore: { type: boolean }
+
+    RelatedPosts:
+      type: object
+      required: [posts]
+      properties:
+        posts:
+          type: array
+          items: { $ref: '#/components/schemas/Blog' }
+
+    BlogRequest:
+      type: object
+      description: |
+        The body of both `POST /blogs` and `PUT /blogs/{slug}`. The slug, owner and timestamps are
+        decided by the server, so none of them are here.
+      required: [title, content, tags, visibility, allowedUserIds]
+      properties:
+        title: { type: string }
+        content: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        allowedUserIds:
+          type: array
+          items: { type: string }
+
+    ChatRole:
+      type: string
+      enum: [user, assistant]
+      description: Who spoke. There is deliberately no system or tool role.
+
+    ChatEdit:
+      type: object
+      description: One change the assistant made to the post.
+      required: [tool, summary]
+      properties:
+        tool: { type: string }
+        summary: { type: string }
+
+    ChatMessage:
+      type: object
+      description: One turn of the conversation.
+      required: [role, content, edits, createdAt]
+      properties:
+        role: { $ref: '#/components/schemas/ChatRole' }
+        content: { type: string }
+        edits:
+          type: array
+          items: { $ref: '#/components/schemas/ChatEdit' }
+        createdAt: { type: string, format: date-time }
+
+    ChatHistory:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/ChatMessage' }
+
+    ChatRequest:
+      type: object
+      description: One message from the author, with whatever they have unsaved.
+      required: [message]
+      properties:
+        message: { type: string }
+        title:
+          type: string
+          description: The author's unsaved title. Omitted means the stored one.
+        content:
+          type: string
+          description: The author's unsaved body. Omitted means the stored one.
+
+    ChatReply:
+      type: object
+      description: |
+        One exchange: what was said on both sides, and the post as it now stands. The post comes
+        back whole because the assistant edits the author's live draft.
+      required: [messages, blog, updated]
+      properties:
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/ChatMessage' }
+        blog: { $ref: '#/components/schemas/Blog' }
+        updated:
+          type: boolean
+          description: Whether the assistant changed the post.
+
+    ModerationStatus:
+      type: string
+      enum: [approved, flagged]
+
+    CommentModeration:
+      type: object
+      description: The classifier's verdict, or the post owner's overruling of it.
+      required: [status, category]
+      properties:
+        status: { $ref: '#/components/schemas/ModerationStatus' }
+        category: { type: string }
+
+    Comment:
+      type: object
+      required: [id, blogSlug, authorUsername, body, createdAt]
+      properties:
+        id: { type: string }
+        blogSlug: { type: string }
+        authorUsername:
+          type: string
+          description: The commenter's username, resolved on read. Their uid is never public.
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+        moderation:
+          description: Present once the comment has been screened or overruled.
+          allOf:
+            - $ref: '#/components/schemas/CommentModeration'
+
+    CommentThread:
+      type: object
+      required: [comments]
+      properties:
+        comments:
+          type: array
+          items: { $ref: '#/components/schemas/Comment' }
+
+    CreateCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string }
+
+    ReactionCount:
+      type: object
+      required: [emoji, count, reacted]
+      properties:
+        emoji: { type: string }
+        count: { type: integer, format: int32 }
+        reacted:
+          type: boolean
+          description: Whether the caller is one of those who reacted. Always false when signed out.
+
+    TargetReactions:
+      type: object
+      required: [reactions]
+      properties:
+        reactions:
+          type: array
+          items: { $ref: '#/components/schemas/ReactionCount' }
+
+    PageReactions:
+      type: object
+      required: [post, comments]
+      properties:
+        post:
+          type: array
+          items: { $ref: '#/components/schemas/ReactionCount' }
+        comments:
+          type: object
+          description: Each comment's reactions, keyed by comment id.
+          additionalProperties: { $ref: '#/components/schemas/TargetReactions' }
+
+    User:
+      type: object
+      description: |
+        A profile as anybody may read it. The account's id is never public, so it has no field here.
+      required: [username, bio, createdAt, updatedAt]
+      properties:
+        username:
+          type: string
+          description: The whole of a profile's public identity - the handle it is looked up by and the name readers see.
+        bio: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CurrentUser:
+      type: object
+      description: The caller's own profile, which alone carries the account's id and entitlement.
+      required: [id, username, bio, createdAt, updatedAt, assistantEnabled]
+      properties:
+        id: { type: string }
+        username: { type: string }
+        bio: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        assistantEnabled:
+          type: boolean
+          description: Whether the caller may use the writing assistant.
+        subscribedUntil:
+          type: string
+          format: date-time
+          description: When the assistant subscription lapses. Absent without one.
+
+    UpdateCurrentUserRequest:
+      type: object
+      description: |
+        The body of `PUT /users/me` - the client-settable half of a profile. The id comes from the
+        verified token and the timestamps from the server.
+      properties:
+        username:
+          type: string
+          description: |
+            Omitted keeps the name the profile holds (or draws one for a new profile); an explicit
+            empty string is a name the backend rejects.
+        bio:
+          type: string
+          description: Omitted clears the bio.
+
+    ErrorResponse:
+      type: object
+      description: The body of every non-2xx response.
+      required: [error]
+      properties:
+        error: { type: string }
+
+    DebugResponse:
+      type: object
+      description: The Debug Endpoint Contract (docs/decisions/0031).
+      required: [status, timestamp, environment, commit]
+      properties:
+        status: { type: string }
+        timestamp: { type: string, format: date-time }
+        environment: { type: string }
+        commit: { type: string }

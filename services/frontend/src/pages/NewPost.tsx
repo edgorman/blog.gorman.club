@@ -35,7 +35,7 @@ export function NewPost() {
     setPublishing(true)
     setError(null)
     api
-      .createBlog({ title, content: markdown, tags: parseTags(tags), visibility })
+      .createBlog({ title, content: markdown, tags: parseTags(tags), visibility, allowedUserIds: [] })
       .then(setPublished)
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to publish')))
       .finally(() => setPublishing(false))

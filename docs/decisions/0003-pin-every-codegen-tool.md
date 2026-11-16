@@ -1,6 +1,6 @@
 # 3. Every codegen tool is pinned exactly
 
-Status: Accepted
+Status: Superseded by [34](0034-openapi-is-the-api-contract.md)
 
 ## Context
 

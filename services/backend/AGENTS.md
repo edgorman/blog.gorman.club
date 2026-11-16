@@ -18,7 +18,7 @@ The Go backend on Cloud Run, plus the event worker. `README.md` here has the API
 ## Reader Engagement
 
 - Comments and reactions are stored under their post and follow the post's read rules ([13](../../docs/decisions/0013-one-access-policy-table.md)).
-- Reactions are the five `entity.AllowedEmojis`, addressed with `PUT`/`DELETE`, never toggled ([8](../../docs/decisions/0008-allowed-emojis-stay-literals.md)).
+- Reactions are the five `entity.AllowedEmojis`, addressed with `PUT`/`DELETE`, never toggled ([34](../../docs/decisions/0034-openapi-is-the-api-contract.md)).
 
 ## Finding Posts
 

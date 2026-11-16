@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ func TestDebug(t *testing.T) {
 	s := newTestService(nil, nil)
 
 	rec := httptest.NewRecorder()
-	s.Debug(rec, httptest.NewRequest(http.MethodGet, "/debug", nil))
+	s.GetDebug(rec, httptest.NewRequest(http.MethodGet, "/debug", nil))
 
 	res := rec.Result()
 	if res.StatusCode != http.StatusOK {
@@ -24,8 +25,19 @@ func TestDebug(t *testing.T) {
 		t.Fatalf("Content-Type = %q, want %q", ct, "application/json")
 	}
 
-	var body debugResponse
-	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+	// The GCP uptime check matches this literal substring, so it is asserted against the raw body.
+	if !strings.Contains(rec.Body.String(), `"status":"ok"`) {
+		t.Errorf("body = %s, want it to contain %q", rec.Body.String(), `"status":"ok"`)
+	}
+
+	// Spelled out here rather than decoded into api.DebugResponse, so a rename in the contract fails.
+	var body struct {
+		Status      string `json:"status"`
+		Timestamp   string `json:"timestamp"`
+		Environment string `json:"environment"`
+		Commit      string `json:"commit"`
+	}
+	if err := json.NewDecoder(strings.NewReader(rec.Body.String())).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 

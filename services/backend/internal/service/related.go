@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/api"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
-	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
@@ -24,8 +24,8 @@ const (
 // read it, exactly as a feed page is filtered, so a private post never surfaces here for someone
 // who could not have opened it. A post the worker has not embedded yet has no neighbours, which is
 // an empty list rather than an error.
-func (s *Service) RelatedBlogs(w http.ResponseWriter, r *http.Request) {
-	blog, ok := s.requireReadableBlog(w, r)
+func (s *Service) RelatedBlogs(w http.ResponseWriter, r *http.Request, slug api.Slug) {
+	blog, ok := s.requireReadableBlog(w, r, slug)
 	if !ok {
 		return
 	}
@@ -75,9 +75,5 @@ func (s *Service) RelatedBlogs(w http.ResponseWriter, r *http.Request) {
 		internalError()
 		return
 	}
-	posts := make([]*blogv1.Blog, 0, len(responses))
-	for _, response := range responses {
-		posts = append(posts, blogMessage(response))
-	}
-	writeProto(w, http.StatusOK, &blogv1.RelatedPosts{Posts: posts})
+	writeJSON(w, http.StatusOK, api.RelatedPosts{Posts: blogMessages(responses)})
 }

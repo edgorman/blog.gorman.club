@@ -47,10 +47,7 @@ export function EditPost() {
         setTitle(post.title)
         setMarkdown(post.content)
         setTags(formatTags(post.tags))
-        // The wire only guarantees "public" or "private" (entity.Visibility.Valid() rejects
-        // anything else); the proto field itself is a plain string, so that guarantee is not
-        // something the generated type can carry - see api.ts's Visibility.
-        setVisibility(post.visibility as Visibility)
+        setVisibility(post.visibility)
       })
       .catch((e: unknown) => {
         if (!current) return

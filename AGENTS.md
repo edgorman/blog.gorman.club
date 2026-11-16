@@ -2,7 +2,7 @@
 
 Repo-wide rules for Claude Code, other coding agents and contributors. Each area has its own `AGENTS.md`, loaded when working on files under it:
 
-- `packages/protos/AGENTS.md` - the wire contract: buf, codegen, protojson, ts-proto.
+- `packages/api/AGENTS.md` - the wire contract: the OpenAPI spec and the code generated from it.
 - `services/backend/AGENTS.md` - the assistant, access control, engagement, search, caching, the worker.
 - `infrastructure/AGENTS.md` - GCP projects, IAM/WIF, artifact stores and retention, monitoring.
 - `.github/AGENTS.md` - moon, CI/CD, versioning, deploys, releases, rollback.
@@ -18,7 +18,7 @@ A trunk-based monorepo: a static frontend, containerized backend services, Terra
 - `infrastructure/` - Terraform. `env` is applied per environment with `config/staging` and `config/prod`; `root` holds shared, bootstrapped resources.
 - `services/backend/` - Go API for Cloud Run. `cmd/worker` is a second binary in the same module, its own moon project (`worker`), image and service.
 - `services/frontend/` - Vite/React app on Cloudflare Pages.
-- `packages/protos/` - the `.proto` contract both services generate from.
+- `packages/api/` - the OpenAPI contract both services generate from.
 - `.github/` - workflows, composite actions (`actions/`), and `settings.yml` (repository settings and rulesets, applied by the Probot Settings app).
 - `docs/` - [`start-here.md`](docs/start-here.md) and the decision records.
 
@@ -35,8 +35,8 @@ go test ./... && go vet ./... && gofmt -l .
 # Frontend (services/frontend)
 npm test && npm run lint && npm run build
 
-# Protos (packages/protos) - commit the regenerated internal/gen and src/gen alongside the .proto
-buf lint && buf format -d --exit-code && buf generate
+# API contract - commit the regenerated internal/api and src/gen alongside openapi.yaml
+moon run packages/api:generate
 
 # Infrastructure
 terraform fmt -check -recursive infrastructure
@@ -65,9 +65,9 @@ Two project skills in `.claude/skills/` cover issue to merged PR: `implement-iss
 ## Rules
 
 - **Never run apply/deploy by hand.** `terraform apply`, `gcloud run deploy`, `wrangler` and the like go through the workflows (`.github/AGENTS.md`); `.claude/settings.json` denies them to Claude Code.
-- **Never hand-edit `services/backend/internal/gen` or `services/frontend/src/gen`.** Change the `.proto`, run `buf generate`, commit both (`packages/protos/AGENTS.md`).
-- **Protos model the wire, not the domain or the datastore** (`packages/protos/AGENTS.md`).
-- **No hand-written wire types.** No `export interface` in `api.ts`, no `json:"..."` tags in `internal/service` outside `debug.go`; CI enforces both (`packages/protos/AGENTS.md`).
+- **Never hand-edit `services/backend/internal/api` or `services/frontend/src/gen`.** Change `packages/api/openapi.yaml`, run `moon run packages/api:generate`, commit all three (`packages/api/AGENTS.md`).
+- **The spec models the wire, not the domain or the datastore** (`packages/api/AGENTS.md`).
+- **No hand-written wire types.** No `export interface` in `api.ts`, no `json:"..."` tags in `internal/service`; CI enforces both (`packages/api/AGENTS.md`).
 - **Every new resource or action needs a line in the access policy table** (`services/backend/internal/entity/access.go`); an undeclared pair is refused (`services/backend/AGENTS.md`).
 - **Images and bundles are never rebuilt for production.** Prod deploys the commit-SHA artifact already in its own store (`.github/AGENTS.md`).
 - **Never add a manifest at the repository root** (Repository Structure above).

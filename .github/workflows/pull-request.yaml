@@ -75,9 +75,9 @@ jobs:
   #   inherited `terraform fmt -check` and `terraform validate` (.moon/tasks/terraform.yml);
   #   `:validate` is `runInCI: 'only'`, so this is the one place it runs at all.
   # - test: every project's tests (a shared package still reaches its dependents via each test
-  #   task's own `inputs`, e.g. `project://packages/protos`, #155) plus both images, so a broken
+  #   task's own `inputs`, e.g. `project://packages/api`) plus both images, so a broken
   #   image build fails the PR rather than the job that publishes it.
-  # - protos-drift: packages/protos:drift (#194), `buf generate` re-run and diffed.
+  # - api-drift: packages/api:drift, both generators re-run and diffed.
   moon:
     name: ${{ matrix.check }}
     strategy:
@@ -85,11 +85,11 @@ jobs:
       matrix:
         include:
           - check: lint-check
-            targets: ':format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync'
+            targets: ':format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync root:decision-links'
           - check: test
             targets: ':test services/backend:image worker:image'
-          - check: protos-drift
-            targets: 'packages/protos:drift'
+          - check: api-drift
+            targets: 'packages/api:drift'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

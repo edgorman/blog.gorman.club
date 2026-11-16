@@ -20,7 +20,7 @@ func (f *commentFixture) approve(uid, id string) *httptest.ResponseRecorder {
 	}
 
 	rec := httptest.NewRecorder()
-	f.service.ApproveComment(rec, req)
+	routed(f.service).ServeHTTP(rec, req)
 	return rec
 }
 

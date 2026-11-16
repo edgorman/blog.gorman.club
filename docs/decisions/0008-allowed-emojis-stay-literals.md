@@ -1,6 +1,6 @@
 # 8. The allowed emoji stay as literals on both sides
 
-Status: Accepted
+Status: Superseded by [34](0034-openapi-is-the-api-contract.md)
 
 ## Context
 

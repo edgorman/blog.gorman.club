@@ -26,9 +26,7 @@ function FeedRow({ post, delayMs }: { post: Blog; delayMs: number }) {
   const body = (
     <>
       <div className="feed-row-meta">
-        {/* Optional because the wire says so: createdAt is a google.protobuf.Timestamp, and
-            protojson may leave a message field out of the body - see api.ts's Blog. */}
-        {post.createdAt && <span className="text-muted feed-row-date">{formatDate(post.createdAt)}</span>}
+        <span className="text-muted feed-row-date">{formatDate(post.createdAt)}</span>
         {author && <span className="text-muted feed-row-author">{author}</span>}
         {post.visibility === 'private' && <span className="tag tag-outline">private</span>}
       </div>

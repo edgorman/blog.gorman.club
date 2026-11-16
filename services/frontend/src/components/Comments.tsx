@@ -129,11 +129,7 @@ export function Comments({ slug, ownerUsername, reactions }: Props) {
                 ) : (
                   <span className="comment-author">{name}</span>
                 )}
-                {/* Optional because the wire says so: createdAt is a google.protobuf.Timestamp, and
-                    protojson may omit a message field even though the server always sets one. */}
-                {comment.createdAt && (
-                  <span className="text-muted comment-date">{formatDate(comment.createdAt)}</span>
-                )}
+                <span className="text-muted comment-date">{formatDate(comment.createdAt)}</span>
                 {flagged && (
                   <>
                     <span className="comment-flagged">Flagged: {comment.moderation?.category}</span>

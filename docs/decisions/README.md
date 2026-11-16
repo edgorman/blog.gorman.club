@@ -5,15 +5,15 @@ One file per decision: its context, the decision, and its consequences. The rule
 | # | Decision | Area |
 | --- | --- | --- |
 | [1](0001-manifests-live-with-their-code.md) | Manifests live with their code | repo |
-| [2](0002-generated-code-is-committed.md) | Generated code is committed, next to its consumer | protos |
-| [3](0003-pin-every-codegen-tool.md) | Every codegen tool is pinned exactly | protos |
-| [4](0004-ts-proto-options.md) | ts-proto options | protos |
-| [5](0005-protos-model-the-wire.md) | Protos model the wire | protos |
-| [6](0006-protojson-settings.md) | protojson settings | protos |
-| [7](0007-visibility-is-a-string.md) | Visibility is a string, not an enum | protos |
-| [8](0008-allowed-emojis-stay-literals.md) | Allowed emoji stay as literals | protos |
-| [9](0009-no-hand-written-wire-types.md) | No hand-written wire types | protos |
-| [10](0010-wire-changes-across-releases.md) | Wire changes across the release window | protos |
+| [2](0002-generated-code-is-committed.md) | Generated code is committed, next to its consumer | protos (superseded by 34) |
+| [3](0003-pin-every-codegen-tool.md) | Every codegen tool is pinned exactly | protos (superseded by 34) |
+| [4](0004-ts-proto-options.md) | ts-proto options | protos (superseded by 34) |
+| [5](0005-protos-model-the-wire.md) | Protos model the wire | protos (superseded by 34) |
+| [6](0006-protojson-settings.md) | protojson settings | protos (superseded by 34) |
+| [7](0007-visibility-is-a-string.md) | Visibility is a string, not an enum | protos (superseded by 34) |
+| [8](0008-allowed-emojis-stay-literals.md) | Allowed emoji stay as literals | protos (superseded by 34) |
+| [9](0009-no-hand-written-wire-types.md) | No hand-written wire types | protos (superseded by 34) |
+| [10](0010-wire-changes-across-releases.md) | Wire changes across the release window | protos (superseded by 34) |
 | [11](0011-assistant-on-agent-platform.md) | The assistant uses the Agent Platform, no API key | backend |
 | [12](0012-assistant-entitlement-is-a-subscription.md) | The assistant is a subscription, rate limited | backend |
 | [13](0013-one-access-policy-table.md) | One access policy table | backend |
@@ -37,3 +37,5 @@ One file per decision: its context, the decision, and its consequences. The rule
 | [31](0031-debug-endpoint-contract.md) | The debug endpoint contract | backend |
 | [32](0032-apply-saved-plans.md) | Applies use the plan already shown | ci |
 | [33](0033-build-only-what-changed.md) | Build only what changed, reuse the rest | ci |
+| [34](0034-openapi-is-the-api-contract.md) | OpenAPI is the API contract | api |
+| [35](0035-advisory-security-scanning.md) | Security scanning is advisory | ci |

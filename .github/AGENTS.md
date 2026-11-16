@@ -9,11 +9,13 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 - Shared steps live in composite actions under `.github/actions/`.
 - Applies run the saved plan for their tree from `plans/<env>/` in the state bucket, falling back to planning on the spot when it is missing or stale. Pass `plan_dir` to both Terraform actions; never save a plan as a workflow artifact ([32](../docs/decisions/0032-apply-saved-plans.md)).
 
+- `security.yaml` is advisory: its scanners report in the job summary and never fail a run or gate a merge; a scanner that cannot run does fail ([35](../docs/decisions/0035-advisory-security-scanning.md)).
+
 ### Building with moon
 
 - Every folder under `services/` or `packages/` needs a `moon.yml`; `root:projects-covered` fails otherwise ([19](../docs/decisions/0019-hand-declared-moon-graph.md)).
 - Declare `dependsOn` by hand. Affected detection is changed files only, so a task that must react to another project lists it in `inputs` (`project://...`) ([19](../docs/decisions/0019-hand-declared-moon-graph.md)).
-- Keep `moon ci`'s targets split one-to-one with the required jobs (`lint-check`, `test`, `protos-drift`; `pr-title` and `protos-breaking` in `conventions.yaml`) ([19](../docs/decisions/0019-hand-declared-moon-graph.md)).
+- Keep `moon ci`'s targets split one-to-one with the required jobs (`lint-check`, `test`, `api-drift`; `pr-title` and `api-breaking` in `conventions.yaml`) ([19](../docs/decisions/0019-hand-declared-moon-graph.md)).
 - `deploy-{root,staging,prod}:plan` are `noop` markers whose `inputs` decide which environments a diff reaches. List every workflow and action an environment uses in its marker, and never set `runInCI: false` on one ([20](../docs/decisions/0020-deploy-markers.md)).
 - Pin tool versions only in `.prototools`; keep its `go` pin, `go.mod` and the Dockerfile image in step ([21](../docs/decisions/0021-prototools-pins-the-toolchain.md)).
 - No remote cache ([18](../docs/decisions/0018-moon-replaced-pants.md)).

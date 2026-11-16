@@ -1,6 +1,6 @@
 # 2. Generated code is committed, next to the code that uses it
 
-Status: Accepted
+Status: Superseded by [34](0034-openapi-is-the-api-contract.md)
 
 ## Context
 

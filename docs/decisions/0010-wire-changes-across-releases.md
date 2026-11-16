@@ -1,6 +1,6 @@
 # 10. Wire changes across the release window
 
-Status: Accepted
+Status: Superseded by [34](0034-openapi-is-the-api-contract.md)
 
 ## Context
 

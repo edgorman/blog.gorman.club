@@ -1,0 +1,140 @@
+name: 'Security'
+
+# Advisory scanning (decision 33): every scanner reports what it finds in the job summary and as a
+# warning, and none of them fails a run or is a required check. A scanner that cannot run at all
+# does fail (.github/scripts/advisory.sh). Everything here is an open-source CLI run as an ordinary
+# job, so it works on any plan; code scanning and secret scanning from GitHub need a paid one.
+on:
+  pull_request:
+    branches:
+      - main
+  # New advisories land without a commit, so main is scanned weekly too.
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+          cache: false # decision 35
+      - name: Install scanners
+        run: |
+          # renovate: datasource=go depName=golang.org/x/vuln
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          # renovate: datasource=go depName=github.com/securego/gosec/v2
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: govulncheck
+        working-directory: services/backend
+        run: ../../.github/scripts/advisory.sh govulncheck 3 govulncheck ./...
+      - name: gosec
+        working-directory: services/backend
+        # -no-fail: gosec exits 0 whatever it finds, so only a failure to run fails the step.
+        run: ../../.github/scripts/advisory.sh gosec 1 gosec -no-fail ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+      - name: npm audit
+        working-directory: services/frontend
+        run: ../../.github/scripts/advisory.sh 'npm audit' 1 npm audit --omit=dev
+
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+          cache: false # decision 35
+      - name: Install scanners
+        run: |
+          # renovate: datasource=go depName=github.com/rhysd/actionlint
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          # renovate: datasource=pypi depName=zizmor
+          pip install --user zizmor==1.32.0
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: actionlint
+        run: .github/scripts/advisory.sh actionlint 1 actionlint
+      - name: zizmor
+        # --no-exit-codes: zizmor otherwise exits 10-14 by severity of what it found.
+        run: .github/scripts/advisory.sh zizmor 1 zizmor --no-exit-codes .github
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+          cache: false # decision 35
+      - name: Install tflint
+        run: |
+          # renovate: datasource=go depName=github.com/terraform-linters/tflint
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/terraform-linters/tflint@v0.66.0
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: tflint
+        working-directory: infrastructure
+        run: ../.github/scripts/advisory.sh tflint 2 tflint --recursive
+      - name: trivy config
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: infrastructure
+          # Advisory: report, never fail.
+          exit-code: '0'
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build the backend image
+        run: docker build -t backend:scan services/backend
+      - name: trivy image
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: backend:scan
+          # Advisory: report, never fail.
+          exit-code: '0'
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+          cache: false # decision 35
+      - name: Install gitleaks
+        run: |
+          # renovate: datasource=go depName=github.com/zricethezav/gitleaks/v8
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/zricethezav/gitleaks/v8@v8.30.1
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: gitleaks
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          # A PR is scanned for what it adds; main, in full. --exit-code 2 keeps "found a leak"
+          # apart from the tool failing, which exits 1.
+          range=()
+          if [ "$EVENT" = pull_request ]; then range=(--log-opts "origin/main..HEAD"); fi
+          .github/scripts/advisory.sh gitleaks 2 gitleaks detect --no-banner --redact --exit-code 2 "${range[@]}"

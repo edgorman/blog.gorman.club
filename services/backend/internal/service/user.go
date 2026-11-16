@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"google.golang.org/protobuf/types/known/timestamppb"
-
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/api"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
-	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
 
@@ -21,15 +19,15 @@ const usernameAttempts = 5
 // applyUpdate validates every field of an update through the entity's setters before touching
 // user. An omitted username leaves whatever the profile already holds in place, so a client
 // editing only its bio keeps the name it was given at sign-up without having to echo it back -
-// which is what the request message's `optional username` buys and a bare string could not.
-func applyUpdate(req *blogv1.UpdateCurrentUserRequest, user *entity.User) error {
+// which is what the request's optional `username` buys and a bare string could not.
+func applyUpdate(req *api.UpdateCurrentUserRequest, user *entity.User) error {
 	candidate := *user
 	if req.Username != nil {
-		if err := candidate.SetUsername(req.GetUsername()); err != nil {
+		if err := candidate.SetUsername(*req.Username); err != nil {
 			return err
 		}
 	}
-	if err := candidate.SetBio(req.GetBio()); err != nil {
+	if err := candidate.SetBio(deref(req.Bio)); err != nil {
 		return err
 	}
 
@@ -38,13 +36,13 @@ func applyUpdate(req *blogv1.UpdateCurrentUserRequest, user *entity.User) error 
 }
 
 // userMessage is the public profile as anybody may read it. SubscribedUntil is absent from
-// blogv1.User entirely rather than skipped here, so a lookup cannot disclose it by oversight.
-func userMessage(user entity.User) *blogv1.User {
-	return &blogv1.User{
+// api.User entirely rather than skipped here, so a lookup cannot disclose it by oversight.
+func userMessage(user entity.User) api.User {
+	return api.User{
 		Username:  user.Username,
 		Bio:       user.Bio,
-		CreatedAt: timestamppb.New(user.CreatedAt),
-		UpdatedAt: timestamppb.New(user.UpdatedAt),
+		CreatedAt: user.CreatedAt.UTC(),
+		UpdatedAt: user.UpdatedAt.UTC(),
 	}
 }
 
@@ -57,20 +55,20 @@ func userMessage(user entity.User) *blogv1.User {
 // the caller a client has just identified, and because it belongs nowhere else: a public profile
 // must not disclose who has the assistant. SubscribedUntil travels the same way - an account may
 // see when its own paid access runs out, and nobody else's lookup ever carries it.
-func (s *Service) currentUser(user entity.User) *blogv1.CurrentUser {
-	message := &blogv1.CurrentUser{
+func (s *Service) currentUser(user entity.User) api.CurrentUser {
+	message := api.CurrentUser{
 		Id:               user.ID,
 		Username:         user.Username,
 		Bio:              user.Bio,
-		CreatedAt:        timestamppb.New(user.CreatedAt),
-		UpdatedAt:        timestamppb.New(user.UpdatedAt),
+		CreatedAt:        user.CreatedAt.UTC(),
+		UpdatedAt:        user.UpdatedAt.UTC(),
 		AssistantEnabled: s.cfg.AssistantEntitlement.Permission(entity.ActionUpdate, user).Allows(user.ID),
 	}
-	// Left nil for an account that has never subscribed, so the field stays absent from the body
-	// rather than arriving as null - which is what it does today and what EmitDefaultValues
-	// preserves (see writeProto).
+	// Left nil for an account that has never subscribed, so the field is omitted from the body
+	// rather than arriving as null.
 	if user.SubscribedUntil != nil {
-		message.SubscribedUntil = timestamppb.New(*user.SubscribedUntil)
+		until := user.SubscribedUntil.UTC()
+		message.SubscribedUntil = &until
 	}
 	return message
 }
@@ -89,7 +87,7 @@ func (s *Service) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeProto(w, http.StatusOK, s.currentUser(user))
+	writeJSON(w, http.StatusOK, s.currentUser(user))
 }
 
 // GetUser returns the profile holding a username. Any caller, signed in or not, may read any
@@ -98,11 +96,11 @@ func (s *Service) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 //
 // A 404 from here is also the answer to "is this name free?", so no separate availability endpoint
 // is needed; profiles are public either way, so it discloses nothing a lookup would not.
-func (s *Service) GetUser(w http.ResponseWriter, r *http.Request) {
+func (s *Service) GetUser(w http.ResponseWriter, r *http.Request, username string) {
 	// Validating first answers a malformed name with the rule it broke, rather than with the 404
 	// that looking it up would produce for it.
 	var candidate entity.User
-	if err := candidate.SetUsername(r.PathValue("username")); err != nil {
+	if err := candidate.SetUsername(username); err != nil {
 		writeValidationError(w, err)
 		return
 	}
@@ -117,7 +115,7 @@ func (s *Service) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeProto(w, http.StatusOK, userMessage(user))
+	writeJSON(w, http.StatusOK, userMessage(user))
 }
 
 // saveUser writes the profile through put (Put, or Create for a profile that must be new), naming it first when it has none - which is every profile at
@@ -151,8 +149,8 @@ func (s *Service) saveUser(ctx context.Context, user entity.User, put func(conte
 func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 	id := uidFromContext(r.Context())
 
-	var body blogv1.UpdateCurrentUserRequest
-	if !readProto(w, r, &body) {
+	var body api.UpdateCurrentUserRequest
+	if !readJSON(w, r, &body) {
 		return
 	}
 
@@ -185,7 +183,7 @@ func (s *Service) PutUser(w http.ResponseWriter, r *http.Request) {
 	}
 	// The same shape GetCurrentUser answers with, so a client that has just created its profile
 	// learns what it may do without a second request.
-	writeProto(w, status, s.currentUser(saved))
+	writeJSON(w, status, s.currentUser(saved))
 }
 
 // DeleteUser erases the caller's account: every post it wrote (with the comments, reactions and

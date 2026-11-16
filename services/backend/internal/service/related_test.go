@@ -51,7 +51,9 @@ type wireRelatedPosts struct {
 func related(t *testing.T, s *Service, slug, uid string) (int, []string) {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	s.RelatedBlogs(rec, withUID(blogPathRequest(http.MethodGet, slug, nil), uid))
+	req := blogPathRequest(http.MethodGet, slug, nil)
+	req.URL.Path += "/related"
+	routed(s).ServeHTTP(rec, withUID(req, uid))
 	if rec.Code != http.StatusOK {
 		return rec.Code, nil
 	}

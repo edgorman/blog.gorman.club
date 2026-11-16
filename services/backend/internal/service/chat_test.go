@@ -15,10 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
+	"github.com/edgorman/blog.gorman.club/services/backend/internal/api"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/entity"
-	blogv1 "github.com/edgorman/blog.gorman.club/services/backend/internal/gen/blog/v1"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/logging"
 	"github.com/edgorman/blog.gorman.club/services/backend/internal/repository"
 )
@@ -83,23 +81,22 @@ func chatRequestFor(method string, body io.Reader) *http.Request {
 	return withUID(req, chatOwner)
 }
 
-// chatRequestBody marshals a chat turn the way a real client would, through protojson rather than
-// encoding/json - see blogRequestBody (blog_test.go) for why.
-func chatRequestBody(t *testing.T, body *blogv1.ChatRequest) []byte {
+// chatRequestBody marshals a chat turn the way a real client would, with encoding/json.
+func chatRequestBody(t *testing.T, body *api.ChatRequest) []byte {
 	t.Helper()
 
-	encoded, err := protojson.Marshal(body)
+	encoded, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("encode body: %v", err)
 	}
 	return encoded
 }
 
-func (f *chatFixture) send(t *testing.T, body *blogv1.ChatRequest) *httptest.ResponseRecorder {
+func (f *chatFixture) send(t *testing.T, body *api.ChatRequest) *httptest.ResponseRecorder {
 	t.Helper()
 
 	rec := httptest.NewRecorder()
-	f.service.SendChatMessage(rec, chatRequestFor(http.MethodPost, bytes.NewReader(chatRequestBody(t, body))))
+	routed(f.service).ServeHTTP(rec, chatRequestFor(http.MethodPost, bytes.NewReader(chatRequestBody(t, body))))
 	return rec
 }
 
@@ -164,7 +161,7 @@ func TestSendChatMessage_AppliesEdits(t *testing.T) {
 		}, nil
 	}
 
-	rec := f.send(t, &blogv1.ChatRequest{Message: "say dog instead"})
+	rec := f.send(t, &api.ChatRequest{Message: "say dog instead"})
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -206,7 +203,7 @@ func TestSendChatMessage_AppliesEdits(t *testing.T) {
 func TestSendChatMessage_UsesSuppliedDraft(t *testing.T) {
 	f := newChatFixture(t)
 
-	f.send(t, &blogv1.ChatRequest{Message: "any thoughts?", Title: ptr("Unsaved title"), Content: ptr("unsaved body")})
+	f.send(t, &api.ChatRequest{Message: "any thoughts?", Title: ptr("Unsaved title"), Content: ptr("unsaved body")})
 
 	if len(f.assistant.requests) != 1 {
 		t.Fatalf("assistant called %d times, want 1", len(f.assistant.requests))
@@ -221,7 +218,7 @@ func TestSendChatMessage_UsesSuppliedDraft(t *testing.T) {
 func TestSendChatMessage_DefaultsToStoredDraft(t *testing.T) {
 	f := newChatFixture(t)
 
-	f.send(t, &blogv1.ChatRequest{Message: "any thoughts?"})
+	f.send(t, &api.ChatRequest{Message: "any thoughts?"})
 
 	draft := f.assistant.requests[0].Draft
 	if draft.Title != "Hello" || draft.Content != "the cat sat" {
@@ -237,7 +234,7 @@ func TestSendChatMessage_WithoutEditsDoesNotWrite(t *testing.T) {
 		return repository.AssistantReply{Text: "It reads well.", Draft: req.Draft}, nil
 	}
 
-	rec := f.send(t, &blogv1.ChatRequest{Message: "is it ok?", Content: ptr("unsaved body")})
+	rec := f.send(t, &api.ChatRequest{Message: "is it ok?", Content: ptr("unsaved body")})
 
 	got := decodeChatReply(t, rec)
 	if got.Updated {
@@ -261,7 +258,7 @@ func TestSendChatMessage_NoOpEditDoesNotWrite(t *testing.T) {
 		}, nil
 	}
 
-	got := decodeChatReply(t, f.send(t, &blogv1.ChatRequest{Message: "rewrite it"}))
+	got := decodeChatReply(t, f.send(t, &api.ChatRequest{Message: "rewrite it"}))
 
 	if got.Updated {
 		t.Error("Updated = true, want false - the draft came back identical")
@@ -277,7 +274,7 @@ func TestSendChatMessage_SendsHistory(t *testing.T) {
 		Messages: []entity.ChatMessage{{Role: entity.ChatRoleUser, Content: "add an intro"}},
 	})
 
-	f.send(t, &blogv1.ChatRequest{Message: "make that shorter"})
+	f.send(t, &api.ChatRequest{Message: "make that shorter"})
 
 	history := f.assistant.requests[0].History
 	if len(history) != 1 || history[0].Content != "add an intro" {
@@ -293,7 +290,7 @@ func TestSendChatMessage_ProviderFailureStoresNothing(t *testing.T) {
 		return repository.AssistantReply{}, errors.New("gemini returned 503")
 	}
 
-	rec := f.send(t, &blogv1.ChatRequest{Message: "rewrite it", Content: ptr("unsaved body")})
+	rec := f.send(t, &api.ChatRequest{Message: "rewrite it", Content: ptr("unsaved body")})
 
 	if rec.Result().StatusCode != http.StatusBadGateway {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusBadGateway)
@@ -336,7 +333,7 @@ func TestSendChatMessage_DoesNotRevertAWriteMadeDuringTheTurn(t *testing.T) {
 				return repository.AssistantReply{Draft: draft, Edits: []entity.ChatEdit{{Tool: "replace_text"}}}, nil
 			}
 
-			rec := f.send(t, &blogv1.ChatRequest{Message: "say dog instead"})
+			rec := f.send(t, &api.ChatRequest{Message: "say dog instead"})
 
 			if code := rec.Result().StatusCode; code != http.StatusConflict && code != http.StatusNotFound {
 				t.Fatalf("status = %d, want 409 or 404", code)
@@ -359,7 +356,7 @@ func TestSendChatMessage_Unconfigured(t *testing.T) {
 		return repository.AssistantReply{}, repository.ErrAssistantNotConfigured
 	}
 
-	rec := f.send(t, &blogv1.ChatRequest{Message: "rewrite it"})
+	rec := f.send(t, &api.ChatRequest{Message: "rewrite it"})
 
 	if rec.Result().StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusServiceUnavailable)
@@ -373,7 +370,7 @@ func TestSendChatMessage_SilentReply(t *testing.T) {
 		return repository.AssistantReply{Draft: req.Draft}, nil
 	}
 
-	got := decodeChatReply(t, f.send(t, &blogv1.ChatRequest{Message: "..."}))
+	got := decodeChatReply(t, f.send(t, &api.ChatRequest{Message: "..."}))
 
 	if got.Messages[1].Content == "" {
 		t.Error("the assistant's turn is empty, want a stand-in reply")
@@ -384,7 +381,7 @@ func TestSendChatMessage_RejectsEmptyMessage(t *testing.T) {
 	f := newChatFixture(t)
 
 	for _, message := range []string{"", "   ", strings.Repeat("a", entity.MaxChatMessageLength+1)} {
-		rec := f.send(t, &blogv1.ChatRequest{Message: message})
+		rec := f.send(t, &api.ChatRequest{Message: message})
 
 		if rec.Result().StatusCode != http.StatusBadRequest {
 			t.Errorf("status for %d-character message = %d, want %d",
@@ -401,7 +398,7 @@ func TestSendChatMessage_RejectsEmptyMessage(t *testing.T) {
 func TestSendChatMessage_NotSubscribed(t *testing.T) {
 	f := newChatFixture(t, false)
 
-	rec := f.send(t, &blogv1.ChatRequest{Message: "rewrite it"})
+	rec := f.send(t, &api.ChatRequest{Message: "rewrite it"})
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
@@ -417,10 +414,10 @@ func TestSendChatMessage_NotSubscribed(t *testing.T) {
 func TestSendChatMessage_NotOwner(t *testing.T) {
 	f := newChatFixture(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/blogs/"+chatSlug+"/chat", bytes.NewReader(chatRequestBody(t, &blogv1.ChatRequest{Message: "hi"})))
+	req := httptest.NewRequest(http.MethodPost, "/blogs/"+chatSlug+"/chat", bytes.NewReader(chatRequestBody(t, &api.ChatRequest{Message: "hi"})))
 	req.SetPathValue("slug", chatSlug)
 	rec := httptest.NewRecorder()
-	f.service.SendChatMessage(rec, withUID(req, "stranger"))
+	routed(f.service).ServeHTTP(rec, withUID(req, "stranger"))
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
@@ -436,7 +433,7 @@ func TestGetChat_EmptyConversation(t *testing.T) {
 	f := newChatFixture(t)
 
 	rec := httptest.NewRecorder()
-	f.service.GetChat(rec, chatRequestFor(http.MethodGet, nil))
+	routed(f.service).ServeHTTP(rec, chatRequestFor(http.MethodGet, nil))
 
 	if rec.Result().StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusOK)
@@ -455,7 +452,7 @@ func TestGetChat_ReturnsConversation(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	f.service.GetChat(rec, chatRequestFor(http.MethodGet, nil))
+	routed(f.service).ServeHTTP(rec, chatRequestFor(http.MethodGet, nil))
 
 	got := decodeChatHistory(t, rec)
 	if len(got.Messages) != 1 || got.Messages[0].Content != "add an intro" {
@@ -473,7 +470,7 @@ func TestDeleteChat(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	f.service.DeleteChat(rec, chatRequestFor(http.MethodDelete, nil))
+	routed(f.service).ServeHTTP(rec, chatRequestFor(http.MethodDelete, nil))
 
 	if rec.Result().StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusNoContent)
@@ -494,7 +491,7 @@ func TestSendChatMessage_ExpiredSubscription(t *testing.T) {
 	expired := time.Now().UTC().Add(-time.Minute)
 	f.users.seed(entity.User{ID: chatOwner, Username: "calm-smiling-kestrel", SubscribedUntil: &expired})
 
-	rec := f.send(t, &blogv1.ChatRequest{Message: "tighten it"})
+	rec := f.send(t, &api.ChatRequest{Message: "tighten it"})
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
@@ -510,7 +507,7 @@ func TestGetChat_NotSubscribed(t *testing.T) {
 	f := newChatFixture(t, false)
 
 	rec := httptest.NewRecorder()
-	f.service.GetChat(rec, chatRequestFor(http.MethodGet, nil))
+	routed(f.service).ServeHTTP(rec, chatRequestFor(http.MethodGet, nil))
 
 	if rec.Result().StatusCode != http.StatusForbidden {
 		t.Errorf("status = %d, want %d", rec.Result().StatusCode, http.StatusForbidden)
@@ -523,7 +520,7 @@ func TestSendChatMessage_ProfileLookupFails(t *testing.T) {
 	f := newChatFixture(t)
 	f.users.getErr = errors.New("firestore is down")
 
-	rec := f.send(t, &blogv1.ChatRequest{Message: "tighten it"})
+	rec := f.send(t, &api.ChatRequest{Message: "tighten it"})
 
 	if rec.Result().StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rec.Result().StatusCode, http.StatusInternalServerError)
@@ -579,7 +576,7 @@ func TestSendChatMessage_LogsTheTurn(t *testing.T) {
 		}, nil
 	}
 
-	if rec := f.send(t, &blogv1.ChatRequest{Message: "rewrite it", Content: ptr("unsaved body")}); rec.Code != http.StatusOK {
+	if rec := f.send(t, &api.ChatRequest{Message: "rewrite it", Content: ptr("unsaved body")}); rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
@@ -627,7 +624,7 @@ func TestSendChatMessage_LogsTheFailedTurn(t *testing.T) {
 				return repository.AssistantReply{Usage: repository.AssistantUsage{Rounds: 1}}, tc.err
 			}
 
-			if rec := f.send(t, &blogv1.ChatRequest{Message: "rewrite it"}); rec.Code != http.StatusBadGateway {
+			if rec := f.send(t, &api.ChatRequest{Message: "rewrite it"}); rec.Code != http.StatusBadGateway {
 				t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadGateway)
 			}
 
@@ -665,10 +662,10 @@ func TestSendChatMessage_LogsTheCanceledTurn(t *testing.T) {
 	}
 
 	// Cancelled from the request's own context, which is what carries the caller.
-	req := chatRequestFor(http.MethodPost, bytes.NewReader(chatRequestBody(t, &blogv1.ChatRequest{Message: "rewrite it"})))
+	req := chatRequestFor(http.MethodPost, bytes.NewReader(chatRequestBody(t, &api.ChatRequest{Message: "rewrite it"})))
 	ctx, cancel := context.WithCancel(req.Context())
 	cancel()
-	f.service.SendChatMessage(httptest.NewRecorder(), req.WithContext(ctx))
+	routed(f.service).ServeHTTP(httptest.NewRecorder(), req.WithContext(ctx))
 
 	lines := logs()
 	if len(lines) != 1 {

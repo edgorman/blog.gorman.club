@@ -78,5 +78,5 @@ resource "google_artifact_registry_repository_iam_member" "backend_github_action
   location   = google_artifact_registry_repository.backend.location
   repository = google_artifact_registry_repository.backend.name
   role       = "roles/artifactregistry.writer"
-  member     = "serviceAccount:github-actions@blog-gorman-club-root.iam.gserviceaccount.com"
+  member     = "serviceAccount:${var.ci_service_account}"
 }

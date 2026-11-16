@@ -2,7 +2,7 @@
  * What search engines and link previews are told about a page (#221). The canonical origin is
  * always production's, whichever host served the page, so staging never competes with it.
  *
- * `public/_worker.js` keeps its own copy of `SITE_URL`, `SITE_NAME` and `excerpt`: it ships to
+ * `worker/index.js` keeps its own copy of `SITE_URL`, `SITE_NAME` and `excerpt`: it ships to
  * Cloudflare as-is rather than through Vite, so it cannot import this module. Change both together.
  */
 export const SITE_URL = 'https://blog.gorman.club'

@@ -1,10 +1,10 @@
 /**
  * @vitest-environment node
  */
-// public/_worker.js, the Cloudflare Pages worker that serves crawlers (#221). Node rather than
+// worker/index.js, the Cloudflare Worker that serves crawlers (#221). Node rather than
 // jsdom, for the fetch API's Request/Response the worker is written against.
 // @ts-expect-error -- plain JS that ships to Cloudflare as-is, so it has no declarations.
-import worker from '../public/_worker.js'
+import worker from '../worker/index.js'
 import { excerpt } from './lib/seo'
 
 const SHELL = '<!doctype html><html><head><title>Gorman Club</title></head><body><div id="root"></div></body></html>'
@@ -69,7 +69,7 @@ const STATIC_ONLY = [
   '',
 ].join('\n')
 
-describe('_worker.js', () => {
+describe('worker/index.js', () => {
   afterEach(() => {
     delete (global as unknown as { caches?: unknown }).caches
     vi.restoreAllMocks()

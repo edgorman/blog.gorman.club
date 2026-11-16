@@ -1,7 +1,7 @@
-# Response headers for the static site, in Cloudflare Pages' _headers format. Vite copies
+# Response headers for the static site, in Cloudflare's _headers format. Vite copies
 # everything in public/ to the root of dist/, which is what frontend-publish uploads to the bucket
-# and frontend-deploy pushes to Pages - so this file ships with the build rather than being
-# configured per environment in the Cloudflare dashboard.
+# and frontend-deploy serves as the Worker's static assets - so this file ships with the build
+# rather than being configured per environment in the Cloudflare dashboard.
 #
 # The Content-Security-Policy is the second line of defence behind src/lib/markdown.ts, which
 # sanitizes every post before it is rendered. It matters because the two fail in different ways: a

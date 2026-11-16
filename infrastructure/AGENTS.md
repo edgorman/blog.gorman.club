@@ -12,9 +12,12 @@ Terraform roots: `env` (applied per environment from `config/staging` and `confi
 
 ### IAM & Authentication
 
-- CI authenticates with Workload Identity Federation. No JSON keys, and roles are granted per project, never at org level ([27](../docs/decisions/0027-workload-identity-federation.md)).
-- Workflows read the WIF provider and service account from repository variables written by root; never hardcode them ([27](../docs/decisions/0027-workload-identity-federation.md)).
-- The GitHub PAT lives in Secret Manager (`github_provider_token`), never in a GitHub secret ([27](../docs/decisions/0027-workload-identity-federation.md)).
+- CI authenticates with Workload Identity Federation as one of four identities (plan, deploy, promote, renovate). No JSON keys, and roles are granted per project, never at org level ([38](../docs/decisions/0038-separate-plan-and-apply-identities.md)).
+- The apply identities are bound to a workflow file on `refs/heads/main` through `job_workflow_ref`; the plan identity is read-only and can read no secret, so a PR plan never needs one ([38](../docs/decisions/0038-separate-plan-and-apply-identities.md)).
+- Workflows read the WIF provider and service account emails from repository variables written by root; never hardcode them ([38](../docs/decisions/0038-separate-plan-and-apply-identities.md)).
+- The GitHub PAT lives in Secret Manager (`github_provider_token`), never in a GitHub secret ([38](../docs/decisions/0038-separate-plan-and-apply-identities.md)).
+- Anything a plan needs that is not a secret (the Cloudflare account and zone ids) is a variable in `terraform.tfvars`, never a data source or a secret ([38](../docs/decisions/0038-separate-plan-and-apply-identities.md)).
+- The frontend is a Worker per environment, created by Terraform and uploaded to by wrangler ([36](../docs/decisions/0036-frontend-on-workers.md)).
 
 ### Artifact Stores
 

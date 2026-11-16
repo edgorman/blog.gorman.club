@@ -1,6 +1,6 @@
 # 32. Applies use the plan already shown
 
-Status: Accepted (amends [20](0020-deploy-markers.md) and [23](0023-pre-release-gates.md))
+Status: Superseded by [37](0037-replan-at-apply.md)
 
 ## Context
 

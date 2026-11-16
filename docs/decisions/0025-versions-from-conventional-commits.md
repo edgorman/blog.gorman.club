@@ -1,6 +1,6 @@
 # 25. Versions come from Conventional Commit subjects
 
-Status: Accepted
+Status: Superseded by [39](0039-releases-from-release-please.md)
 
 ## Context
 

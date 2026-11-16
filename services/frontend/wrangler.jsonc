@@ -1,0 +1,18 @@
+// The Worker that serves the site: dist/ as static assets, with worker/index.js in front of them.
+// `name` is the base for local use only: the deploy passes the real one (`wrangler deploy --name`),
+// so one bundle serves every environment. Terraform (infrastructure/root/cloudflare_workers.tf)
+// creates the Worker and its domains; wrangler only uploads versions.
+{
+  "name": "app",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "dist",
+    "binding": "ASSETS",
+    // Unknown paths get the SPA shell, so client-side routes survive a reload.
+    "not_found_handling": "single-page-application",
+    // The Worker sees every request, so it can mark non-production hosts noindex and serve
+    // robots.txt, the sitemap and note metadata before the assets do.
+    "run_worker_first": true
+  }
+}

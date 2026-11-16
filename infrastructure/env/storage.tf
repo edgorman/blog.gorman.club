@@ -1,6 +1,6 @@
 # One static-build bucket per environment for the frontend, one folder per commit SHA (that is its
 # versioning; the bucket itself has none): CI writes the built site here on merge and reads it back
-# on deploy, and Cloudflare Pages serves the extracted files. Not public - nothing outside the pipeline needs to reach it directly.
+# on deploy, and the Cloudflare Worker serves the extracted files. Not public - nothing outside the pipeline needs to reach it directly.
 #
 # Named after the project rather than just the environment because bucket names are global across
 # all of GCS, not scoped to a project like most other resources here - the same reason the
@@ -38,5 +38,5 @@ resource "google_storage_bucket" "frontend" {
 resource "google_storage_bucket_iam_member" "frontend_github_actions_writer" {
   bucket = google_storage_bucket.frontend.name
   role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:github-actions@blog-gorman-club-root.iam.gserviceaccount.com"
+  member = "serviceAccount:${var.ci_service_account}"
 }

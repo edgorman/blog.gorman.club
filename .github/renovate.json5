@@ -1,0 +1,52 @@
+// Self-hosted Renovate (.github/workflows/renovate.yaml), replacing Dependabot's version updates
+// (Dependabot alerts and security updates stay on). One grouped PR per ecosystem, weekly - the
+// cadence is the workflow's schedule - titled as a Conventional Commit, since the PR title becomes the
+// squash commit and the pr-title check enforces it (decision 40).
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: ['config:recommended'],
+  semanticCommits: 'enabled',
+  semanticCommitType: 'build',
+  semanticCommitScope: 'deps',
+  dependencyDashboard: true,
+  prConcurrentLimit: 0,
+  prHourlyLimit: 0,
+
+  // Hand-written pins that carry a `# renovate: datasource=... depName=...` comment on the line
+  // above: .prototools, the tools installed by `go install`/`go run`/`pip install`, wrangler, and
+  // the proto version in the session hook.
+  customManagers: [
+    {
+      customType: 'regex',
+      managerFilePatterns: ['/^\\.prototools$/', '/\\.ya?ml$/', '/\\.sh$/'],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\n[^\\n]*?[@=:]\\s*["\']?(?<currentValue>v?\\d+(?:\\.\\d+)*)',
+      ],
+    },
+  ],
+
+  packageRules: [
+    { matchManagers: ['github-actions'], groupName: 'ci-deps', labels: ['ci'] },
+    { matchManagers: ['terraform'], groupName: 'terraform-deps', labels: ['infrastructure'] },
+    { matchManagers: ['npm'], matchFileNames: ['services/frontend/**'], groupName: 'npm-deps', labels: ['frontend'] },
+    { matchManagers: ['npm'], matchFileNames: ['packages/api/**'], groupName: 'api-tool-deps', labels: ['ci'] },
+    { matchManagers: ['gomod'], groupName: 'gomod-deps', labels: ['backend'] },
+    { matchManagers: ['custom.regex'], groupName: 'tool-deps', labels: ['ci'] },
+
+    // Pinned by digest, so what is built is what was reviewed.
+    { matchDatasources: ['docker'], pinDigests: true, groupName: 'docker-deps', labels: ['backend'] },
+
+    // One pin in several files moves together or CI fails: Go in .prototools, go.mod and the
+    // Dockerfile's golang image, and Terraform in .prototools and every providers.tf.
+    {
+      matchPackageNames: ['go', 'golang'],
+      matchDatasources: ['golang-version', 'docker', 'go'],
+      groupName: 'go toolchain',
+      labels: ['backend'],
+    },
+    { matchPackageNames: ['hashicorp/terraform'], groupName: 'terraform version', labels: ['infrastructure'] },
+
+    // npm is the version bundled with the pinned Node, so a major npm is not an update on its own.
+    { matchPackageNames: ['npm'], matchUpdateTypes: ['major'], enabled: false },
+  ],
+}

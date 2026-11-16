@@ -28,7 +28,7 @@ resource "google_project_iam_member" "backend_runtime_agent_platform_user" {
 resource "google_service_account_iam_member" "backend_runtime_actas" {
   service_account_id = google_service_account.backend_runtime.name
   role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:github-actions@blog-gorman-club-root.iam.gserviceaccount.com"
+  member             = "serviceAccount:${var.ci_service_account}"
 }
 
 resource "google_cloud_run_v2_service" "backend" {

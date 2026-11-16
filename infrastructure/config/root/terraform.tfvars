@@ -16,9 +16,22 @@ google_client_id = "671777226474-sqa0ceudduou1rg0cloe3q4f46nmelvv.apps.googleuse
 # secret - it is published in DNS as a TXT record anyway.
 google_site_verification = "Zp_UP1vLDTpUNWsHeNP3xGScmS8c4q5wJw0SPat6j38"
 
-# the following are sensitive/unknown initially and thus have no defualt
+# Cloudflare dashboard > the gorman.club zone's Overview page: the account id and the zone id sit
+# in the right-hand column. Neither is a secret. Both are read at plan time, so they live here
+# rather than in Secret Manager (decision 38). TODO(Ed): fill both in before the first apply; the
+# validation on each variable fails the plan until they are 32-character ids.
+cloudflare_account_id = ""
+cloudflare_zone_id    = ""
+
+cloudflare_zone = "gorman.club"
+frontend_hostnames = {
+  stag = "staging.blog.gorman.club"
+  prod = "blog.gorman.club"
+}
+
+# The following are sensitive and thus have no default
 # github_provider_token
-# cloudflare_account_id
 # cloudflare_api_token
-# — pass it at apply time, e.g.:
-#   TF_VAR_github_provider_token=<PAT> TF_VAR_cloudflare_account_id=<ID> TF_VAR_cloudflare_api_token=<TOK> make init
+# - pass them at bootstrap only, e.g.:
+#   TF_VAR_github_provider_token=<PAT> TF_VAR_cloudflare_api_token=<TOK> make init
+# Afterwards they live in Secret Manager and a rotation is a new secret version.

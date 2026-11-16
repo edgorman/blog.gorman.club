@@ -26,16 +26,21 @@ One file per decision: its context, the decision, and its consequences. The rule
 | [20](0020-deploy-markers.md) | Deploy decisions come from marker tasks | ci |
 | [21](0021-prototools-pins-the-toolchain.md) | `.prototools` pins the toolchain | ci |
 | [22](0022-build-once-promote-by-sha.md) | Build once, promote by commit SHA | ci |
-| [23](0023-pre-release-gates.md) | What a pre-release waits for | ci |
+| [23](0023-pre-release-gates.md) | What a pre-release waits for | ci (superseded by 39) |
 | [24](0024-manual-prod-infrastructure-apply.md) | A manual prod apply, for bootstrapping only | ci |
-| [25](0025-versions-from-conventional-commits.md) | Versions come from Conventional Commits | ci |
+| [25](0025-versions-from-conventional-commits.md) | Versions come from Conventional Commits | ci (superseded by 39) |
 | [26](0026-one-gcp-project-per-environment.md) | One GCP project per environment | infrastructure |
-| [27](0027-workload-identity-federation.md) | Workload Identity Federation | infrastructure |
+| [27](0027-workload-identity-federation.md) | Workload Identity Federation | infrastructure (superseded by 38) |
 | [28](0028-per-environment-artifact-stores.md) | Per-environment artifact stores | infrastructure |
 | [29](0029-artifact-retention.md) | Artifact retention | infrastructure |
 | [30](0030-monitoring-on-cloud-run-metrics.md) | Monitoring on Cloud Run metrics | infrastructure |
 | [31](0031-debug-endpoint-contract.md) | The debug endpoint contract | backend |
-| [32](0032-apply-saved-plans.md) | Applies use the plan already shown | ci |
+| [32](0032-apply-saved-plans.md) | Applies use the plan already shown | ci (superseded by 37) |
 | [33](0033-build-only-what-changed.md) | Build only what changed, reuse the rest | ci |
 | [34](0034-openapi-is-the-api-contract.md) | OpenAPI is the API contract | api |
 | [35](0035-advisory-security-scanning.md) | Security scanning is advisory | ci |
+| [36](0036-frontend-on-workers.md) | The frontend runs as a Worker with static assets | ci |
+| [37](0037-replan-at-apply.md) | Applies plan again in the job | ci |
+| [38](0038-separate-plan-and-apply-identities.md) | Plan and apply authenticate as separate identities | infrastructure |
+| [39](0039-releases-from-release-please.md) | Releases come from release-please | ci |
+| [40](0040-self-hosted-renovate.md) | Dependency updates come from self-hosted Renovate | ci |

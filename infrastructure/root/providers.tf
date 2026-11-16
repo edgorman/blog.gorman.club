@@ -35,7 +35,7 @@ provider "github" {
   token = var.github_provider_token
 }
 
-# Manages Pages projects and domains; wrangler pushes builds into them separately.
+# Manages the frontend Workers and their custom domains; wrangler uploads versions separately.
 provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }

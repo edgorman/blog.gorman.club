@@ -55,7 +55,7 @@ resource "google_service_account_iam_member" "worker_actas" {
 
   service_account_id = each.value
   role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:github-actions@blog-gorman-club-root.iam.gserviceaccount.com"
+  member             = "serviceAccount:${var.ci_service_account}"
 }
 
 resource "google_cloud_run_v2_service" "worker" {

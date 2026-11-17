@@ -21,9 +21,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Decides which scanners a pull request reaches, from the files it changes. No scanner is a
-  # required check (decision 33), so a skipped job costs a merge nothing. The weekly scan and a
-  # manual run have no diff, so they run everything. `secrets` is unconditional: any file can leak.
+  # moon decides which scanners a pull request reaches (decision 41): each is a noop marker task
+  # (scan-go, scan-image, scan, scan-workflows, scan-secrets) whose `inputs` are what the scanner
+  # reads. No scanner is a required check (decision 33), so a skipped job costs a merge nothing. The
+  # weekly scan and a manual run have no diff, so they run everything.
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -32,34 +33,46 @@ jobs:
       workflows: ${{ steps.diff.outputs.workflows }}
       terraform: ${{ steps.diff.outputs.terraform }}
       image: ${{ steps.diff.outputs.image }}
+      secrets: ${{ steps.diff.outputs.secrets }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           filter: 'blob:none'
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        if: github.event_name == 'pull_request'
+        with:
+          auto-install: false
+          cache: false # decision 35
       - id: diff
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          MOON_BASE: origin/main
+          # A query runs no task, so moon needs none of the pinned tools (see pull-request.yaml).
+          MOON_TOOLCHAIN_FORCE_GLOBALS: 'true'
+          MOON_SKIP_SETUP_TOOLCHAIN: 'true'
+          GOTOOLCHAIN: local
         run: |
-          # A scanner's own workflow file and helper script are inputs to it, so editing either
-          # re-runs everything that uses them.
-          common='^(\.github/workflows/security\.yaml|\.github/scripts/advisory\.sh)$'
           if [ "$EVENT" != pull_request ]; then
-            printf '%s=true\n' go frontend workflows terraform image >> "$GITHUB_OUTPUT"
+            printf '%s=true\n' go frontend workflows terraform image secrets >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git diff --name-only "$BASE...$HEAD" > changed.txt
-          # `grep -E` exits 1 on no match, which is the "false" answer here.
-          check() { if grep -Eq "$common|$2" changed.txt; then echo "$1=true"; else echo "$1=false"; fi; }
+          moon query affected > "$RUNNER_TEMP/affected.json"
+          # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
+          has() { jq -r --arg t "$1" '(.tasks // {}) | has($t)' "$RUNNER_TEMP/affected.json"; }
           {
-            check go '^(services/backend/|packages/api/|\.prototools$)'
-            check frontend '^(services/frontend/|packages/api/)'
-            check workflows '^\.github/'
-            check terraform '^(infrastructure/|\.prototools$)'
-            check image '^services/backend/'
+            echo "go=$(has services/backend:scan-go)"
+            echo "image=$(has services/backend:scan-image)"
+            echo "frontend=$(has services/frontend:scan)"
+            echo "workflows=$(has root:scan-workflows)"
+            echo "secrets=$(has root:scan-secrets)"
+            # Either Terraform root is enough for tflint and trivy, which read the whole tree.
+            if [ "$(has infra-root:scan)" = true ] || [ "$(has infra-env:scan)" = true ]; then
+              echo 'terraform=true'
+            else
+              echo 'terraform=false'
+            fi
           } | tee -a "$GITHUB_OUTPUT"
 
   go:
@@ -166,6 +179,8 @@ jobs:
           exit-code: '0'
 
   secrets:
+    needs: changes
+    if: needs.changes.outputs.secrets == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

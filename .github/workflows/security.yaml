@@ -49,6 +49,9 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           MOON_BASE: origin/main
+          # A query runs no task, so moon needs none of the pinned tools (see pull-request.yaml).
+          MOON_TOOLCHAIN_FORCE_GLOBALS: 'true'
+          MOON_SKIP_SETUP_TOOLCHAIN: 'true'
         run: |
           if [ "$EVENT" != pull_request ]; then
             printf '%s=true\n' go frontend workflows terraform image secrets >> "$GITHUB_OUTPUT"

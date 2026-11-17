@@ -51,6 +51,10 @@ jobs:
           # merge_group the queue commit diffs against origin/main, which covers this PR and the
           # entries queued ahead of it.
           MOON_BASE: origin/main
+          # A query reads the project graph and runs no task, so moon needs none of the pinned
+          # tools; these stop it installing them on the way (about 20s).
+          MOON_TOOLCHAIN_FORCE_GLOBALS: 'true'
+          MOON_SKIP_SETUP_TOOLCHAIN: 'true'
         run: |
           # The targets each required check hands to `moon ci`, kept here so the check and the
           # decision to run it can't drift apart. `:name` means that task in any project.

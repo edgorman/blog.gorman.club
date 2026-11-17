@@ -1,0 +1,51 @@
+name: 'Renovate'
+
+# Self-hosted dependency updates (decision 40): one grouped PR per ecosystem, weekly, from
+# .github/renovate.json5. It runs with the personal access token already stored in Secret Manager,
+# so its PRs trigger the PR checks (a PR opened with GITHUB_TOKEN would not), and as an identity
+# that can read that one secret and nothing else (decision 38).
+on:
+  schedule:
+    - cron: '37 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    # Skipped until infrastructure/root's bootstrap writes the repository variables
+    # (decision 38). GitHub also pauses a schedule after 60 days without repository activity;
+    # running this by hand (workflow_dispatch) restarts it.
+    if: vars.RENOVATE_SERVICE_ACCOUNT != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - id: secrets
+        uses: ./.github/actions/gcp-secret-manager
+        with:
+          project_id: 'blog-gorman-club-root'
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.RENOVATE_SERVICE_ACCOUNT }}
+          secrets_list: |
+            RENOVATE_TOKEN=github_provider_token
+      - name: Export Secrets
+        shell: bash
+        env:
+          SECRETS: ${{ steps.secrets.outputs.secrets }}
+        run: printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
+      - uses: renovatebot/github-action@acdd6bda8b035c99ce59d5675816af2aa65a1774 # v46.3.14
+        with:
+          token: ${{ env.RENOVATE_TOKEN }}
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ONBOARDING: 'false'
+          RENOVATE_REQUIRE_CONFIG: 'required'
+          LOG_LEVEL: info

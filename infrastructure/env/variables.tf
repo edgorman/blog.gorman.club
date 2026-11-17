@@ -132,3 +132,8 @@ variable "worker_max_instances" {
   type        = number
   default     = 3
 }
+
+variable "ci_service_account" {
+  description = "Email of the CI identity that deploys to this environment, which infrastructure/root creates: github-deploy for staging, github-promote for prod. The workflows pass it as TF_VAR_ci_service_account (the DEPLOY_ or PROMOTE_SERVICE_ACCOUNT Actions variable). The other identity's project-level roles cover its own work here, such as the merge build publishing to prod's stores."
+  type        = string
+}

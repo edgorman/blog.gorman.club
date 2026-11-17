@@ -1,6 +1,6 @@
 # frontend
 
-Vite/React single-page app for blog.gorman.club, deployed to Cloudflare Pages
+Vite/React single-page app for blog.gorman.club, deployed to Cloudflare Workers as static assets
 (see the repository root `AGENTS.md` for the full deployment architecture).
 
 It is the public blog: a recent-posts feed with search and tag filtering, a
@@ -156,7 +156,7 @@ environment.
 
 `npx playwright test` runs the post-deploy smoke test in `e2e/` against staging, signed out and
 read-only (`SMOKE_BASE_URL` points it elsewhere, e.g. a `vite preview`). `push-commit.yaml`'s
-`smoke` job runs it after every staging deploy, and `pre-release` waits on it. Its files are named
+`smoke` job runs it after every staging deploy, and `release-please` waits on it. Its files are named
 `*.e2e.ts` so `npm test` never picks them up; first run `npx playwright install chromium` outside a
 Claude Code cloud session, which has one preinstalled.
 
@@ -180,11 +180,10 @@ local dev, and a rollback to a build that predates this file; `version` and
 `environment` have no such fallback and are simply absent in those cases.
 
 `version` and `environment` drive the footer pinned to the bottom of
-AccountPanel's drawer (issue #152): `version` is always a release tag (e.g.
-`v1.2.3`) - on staging this is the tag `push-commit.yaml`'s `version` job
-computes early and pre-release later cuts for the same commit, not a raw
-commit SHA - shown as a link to that tag's GitHub Releases page
-(`releaseUrl`, `src/lib/format.ts`). `environment` is `'staging'` or
+AccountPanel's drawer (issue #152): `version` is a release tag (e.g.
+`v1.2.3`) on production, and on staging the short SHA of the commit it runs
+(staging runs a commit, not a release), shown as a link to the tag's GitHub
+Releases page or to the commit (`releaseUrl`, `src/lib/format.ts`). `environment` is `'staging'` or
 `'production'`, but only `'staging'` renders a badge next to it - a
 production reader has no reason to be told they're on production.
 

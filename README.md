@@ -10,7 +10,7 @@
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0-6BA539?logo=openapiinitiative&logoColor=white)](packages/api)
 [![Terraform](https://img.shields.io/badge/Terraform-1.15-844FBA?logo=terraform&logoColor=white)](infrastructure)
 [![Cloud Run](https://img.shields.io/badge/GCP-Cloud_Run-4285F4?logo=googlecloud&logoColor=white)](infrastructure)
-[![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages-F38020?logo=cloudflare&logoColor=white)](infrastructure)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](infrastructure)
 [![moon](https://img.shields.io/badge/moon-2.5-6F53F3)](https://moonrepo.dev)
 
 A demo of a small, cloud-deployed full-stack web service - a blog with a Gemini-backed writing assistant - built to show a trunk-based monorepo with CI/CD and infrastructure-as-code, rather than a real blog hosting platform.
@@ -20,13 +20,13 @@ A demo of a small, cloud-deployed full-stack web service - a blog with a Gemini-
 | Path | What |
 | --- | --- |
 | `services/backend` | Go API (Firestore, Gemini), shipped as a container to GCP Cloud Run |
-| `services/frontend` | Vite/React single-page app, deployed to Cloudflare Pages |
+| `services/frontend` | Vite/React single-page app, deployed to Cloudflare Workers |
 | `packages/api` | OpenAPI API contract; `moon run packages/api:generate` writes the Go and TypeScript types |
 | `infrastructure` | Terraform for the shared root, staging and prod environments (GCP, Cloudflare, GitHub) |
 | `.github` | Workflows and composite actions: PR checks, staging deploy on merge, release promotion to prod |
 | `docs/decisions` | Why things are the way they are, one decision per file |
 
-Every merge to `main` deploys to staging; production releases are promoted from there. Nothing is ever applied or deployed by hand.
+Every merge to `main` deploys to staging; production is promoted by merging the release PR release-please keeps open. Nothing is ever applied or deployed by hand.
 
 ## Developing with moon
 

@@ -74,7 +74,7 @@ export function Privacy() {
             <strong>Google Identity Services</strong> handles signing in with Google.
           </li>
           <li>
-            <strong>Cloudflare</strong> serves the website (Cloudflare Pages).
+            <strong>Cloudflare</strong> serves the website (Cloudflare Workers).
           </li>
           <li>
             <strong>Stripe</strong> takes subscription payments and runs the billing portal.

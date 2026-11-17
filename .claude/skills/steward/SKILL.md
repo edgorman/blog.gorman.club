@@ -61,9 +61,9 @@ The plan job posts its output as a PR comment. Read it:
 - **`mergeable_state: blocked` on a green PR is expected.** Claude Code pushes and opens PRs as `@edgorman`, and GitHub never lets an author approve their own PR, so the owner merges with the admin override (`enforce_admins: false`). Don't investigate it, and never propose dropping `required_pull_request_reviews` (#210, reverted by #211).
 - **`required_conversation_resolution`**: resolve every thread you've addressed, and reply on any you're not changing.
 
-## Dependabot PRs
+## Renovate PRs
 
-`build(deps)` PRs come grouped per ecosystem (`gomod-deps`, `npm-deps`, `terraform-deps`, `ci-deps`):
+`build(deps)` PRs come from self-hosted Renovate, grouped per ecosystem (`gomod-deps`, `npm-deps`, `terraform-deps`, `ci-deps`, `docker-deps`, `tool-deps`):
 - Go: if the bump moves `go.mod`'s `go` line, `root:go-version-sync` fails. Bump `.prototools` and the `Dockerfile` image in the same PR.
 - `oapi-codegen` (a `go tool` in `go.mod`) or `openapi-typescript` (`packages/api/package.json`): run `moon run packages/api:generate` and commit the output, or `api-drift` fails.
 - Terraform providers: the plan comment is the review. Read it for unexpected changes.

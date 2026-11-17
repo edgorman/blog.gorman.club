@@ -1,6 +1,6 @@
 # 23. What a pre-release waits for
 
-Status: Accepted
+Status: Superseded by [39](0039-releases-from-release-please.md)
 
 ## Context
 

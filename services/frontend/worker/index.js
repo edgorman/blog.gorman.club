@@ -1,7 +1,8 @@
-// Cloudflare Pages advanced-mode worker (#221): what crawlers and link previews need that a
-// JavaScript-only SPA can't give them. It lives in public/ so Vite copies it into dist/, which makes
-// it part of the commit-SHA bundle frontend-publish stores and prod promotes unchanged. Everything
-// it doesn't handle goes to the static assets untouched, _headers and all.
+// The Cloudflare Worker in front of the static site (#221): what crawlers and link previews need
+// that a JavaScript-only SPA can't give them. wrangler.jsonc runs it first for every request, and
+// everything it doesn't handle goes to the static assets (dist/, `_headers` included) through the
+// ASSETS binding. It is plain JavaScript that ships to Cloudflare as-is, deployed from the same
+// commit as the bundle it fronts.
 //
 // It finds the backend the same way the SPA does, from the config.json frontend-deploy writes next
 // to the bundle, and only ever calls it anonymously, so it sees exactly what a signed-out reader
@@ -32,7 +33,7 @@ export default {
     const prod = url.hostname === PROD_HOSTNAME
     const response = await route(request, env, url, prod)
     if (prod) return response
-    // Staging (or a *.pages.dev preview) serves the same bundle and the same _headers as prod, so
+    // Staging (or a *.workers.dev address) serves the same bundle and the same _headers as prod, so
     // this is the one place that can tell it apart and keep it out of search results.
     const marked = new Response(response.body, response)
     marked.headers.set('X-Robots-Tag', 'noindex')
@@ -156,7 +157,7 @@ async function backendUrl(env, url, signal) {
     const config = response.ok ? await response.json() : {}
     return typeof config.backendUrl === 'string' ? config.backendUrl.replace(/\/$/, '') : ''
   } catch {
-    // Missing: Pages answers the SPA shell instead, which isn't JSON.
+    // Missing: the static assets answer the SPA shell instead, which isn't JSON.
     return ''
   }
 }

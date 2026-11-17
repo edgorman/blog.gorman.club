@@ -1,5 +1,5 @@
 name: 'Terraform Pull Request'
-description: 'Performs terraform init, fmt, validate, and plan'
+description: 'Performs terraform init, fmt, validate, and plan, and posts the plan on the pull request'
 
 inputs:
   terraform_directory:
@@ -15,11 +15,10 @@ inputs:
   github_token:
     description: 'GitHub token for posting comments'
     required: true
-  plan_dir:
-    description: 'gs:// directory to save the binary plan under, named by the checkout''s git tree hash, for terraform-push-commit to apply later. Omit to keep the plan local.'
+  pull_request_number:
+    description: 'Pull request to post the plan on, for a run that is not itself a pull_request event (the release PR''s prod plan). Omit to comment on the triggering pull request.'
     required: false
     default: ''
-
 runs:
   using: "composite"
   steps:
@@ -36,10 +35,16 @@ runs:
           printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
         fi
 
+    # The version comes from .prototools, the one place it is pinned, so it can't drift from it.
+    - id: terraform-version
+      name: Read the Terraform version
+      shell: bash
+      run: echo "version=$(sed -n 's/^terraform = "\([^"]*\)".*/\1/p' .prototools | head -1)" >> "$GITHUB_OUTPUT"
+
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
       with:
-        terraform_version: "1.15.8"
+        terraform_version: ${{ steps.terraform-version.outputs.version }}
 
     - name: Terraform Init
       shell: bash
@@ -65,30 +70,16 @@ runs:
       run: |
         terraform plan \
           -var-file="${{ github.workspace }}/${{ inputs.config_directory }}/terraform.tfvars" \
+          -refresh=false \
           -lock=false \
           -no-color \
           -input=false \
           -out=tfplan.binary
         terraform show -no-color tfplan.binary > tfplan.txt
 
-    - name: Set up Cloud SDK
-      if: inputs.plan_dir != ''
-      uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-
-    # Keyed by tree, not commit: a PR's merge commit and the squash commit it becomes on main have
-    # different SHAs but, with branches required to be up to date, the same tree. The plan holds
-    # every variable in plain text, so it goes to the state bucket, never a workflow artifact.
-    - name: Save Terraform Plan
-      if: inputs.plan_dir != ''
-      shell: bash
-      working-directory: ${{ inputs.terraform_directory }}
-      env:
-        PLAN_DIR: ${{ inputs.plan_dir }}
-      run: gcloud storage cp tfplan.binary "$PLAN_DIR/$(git rev-parse 'HEAD^{tree}').tfplan"
-
     # A merge_group run has no PR to comment on; the plan above still has to succeed.
     - name: Post Terraform Plan Comment
-      if: github.event_name == 'pull_request'
+      if: github.event_name == 'pull_request' || inputs.pull_request_number != ''
       uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       with:
         github-token: ${{ inputs.github_token }}
@@ -120,7 +111,7 @@ runs:
           *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.terraform_directory }}\`, Workflow: \`${{ github.workflow }}\`*`;
 
           await github.rest.issues.createComment({
-            issue_number: context.issue.number,
+            issue_number: Number('${{ inputs.pull_request_number }}') || context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.repo,
             body: output

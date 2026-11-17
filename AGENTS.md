@@ -17,7 +17,7 @@ A trunk-based monorepo: a static frontend, containerized backend services, Terra
 
 - `infrastructure/` - Terraform. `env` is applied per environment with `config/staging` and `config/prod`; `root` holds shared, bootstrapped resources.
 - `services/backend/` - Go API for Cloud Run. `cmd/worker` is a second binary in the same module, its own moon project (`worker`), image and service.
-- `services/frontend/` - Vite/React app on Cloudflare Pages.
+- `services/frontend/` - Vite/React app on Cloudflare Workers (static assets), with a Worker for crawlers in `worker/`.
 - `packages/api/` - the OpenAPI contract both services generate from.
 - `.github/` - workflows, composite actions (`actions/`), and `settings.yml` (repository settings and rulesets, applied by the Probot Settings app).
 - `docs/` - [`start-here.md`](docs/start-here.md) and the decision records.

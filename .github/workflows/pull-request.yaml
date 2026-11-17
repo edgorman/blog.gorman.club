@@ -24,6 +24,9 @@ jobs:
   # task's own `inputs` (#195/#206) already lists the exact composite actions and workflow files
   # that environment's job depends on, so nothing is left for a repo-wide fallback to paper over.
   changed:
+    # The three infrastructure plans run as the plan identity, which root's apply creates and writes
+    # into the repository variables (decision 38): until then only the moon checks run.
+    if: vars.PLAN_SERVICE_ACCOUNT != ''
     runs-on: ubuntu-latest
     outputs:
       infrastructure-root: ${{ steps.moon.outputs.root }}
@@ -130,22 +133,23 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - id: secrets
-        uses: ./.github/actions/gcp-secret-manager
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
-          project_id: 'blog-gorman-club-root'
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.SERVICE_ACCOUNT }}
-          secrets_list: |
-            TF_VAR_github_provider_token=github_provider_token
-            TF_VAR_cloudflare_account_id=cloudflare_account_id
-            TF_VAR_cloudflare_api_token=cloudflare_api_token
+          service_account: ${{ vars.PLAN_SERVICE_ACCOUNT }}
+      # The plan identity can read no secret (decision 38): the plan is made without refreshing, so
+      # no provider uses these placeholders. The Cloudflare provider still validates the token's
+      # shape (40 characters of a-z, A-Z, 0-9, - and _), hence the padding. The GitHub provider looks the
+      # owner up when it configures, even with -refresh=false, and a bad token is a 401 where no
+      # token is an anonymous 404 for a user account, so its token is left empty.
       - uses: ./.github/actions/terraform-pull-request
         with:
           terraform_directory: 'infrastructure/root'
           config_directory: 'infrastructure/config/root'
-          plan_dir: 'gs://blog-gorman-club-root-terraform-state/plans/root'
-          secrets: ${{ steps.secrets.outputs.secrets }}
+          secrets: |
+            TF_VAR_github_provider_token=
+            TF_VAR_cloudflare_api_token=plan-only-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
   # infrastructure/env/** is shared, so a change to it plans against both environments - see the
@@ -164,15 +168,15 @@ jobs:
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.SERVICE_ACCOUNT }}
+          service_account: ${{ vars.PLAN_SERVICE_ACCOUNT }}
       - uses: ./.github/actions/terraform-pull-request
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/staging'
-          plan_dir: 'gs://blog-gorman-club-stag-terraform-state/plans/staging'
           # One client ID, defined in infrastructure/root, serves every environment.
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
+            TF_VAR_ci_service_account=${{ vars.DEPLOY_SERVICE_ACCOUNT }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
   infrastructure-prod:
@@ -189,7 +193,7 @@ jobs:
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.SERVICE_ACCOUNT }}
+          service_account: ${{ vars.PLAN_SERVICE_ACCOUNT }}
       - uses: ./.github/actions/terraform-pull-request
         with:
           terraform_directory: 'infrastructure/env'
@@ -197,5 +201,6 @@ jobs:
           # One client ID, defined in infrastructure/root, serves every environment.
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
+            TF_VAR_ci_service_account=${{ vars.PROMOTE_SERVICE_ACCOUNT }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 

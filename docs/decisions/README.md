@@ -45,3 +45,4 @@ One file per decision: its context, the decision, and its consequences. The rule
 | [39](0039-releases-from-release-please.md) | Releases come from release-please | ci |
 | [40](0040-self-hosted-renovate.md) | Dependency updates come from self-hosted Renovate | ci |
 | [41](0041-moon-gates-every-ci-job.md) | moon decides which CI jobs run | ci |
+| [42](0042-release-commits-have-their-own-workflow.md) | Release commits have their own workflow | ci |

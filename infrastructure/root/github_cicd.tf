@@ -1,8 +1,8 @@
 # Four identities for GitHub Actions to authenticate to GCP as, with no long-lived JSON key:
 #
 #   plan    read-only; assumable by any run in this repository, which is what the PR checks use.
-#   deploy  push-commit.yaml as it exists on main: root and staging applies, builds, staging
-#           deploys, and reading the tokens release-please and Cloudflare need.
+#   deploy  push-commit.yaml and push-release.yaml as they exist on main: root and staging applies,
+#           builds, staging deploys, and reading the tokens release-please and Cloudflare need.
 #   promote promote-release.yaml and apply-infrastructure-prod.yaml as they exist on main: prod's
 #           apply and deploy. Only prod's project, state bucket and the Cloudflare token.
 #   renovate renovate.yaml as it exists on main: it reads the GitHub PAT and nothing else, because
@@ -23,7 +23,7 @@ resource "google_service_account" "github_plan" {
 resource "google_service_account" "github_deploy" {
   project      = var.gcp_provider_project_id
   account_id   = "github-deploy"
-  display_name = "GitHub Actions - deploy (main, push-commit.yaml)"
+  display_name = "GitHub Actions - deploy (main, push-commit.yaml and push-release.yaml)"
 }
 
 resource "google_service_account" "github_renovate" {
@@ -157,7 +157,7 @@ resource "google_service_account_iam_member" "github_renovate_wif" {
 }
 
 resource "google_service_account_iam_member" "github_deploy_wif" {
-  for_each = toset(["push-commit.yaml"])
+  for_each = toset(["push-commit.yaml", "push-release.yaml"])
 
   service_account_id = google_service_account.github_deploy.name
   role               = "roles/iam.workloadIdentityUser"

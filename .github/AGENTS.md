@@ -11,14 +11,14 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 - Each workflow authenticates as its own identity: PR checks as `PLAN_`, `push-commit.yaml` as `DEPLOY_`, promotion and the manual prod apply as `PROMOTE_`, Renovate as `RENOVATE_SERVICE_ACCOUNT`. A PR's plan job gets placeholder tokens and `-refresh=false`, never a secret; a workflow that needs another identity calls a reusable workflow ([38](../docs/decisions/0038-separate-plan-and-apply-identities.md)).
 - Renovate (`renovate.yaml`, `renovate.json5`) opens the dependency PRs. A hand-written version pin gets a `# renovate: datasource=... depName=...` comment above it ([40](../docs/decisions/0040-self-hosted-renovate.md)).
 
-- `security.yaml` is advisory: its scanners report in the job summary and never fail a run or gate a merge; a scanner that cannot run does fail ([35](../docs/decisions/0035-advisory-security-scanning.md)).
+- `security.yaml` is advisory: its scanners report in the job summary and never fail a run or gate a merge; a scanner that cannot run does fail ([35](../docs/decisions/0035-advisory-security-scanning.md)). On a pull request a `changes` job maps the diff to scanners (Go, frontend, workflows, Terraform, image) and skips the rest; the weekly and manual runs scan everything, and gitleaks always runs.
 
 ### Building with moon
 
 - Every folder under `services/` or `packages/` needs a `moon.yml`; `root:projects-covered` fails otherwise ([19](../docs/decisions/0019-hand-declared-moon-graph.md)).
 - Declare `dependsOn` by hand. Affected detection is changed files only, so a task that must react to another project lists it in `inputs` (`project://...`) ([19](../docs/decisions/0019-hand-declared-moon-graph.md)).
 - Keep `moon ci`'s targets split one-to-one with the required jobs (`lint-check`, `test`, `api-drift`; `pr-title` and `api-breaking` in `conventions.yaml`) ([19](../docs/decisions/0019-hand-declared-moon-graph.md)).
-- `deploy-{root,staging,prod}:plan` are `noop` markers whose `inputs` decide which environments a diff reaches. List every workflow and action an environment uses in its marker, and never set `runInCI: false` on one ([20](../docs/decisions/0020-deploy-markers.md)).
+- `deploy-{root,staging,prod}:plan` (pull requests) and `deploy-{root,staging}:apply` (merges) are `noop` markers whose `inputs` decide which environments a diff reaches. List only the workflow and actions that marker's own job uses, so a PR plan ignores `push-commit.yaml` and a merge apply ignores `pull-request.yaml`, and never set `runInCI: false` on one ([20](../docs/decisions/0020-deploy-markers.md)).
 - Pin tool versions only in `.prototools`; keep its `go` pin, `go.mod` and the Dockerfile image in step ([21](../docs/decisions/0021-prototools-pins-the-toolchain.md)).
 - No remote cache ([18](../docs/decisions/0018-moon-replaced-pants.md)).
 

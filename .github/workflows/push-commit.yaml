@@ -55,7 +55,7 @@ jobs:
             exit 0
           fi
           moon query affected > affected.json
-          for pair in root=deploy-root:plan staging=deploy-staging:plan backend=services/backend:publish \
+          for pair in root=deploy-root:apply staging=deploy-staging:apply backend=services/backend:publish \
             worker=worker:publish frontend=services/frontend:publish; do
             # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
             val=$(jq -r --arg t "${pair#*=}" '(.tasks // {}) | has($t)' affected.json)

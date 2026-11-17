@@ -81,79 +81,6 @@ jobs:
             echo "${pair%%=*}=$val" >> "$GITHUB_OUTPUT"
           done
 
-  # Runs on every merge, so every commit on `main` has a folder in both buckets. It builds when the
-  # frontend is affected; otherwise it publishes base_sha's folder again under this commit (or
-  # builds, if that folder has aged out). It deploys either way, so staging shows this commit. One
-  # folder feeds both buckets and the Worker.
-  services-frontend:
-    # Runs beside services-backend, not after it: the staging backend's URL is fixed, so the two
-    # deploys don't depend on each other. smoke and release-please wait for both. Each infrastructure
-    # job skips when its deployment isn't affected, so a skip counts as passing.
-    needs: [changed, infrastructure-root, infrastructure-staging]
-    if: |
-      always() &&
-      needs.changed.result == 'success' &&
-      (needs.infrastructure-root.result == 'success' || needs.infrastructure-root.result == 'skipped') &&
-      (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - id: secrets
-        uses: ./.github/actions/gcp-secret-manager
-        with:
-          project_id: 'blog-gorman-club-root'
-          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
-          secrets_list: |
-            CLOUDFLARE_API_TOKEN=cloudflare_api_token
-      # Looked up directly, reusing gcp-secret-manager's auth.
-      - id: backend
-        name: Get Backend URL
-        shell: bash
-        run: |
-          URL=$(gcloud run services describe backend-stag \
-            --region=europe-west1 \
-            --project=blog-gorman-club-stag \
-            --format='value(status.url)')
-          test -n "$URL" || { echo '::error::backend-stag URL not found'; exit 1; }
-          echo "backend_url=$URL" >> "$GITHUB_OUTPUT"
-      - id: short
-        shell: bash
-        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-      - id: reuse
-        name: Reuse the unchanged frontend
-        if: needs.changed.outputs.frontend != 'true'
-        continue-on-error: true
-        uses: ./.github/actions/frontend-fetch
-        with:
-          gcp_project_id: 'blog-gorman-club-stag'
-          sha: ${{ needs.changed.outputs.base_sha }}
-          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
-      - if: steps.reuse.outcome != 'success'
-        uses: ./.github/actions/frontend-build
-        with:
-          google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
-      - uses: ./.github/actions/frontend-publish
-        with:
-          gcp_project_id: 'blog-gorman-club-stag'
-          prod_project_id: 'blog-gorman-club-prod'
-          sha: ${{ github.sha }}
-          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
-      - uses: ./.github/actions/frontend-deploy
-        with:
-          secrets: ${{ steps.secrets.outputs.secrets }}
-          cloudflare_project_name: 'frontend-stag'
-          cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          backend_url: ${{ steps.backend.outputs.backend_url }}
-          # Staging runs a commit, so it shows the short SHA; production shows its release tag (decision 39).
-          version: ${{ steps.short.outputs.sha }}
-          environment: 'staging'
-
   infrastructure-root:
     needs: changed
     if: needs.changed.outputs.infrastructure-root == 'true'
@@ -206,37 +133,51 @@ jobs:
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
             TF_VAR_ci_service_account=${{ vars.DEPLOY_SERVICE_ACCOUNT }}
 
-  # Runs on every merge, so every commit on `main` has a commit-SHA image in both registries. An
-  # unaffected image is base_sha's re-tagged, with no build and no staging deploy. One leg per image
-  # (the API and the worker), built from the same Dockerfile with CMD=<image>. Follows
-  # infrastructure-staging.
-  services-backend:
-    name: services-${{ matrix.image }}
-    needs: [changed, infrastructure-staging]
+  # Runs on every merge, so every commit on `main` has a commit-SHA artifact in both environments, one
+  # matrix leg each, run in parallel after infrastructure-root and -staging (a skipped one counts as
+  # passing, as it isn't affected). The legs run independently, and smoke and release-please wait for
+  # all three.
+  # - backend and worker: an unaffected image is base_sha's re-tagged, with no build and no staging
+  #   deploy. Both are built from the same Dockerfile with CMD=<image>.
+  # - frontend: builds when affected; otherwise it publishes base_sha's folder again under this commit
+  #   (or builds, if that folder has aged out). It deploys either way, so staging shows this commit.
+  #   One folder feeds both buckets and the Worker. Its steps are in the frontend-staging action.
+  services:
+    name: services-${{ matrix.service }}
+    needs: [changed, infrastructure-root, infrastructure-staging]
     if: |
       always() &&
       needs.changed.result == 'success' &&
+      (needs.infrastructure-root.result == 'success' || needs.infrastructure-root.result == 'skipped') &&
       (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
     strategy:
-      # The legs run independently.
       fail-fast: false
       matrix:
-        image: [backend, worker]
+        service: [backend, worker, frontend]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/backend-deploy
+      - if: matrix.service != 'frontend'
+        uses: ./.github/actions/backend-deploy
         with:
           gcp_project_id: 'blog-gorman-club-stag'
           prod_project_id: 'blog-gorman-club-prod'
           gcp_region: 'europe-west1'
-          service_name: '${{ matrix.image }}-stag'
-          image_name: ${{ matrix.image }}
+          service_name: '${{ matrix.service }}-stag'
+          image_name: ${{ matrix.service }}
           image_tag: ${{ github.sha }}
-          reuse_from: ${{ needs.changed.outputs[matrix.image] != 'true' && needs.changed.outputs.base_sha || '' }}
+          reuse_from: ${{ needs.changed.outputs[matrix.service] != 'true' && needs.changed.outputs.base_sha || '' }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
+      - if: matrix.service == 'frontend'
+        uses: ./.github/actions/frontend-staging
+        with:
+          reuse_from: ${{ needs.changed.outputs.frontend != 'true' && needs.changed.outputs.base_sha || '' }}
+          google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
+          cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
 
@@ -245,11 +186,10 @@ jobs:
   # staging site. Covers config.json, CORS, the Worker and routing. Runs once both are live;
   # release-please waits on it.
   smoke:
-    needs: [changed, services-backend, services-frontend]
+    needs: [changed, services]
     if: |
       always() &&
-      needs.services-backend.result == 'success' &&
-      needs.services-frontend.result == 'success' &&
+      needs.services.result == 'success' &&
       (needs.changed.outputs.infrastructure-root == 'true' ||
         needs.changed.outputs.infrastructure-staging == 'true' ||
         needs.changed.outputs.backend == 'true' ||
@@ -276,12 +216,11 @@ jobs:
   # `success` (smoke may also be skipped, when nothing deployable changed), since always() opts out
   # of inherited skips. A skip of any publish job is not release-worthy (#156, #185).
   release-please:
-    needs: [services-backend, services-frontend, smoke]
+    needs: [services, smoke]
     if: |
       always() &&
       (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') &&
-      needs.services-backend.result == 'success' &&
-      needs.services-frontend.result == 'success'
+      needs.services.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read

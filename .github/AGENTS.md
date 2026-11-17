@@ -13,7 +13,7 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 
 - `security.yaml` is advisory: its scanners report in the job summary and never fail a run or gate a merge; a scanner that cannot run does fail ([35](../docs/decisions/0035-advisory-security-scanning.md)). Each scanner has a moon marker task (`scan-go`, `scan-image`, `scan`, `scan-workflows`, `scan-secrets`) and a `changes` job skips the ones a pull request doesn't reach; the weekly and manual runs scan everything ([41](../docs/decisions/0041-moon-gates-every-ci-job.md)).
 - moon decides which jobs run: each workflow's `changed` job runs `moon query affected` (moon only, `auto-install: false`) and every other job gates on its outputs. A new job needs a marker task with `inputs` and an output in `changed`, or it runs on every change. `lint-check`, `test` and `api-drift` are separate jobs, not a matrix, so a skip keeps the required check name ([41](../docs/decisions/0041-moon-gates-every-ci-job.md)).
-- `push-commit.yaml` diffs against the previous commit when its run succeeded, else the last release tag, so a merge builds only what it changed; the backend and frontend deploy in parallel and `smoke` is skipped when nothing deployable changed ([41](../docs/decisions/0041-moon-gates-every-ci-job.md)).
+- `push-commit.yaml` diffs against the previous commit when its run succeeded, else the last release tag, so a merge builds only what it changed; the backend, worker and frontend deploy in parallel as the `services` matrix (the frontend's steps are the `frontend-staging` action) and `smoke` is skipped when nothing deployable changed ([41](../docs/decisions/0041-moon-gates-every-ci-job.md)).
 
 ### Building with moon
 
@@ -35,7 +35,7 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 
 ### Release PRs
 
-- `release-please` runs on every merge and checks each direct need for `success` (`services-backend`, a matrix over both images, `services-frontend`, `smoke`), never a bare `needs:` ([39](../docs/decisions/0039-releases-from-release-please.md)).
+- `release-please` runs on every merge and checks each direct need for `success` (`services`, a matrix over the backend, worker and frontend, and `smoke`, which may be skipped), never a bare `needs:` ([39](../docs/decisions/0039-releases-from-release-please.md)).
 - `plan-prod` posts the prod plan on the open release PR, with `-lock=false` ([39](../docs/decisions/0039-releases-from-release-please.md)).
 - Staging shows the short commit SHA; only production shows a release tag ([39](../docs/decisions/0039-releases-from-release-please.md)).
 

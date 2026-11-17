@@ -66,5 +66,5 @@ runs:
         accountId: ${{ inputs.cloudflare_account_id }}
         workingDirectory: services/frontend
         # renovate: datasource=npm depName=wrangler
-        wranglerVersion: '4.163.0'
+        wranglerVersion: '4.164.0'
         command: deploy --name ${{ inputs.cloudflare_project_name }} --assets ${{ inputs.dist_directory }}

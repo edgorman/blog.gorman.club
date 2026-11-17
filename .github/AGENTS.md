@@ -24,7 +24,7 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 
 ### Versioning
 
-- release-please computes versions from Conventional Commit subjects and opens the release PR; tags are `vMAJOR.MINOR.PATCH` and `chore:`, `docs:` and `ci:` alone do not call for a release ([39](../docs/decisions/0039-releases-from-release-please.md)).
+- release-please computes versions from Conventional Commit subjects and opens the release PR; tags are `vMAJOR.MINOR.PATCH` and `build:`, `chore:`, `ci:`, `docs:` and `refactor:` call for a patch release too, so dependency bumps reach prod; `style:` and `test:` alone do not ([39](../docs/decisions/0039-releases-from-release-please.md)).
 
 ### Staging Deployments
 

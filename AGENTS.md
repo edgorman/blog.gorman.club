@@ -81,7 +81,8 @@ Every PR title must be a [Conventional Commit](https://www.conventionalcommits.o
 - `feat:` - a new capability; bumps minor.
 - `fix:` - a bug fix; bumps patch.
 - `perf`, `revert` - bump patch.
-- `build`, `chore`, `ci`, `docs`, `refactor`, `style`, `test` - do not call for a release on their own; they ship with the next `feat`, `fix`, `perf` or `revert`.
+- `build`, `chore`, `ci`, `docs`, `refactor` - bump patch, so Renovate's `build(deps):` bumps and infrastructure `chore:` changes reach production in the next release.
+- `style`, `test` - do not call for a release on their own; they ship with the next one.
 - `!` after the type or scope, or a `BREAKING CHANGE:` footer in the PR body - bumps major.
 
 This applies to PRs Claude Code opens too.

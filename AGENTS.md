@@ -76,11 +76,12 @@ Two project skills in `.claude/skills/` cover issue to merged PR: `implement-iss
 
 ## Commit Message Convention
 
-Every PR title must be a [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/) subject, `type(scope)?: description` (e.g. `feat(backend): paginate GET /blogs`), and the `pr-title` check enforces it. PRs are squash-merged with the title as the commit subject, and versioning parses that subject ([25](docs/decisions/0025-versions-from-conventional-commits.md)):
+Every PR title must be a [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/) subject, `type(scope)?: description` (e.g. `feat(backend): paginate GET /blogs`), and the `pr-title` check enforces it. PRs are squash-merged with the title as the commit subject, and release-please parses that subject ([39](docs/decisions/0039-releases-from-release-please.md)):
 
 - `feat:` - a new capability; bumps minor.
 - `fix:` - a bug fix; bumps patch.
-- `build`, `chore`, `ci`, `docs`, `perf`, `refactor`, `revert`, `style`, `test` - bump patch.
+- `perf`, `revert` - bump patch.
+- `build`, `chore`, `ci`, `docs`, `refactor`, `style`, `test` - do not call for a release on their own; they ship with the next `feat`, `fix`, `perf` or `revert`.
 - `!` after the type or scope, or a `BREAKING CHANGE:` footer in the PR body - bumps major.
 
 This applies to PRs Claude Code opens too.

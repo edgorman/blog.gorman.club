@@ -15,4 +15,6 @@ Cloudflare Pages is in maintenance, and Workers static assets does what the blog
 
 ## Consequences
 
-The two Terraform-managed Pages DNS records and the `data.cloudflare_zone` lookups are gone; the zone and account ids are in `infrastructure/config/root/terraform.tfvars`. A custom domain on a Worker with no uploaded version may be refused by Cloudflare, so the first apply can need a second run after the first deploy.
+The two Terraform-managed Pages DNS records and the `data.cloudflare_zone` lookups are gone; the zone and account ids are in `infrastructure/config/root/terraform.tfvars`. A custom domain on a Worker with no uploaded version is refused by Cloudflare (code 100124, "Worker has no deployments"), so the first apply needs a first `wrangler deploy` by hand and then a second apply. That hand deploy has no `config.json`, so the app falls back to `localhost:8080` until the first CI deploy replaces it. TLS on a new custom domain can take a few minutes.
+
+The Cloudflare API token needs, on the account, Pages Read/Write and Workers Scripts Write (the latter also for `wrangler deploy` in CI), and on the `gorman.club` zone, Zone Read/Write and DNS Read/Write. Pages projects whose every deployment was a production one (as every merge here was) will not delete (code 8000076, "too many deployments") until all but the newest are removed with `wrangler pages deployment delete --force`.

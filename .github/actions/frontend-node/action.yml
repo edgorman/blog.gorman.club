@@ -1,0 +1,17 @@
+name: 'Frontend Node'
+description: 'Sets up the Node version pinned in .prototools, with the frontend''s npm cache'
+
+runs:
+  using: "composite"
+  steps:
+    # .prototools is the one place tool versions are pinned (see .github/AGENTS.md).
+    - id: node-version
+      name: Read the Node version
+      shell: bash
+      run: echo "version=$(sed -n 's/^node = "\([^"]*\)".*/\1/p' "$GITHUB_WORKSPACE/.prototools" | head -1)" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      with:
+        node-version: ${{ steps.node-version.outputs.version }}
+        cache: 'npm'
+        cache-dependency-path: services/frontend/package-lock.json

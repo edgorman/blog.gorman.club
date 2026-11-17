@@ -35,23 +35,10 @@ runs:
     - id: short
       shell: bash
       run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-    - id: reuse
-      name: Reuse the unchanged frontend
-      if: inputs.reuse_from != ''
-      continue-on-error: true
-      uses: ./.github/actions/frontend-fetch
+    - uses: ./.github/actions/frontend-artifact
       with:
-        gcp_project_id: 'blog-gorman-club-stag'
-        sha: ${{ inputs.reuse_from }}
-    - if: steps.reuse.outcome != 'success'
-      uses: ./.github/actions/frontend-build
-      with:
+        reuse_from: ${{ inputs.reuse_from }}
         google_client_id: ${{ inputs.google_client_id }}
-    - uses: ./.github/actions/frontend-publish
-      with:
-        gcp_project_id: 'blog-gorman-club-stag'
-        prod_project_id: 'blog-gorman-club-prod'
-        sha: ${{ github.sha }}
     - uses: ./.github/actions/frontend-deploy
       with:
         cloudflare_api_token: ${{ steps.secrets.outputs.cloudflare_api_token }}

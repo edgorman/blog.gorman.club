@@ -4,16 +4,16 @@ description: 'Builds a backend-module image (the API or the worker), pushes it t
 inputs:
   gcp_project_id:
     description: 'GCP project the staging Artifact Registry repository and Cloud Run service live in'
-    required: true
+    required: false
+    default: 'blog-gorman-club-stag'
   prod_project_id:
     description: 'GCP project of the production Artifact Registry repository the image is also pushed to'
-    required: true
+    required: false
+    default: 'blog-gorman-club-prod'
   gcp_region:
     description: 'GCP region of both Artifact Registry repositories and the Cloud Run service'
-    required: true
-  service_name:
-    description: 'Cloud Run service name (e.g. backend-stag)'
-    required: true
+    required: false
+    default: 'europe-west1'
   image_name:
     description: 'Which binary under services/backend/cmd to build, and the image name it is pushed under in the backend repository (backend or worker)'
     required: false
@@ -93,5 +93,5 @@ runs:
       with:
         gcp_project_id: ${{ inputs.gcp_project_id }}
         gcp_region: ${{ inputs.gcp_region }}
-        service_name: ${{ inputs.service_name }}
+        service_name: ${{ inputs.image_name }}-stag
         image: ${{ steps.image.outputs.staging_ref }}

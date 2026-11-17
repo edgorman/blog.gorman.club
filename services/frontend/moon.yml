@@ -57,7 +57,9 @@ tasks:
     inputs:
       - '@group(sources)'
       - '@group(configs)'
+      - '/.github/actions/frontend-artifact/**/*'
       - '/.github/actions/frontend-build/**/*'
+      - '/.github/actions/frontend-node/**/*'
       - '/.github/actions/frontend-publish/**/*'
     options:
       cache: false
@@ -68,6 +70,8 @@ tasks:
     inputs:
       - '@group(configs)'
       - 'project://packages/api'
+      - '/.prototools'
+      - '/.github/actions/frontend-node/**/*'
       - '/.github/workflows/security.yaml'
       - '/.github/scripts/advisory.sh'
     options:

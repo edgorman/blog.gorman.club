@@ -1,6 +1,6 @@
 moon = "2.6.5"
 go = "1.27.4"          # must equal services/backend/go.mod's `go` line
-node = "26"            # matches setup-node in both workflows
+node = "26"            # read by .github/actions/frontend-node
 npm = "10.9.10"         # no prior pin existed to match
 terraform = "1.17.2"   # matches setup-terraform and every providers.tf required_version
 

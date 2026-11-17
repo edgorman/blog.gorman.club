@@ -1,8 +1,8 @@
 moon = "2.6.5"
-go = "1.26.0"          # must equal services/backend/go.mod's `go` line
-node = "26"            # matches setup-node '22' in both workflows today
-npm = "10.9.7"         # version bundled with Node 22 today; no prior pin existed to match
-terraform = "1.15.8"   # matches setup-terraform and every providers.tf required_version
+go = "1.27.4"          # must equal services/backend/go.mod's `go` line
+node = "26"            # matches setup-node in both workflows
+npm = "10.9.10"         # no prior pin existed to match
+terraform = "1.17.2"   # matches setup-terraform and every providers.tf required_version
 
 [plugins]
 # Third-party proto plugin (proto's registry/data/third-party.json), pinned to a commit SHA rather

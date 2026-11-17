@@ -168,6 +168,14 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Signed in once for every step below, including the composite actions.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - if: matrix.service != 'frontend'
         uses: ./.github/actions/backend-deploy
         with:
@@ -178,16 +186,12 @@ jobs:
           image_name: ${{ matrix.service }}
           image_tag: ${{ github.sha }}
           reuse_from: ${{ needs.changed.outputs[matrix.service] != 'true' && needs.changed.outputs.base_sha || '' }}
-          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
       - if: matrix.service == 'frontend'
         uses: ./.github/actions/frontend-staging
         with:
           reuse_from: ${{ needs.changed.outputs.frontend != 'true' && needs.changed.outputs.base_sha || '' }}
           google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
           cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
 
   # Skipped when this merge changes nothing deployable: the staging site is then the one the last
   # smoke test passed. The deployed frontend and backend together, signed out and read-only, against the live

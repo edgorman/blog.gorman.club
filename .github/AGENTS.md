@@ -7,6 +7,7 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 - Everything builds, tests and deploys through GitHub Actions; infrastructure applies before services update.
 - Every pipeline has an environment-scoped concurrency group.
 - Shared steps live in composite actions under `.github/actions/`.
+- A job signs in to Google Cloud once (`google-github-actions/auth`, then `setup-gcloud` where it runs `gcloud`); composite actions never sign in themselves and use the job's credentials.
 - An apply plans and applies in the same job from its own commit; the PR comment is the review, and a plan is never saved or passed between jobs ([37](../docs/decisions/0037-replan-at-apply.md)).
 - Each workflow authenticates as its own identity: PR checks as `PLAN_`, `push-commit.yaml` and `push-release.yaml` as `DEPLOY_`, promotion and the manual prod apply as `PROMOTE_`, Renovate as `RENOVATE_SERVICE_ACCOUNT`. A PR's plan job gets placeholder tokens and `-refresh=false`, never a secret; a workflow that needs another identity calls a reusable workflow ([38](../docs/decisions/0038-separate-plan-and-apply-identities.md)).
 - Renovate (`renovate.yaml`, `renovate.json5`) opens the dependency PRs. A hand-written version pin gets a `# renovate: datasource=... depName=...` comment above it ([40](../docs/decisions/0040-self-hosted-renovate.md)).

@@ -12,25 +12,10 @@ inputs:
     description: 'Local directory to download the static files into'
     required: false
     default: 'services/frontend/dist'
-  workload_identity_provider:
-    description: 'The Workload Identity Provider resource name'
-    required: true
-  service_account:
-    description: 'The Google Service Account email'
-    required: true
 
 runs:
   using: "composite"
   steps:
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-      with:
-        workload_identity_provider: ${{ inputs.workload_identity_provider }}
-        service_account: ${{ inputs.service_account }}
-
-    - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-
     # gcloud storage rsync treats a bucket prefix with no matching objects as an empty source
     # rather than an error, so a missing or not-yet-published folder would otherwise sync zero
     # files and leave frontend-deploy to push an empty dist/ straight over the live site. Failing

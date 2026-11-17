@@ -163,12 +163,12 @@ jobs:
         with:
           secrets: |-
             cloudflare_api_token: projects/blog-gorman-club-root/secrets/cloudflare_api_token/versions/latest
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - uses: ./.github/actions/frontend-fetch
         with:
           gcp_project_id: 'blog-gorman-club-prod'
           sha: ${{ needs.target.outputs.sha }}
-          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.PROMOTE_SERVICE_ACCOUNT }}
       - uses: ./.github/actions/frontend-deploy
         with:
           cloudflare_api_token: ${{ steps.secrets.outputs.cloudflare_api_token }}

@@ -1,0 +1,32 @@
+name: 'Frontend Artifact'
+description: 'Publishes the frontend to both environments'' buckets under the commit SHA: builds the bundle, or re-publishes the one from reuse_from when it is unchanged'
+
+inputs:
+  reuse_from:
+    description: 'Commit SHA whose published bundle to reuse instead of building. Falls back to building if that folder is missing. Omit to build.'
+    required: false
+    default: ''
+  google_client_id:
+    description: 'Google OAuth 2.0 client ID, baked into a bundle that is built. Not a secret.'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - id: reuse
+      name: Reuse the unchanged frontend
+      if: inputs.reuse_from != ''
+      continue-on-error: true
+      uses: ./.github/actions/frontend-fetch
+      with:
+        gcp_project_id: 'blog-gorman-club-stag'
+        sha: ${{ inputs.reuse_from }}
+    - if: steps.reuse.outcome != 'success'
+      uses: ./.github/actions/frontend-build
+      with:
+        google_client_id: ${{ inputs.google_client_id }}
+    - uses: ./.github/actions/frontend-publish
+      with:
+        gcp_project_id: 'blog-gorman-club-stag'
+        prod_project_id: 'blog-gorman-club-prod'
+        sha: ${{ github.sha }}

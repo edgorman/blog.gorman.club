@@ -50,30 +50,14 @@ jobs:
       - if: matrix.service != 'frontend'
         uses: ./.github/actions/backend-deploy
         with:
-          gcp_project_id: 'blog-gorman-club-stag'
-          prod_project_id: 'blog-gorman-club-prod'
-          gcp_region: 'europe-west1'
-          service_name: '${{ matrix.service }}-stag'
           image_name: ${{ matrix.service }}
           image_tag: ${{ github.sha }}
           reuse_from: ${{ github.event.before }}
-      - id: reuse
-        if: matrix.service == 'frontend'
-        continue-on-error: true
-        uses: ./.github/actions/frontend-fetch
-        with:
-          gcp_project_id: 'blog-gorman-club-stag'
-          sha: ${{ github.event.before }}
-      - if: matrix.service == 'frontend' && steps.reuse.outcome != 'success'
-        uses: ./.github/actions/frontend-build
-        with:
-          google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
       - if: matrix.service == 'frontend'
-        uses: ./.github/actions/frontend-publish
+        uses: ./.github/actions/frontend-artifact
         with:
-          gcp_project_id: 'blog-gorman-club-stag'
-          prod_project_id: 'blog-gorman-club-prod'
-          sha: ${{ github.sha }}
+          reuse_from: ${{ github.event.before }}
+          google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
 
   # Creates the tag and the GitHub release. It waits on the artifacts, so a tag always has the
   # commit-SHA artifacts promotion deploys. `if:` tests the direct need for `success`, since

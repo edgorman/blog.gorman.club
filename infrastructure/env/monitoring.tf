@@ -34,9 +34,7 @@ locals {
   backend_host = trimprefix(google_cloud_run_v2_service.backend.uri, "https://")
 }
 
-# Polls /health from Google's checker regions. This is the first thing in the deployment that
-# actually exercises the Debug Endpoint Contract - until now it was only ever read by hand from
-# the frontend dashboard.
+# Polls /health from Google's checker regions. This exercises the Debug Endpoint Contract.
 resource "google_monitoring_uptime_check_config" "backend_health" {
   depends_on = [google_project_service.monitoring]
 

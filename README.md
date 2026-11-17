@@ -2,7 +2,7 @@
 
 [![Push Commit](https://github.com/edgorman/blog.gorman.club/actions/workflows/push-commit.yaml/badge.svg?branch=main)](https://github.com/edgorman/blog.gorman.club/actions/workflows/push-commit.yaml)
 [![Promote Release](https://github.com/edgorman/blog.gorman.club/actions/workflows/promote-release.yaml/badge.svg)](https://github.com/edgorman/blog.gorman.club/actions/workflows/promote-release.yaml)
-[![Release](https://img.shields.io/github/v/release/edgorman/blog.gorman.club?include_prereleases)](https://github.com/edgorman/blog.gorman.club/releases)
+[![Release](https://img.shields.io/github/v/release/edgorman/blog.gorman.club)](https://github.com/edgorman/blog.gorman.club/releases)
 
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](services/backend)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](services/frontend)

@@ -21,8 +21,7 @@ const SITEMAP_MAX_PAGES = 50
 const SITEMAP_TIMEOUT_MS = 10_000
 // How long a colo keeps the last good sitemap to fall back to: a week.
 const SITEMAP_LAST_GOOD_SECONDS = 7 * 24 * 60 * 60
-// How long a post page waits for the backend before serving the plain shell: the SPA fetches the
-// post itself anyway, so a slow or cold backend shouldn't hold up the page.
+// How long a post page waits for the backend before serving the plain shell.
 const POST_TIMEOUT_MS = 1500
 // The SPA's routes that aren't posts or profiles but are worth indexing.
 const STATIC_PAGES = ['/privacy', '/terms']
@@ -33,8 +32,7 @@ export default {
     const prod = url.hostname === PROD_HOSTNAME
     const response = await route(request, env, url, prod)
     if (prod) return response
-    // Staging (or a *.workers.dev address) serves the same bundle and the same _headers as prod, so
-    // this is the one place that can tell it apart and keep it out of search results.
+    // Marks staging and *.workers.dev hosts noindex.
     const marked = new Response(response.body, response)
     marked.headers.set('X-Robots-Tag', 'noindex')
     return marked
@@ -61,7 +59,7 @@ async function postShell(request, env, url, encodedSlug) {
   const headers = new Headers(shell.headers)
   headers.delete('Content-Length')
   headers.delete('ETag')
-  // A function, not a string: a string replacement would expand $' and $& inside the post's title.
+  // A function replacement, so $' and $& in a post's title are not expanded.
   const html = (await shell.text()).replace(/<title>[^<]*<\/title>/, () => postTags(post))
   return new Response(html, { status: 200, headers })
 }
@@ -93,7 +91,7 @@ async function sitemap(env, url) {
   try {
     const xml = sitemapXml(await sitemapEntries(env, url))
     const response = xmlResponse(xml, 3600)
-    // Kept well past the hour it's served fresh, so there's something to fall back to.
+    // Kept well past the hour it is served fresh, for the fallback.
     await cache?.put(lastGood, xmlResponse(xml, SITEMAP_LAST_GOOD_SECONDS)).catch(() => {})
     return response
   } catch (e) {
@@ -109,7 +107,7 @@ async function sitemapEntries(env, url) {
   const backend = await backendUrl(env, url)
   if (!backend) throw new Error('no backend configured')
   const entries = STATIC_PAGES.map(staticEntry)
-  // One deadline for all the pages, so a Cloud Run cold start falls back before the crawler gives up.
+  // One deadline for all the pages.
   const signal = AbortSignal.timeout(SITEMAP_TIMEOUT_MS)
   let startAfter = ''
   for (let i = 0; i < SITEMAP_MAX_PAGES; i++) {
@@ -157,7 +155,7 @@ async function backendUrl(env, url, signal) {
     const config = response.ok ? await response.json() : {}
     return typeof config.backendUrl === 'string' ? config.backendUrl.replace(/\/$/, '') : ''
   } catch {
-    // Missing: the static assets answer the SPA shell instead, which isn't JSON.
+    // Missing: the static assets answer with the SPA shell.
     return ''
   }
 }

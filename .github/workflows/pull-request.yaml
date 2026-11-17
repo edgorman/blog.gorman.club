@@ -4,28 +4,25 @@ on:
   pull_request:
     branches:
       - main
-  # Runs the same required checks on a merge queue's merge commits. Inert while the repository is
-  # user-owned (GitHub only offers merge queues to organization-owned repositories, see
-  # .github/settings.yml), but ready the day one is turned on.
+  # Runs the required checks on a merge queue's merge commits. Inactive until the repository is
+  # organization-owned (.github/settings.yml).
   merge_group:
 
 permissions:
   contents: read
 
 concurrency:
-  # A merge_group event has no PR number; its ref (gh-readonly-queue/main/pr-N-<sha>) is unique
-  # per queue entry, so entries don't cancel each other.
+  # A merge_group event has no PR number; its ref is unique per queue entry.
   group: pull-request-root-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # moon decides which Terraform deployment(s) a diff reaches via `moon query affected`. There is
-  # no blanket .github/** glob here because none is needed: every deploy-{root,staging,prod}:plan
-  # task's own `inputs` (#195/#206) already lists the exact composite actions and workflow files
-  # that environment's job depends on, so nothing is left for a repo-wide fallback to paper over.
+  # moon decides which Terraform deployments a diff reaches via `moon query affected`. Each
+  # deploy-{root,staging,prod}:plan task's `inputs` (#195/#206) list the composite actions and
+  # workflow files its environment depends on.
   changed:
-    # The three infrastructure plans run as the plan identity, which root's apply creates and writes
-    # into the repository variables (decision 38): until then only the moon checks run.
+    # The three infrastructure plans run as the plan identity that root's apply writes into the
+    # repository variables (decision 38); until then only the moon checks run.
     if: vars.PLAN_SERVICE_ACCOUNT != ''
     runs-on: ubuntu-latest
     outputs:
@@ -33,8 +30,7 @@ jobs:
       infrastructure-staging: ${{ steps.moon.outputs.staging }}
       infrastructure-prod: ${{ steps.moon.outputs.prod }}
     steps:
-      # moon needs full history to resolve the merge base - a shallow clone makes affected
-      # detection "inaccurate or fail entirely" (https://moonrepo.dev/docs/guides/ci).
+      # moon needs full history to resolve the merge base.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -42,31 +38,22 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
-          # #212's own first three CI runs each failed a different moon task with the identical
-          # `proto-shim: ... Permission denied (os error 13)` error, every time right after a
-          # toolchain cache hit - the cache restore losing proto's shim executable bit, not the
-          # task. Disabled until that's confirmed fixed upstream.
+          # The toolchain cache is disabled: restoring it loses the executable bit on proto's shim.
           cache: false
       - id: moon
         name: Compute moon-affected deployments
         shell: bash
         env:
-          # `moon query affected` has no --base flag, but reads MOON_BASE the same way `moon ci`
-          # does (crates/app/src/queries/changed_files.rs) - set explicitly, matching the other jobs.
-          # On merge_group it is still right: checkout's fetch-depth 0 fetches origin/main, and the
-          # queue commit diffs against it as this PR plus any entries queued ahead of it - a
-          # superset, so an infrastructure/-only PR still plans every environment it reaches.
+          # `moon query affected` has no --base flag; it reads MOON_BASE as `moon ci` does. On
+          # merge_group the queue commit diffs against origin/main, which covers this PR and the
+          # entries queued ahead of it.
           MOON_BASE: origin/main
         run: |
-          # Left at the command's own defaults (no --upstream/--downstream): #206 deliberately
-          # modelled deploy-staging/deploy-prod's dependsOn on infra-env/deploy-root as
-          # apply-ordering only, not an affectedness edge, so pulling in graph relations would mark
-          # them affected via the wrong mechanism - the explicit project://infra-root /
-          # project://infra-env inputs are the intended signal.
+          # Run with the command's own defaults (no --upstream/--downstream); the explicit
+          # project://infra-root / project://infra-env inputs are the affectedness signal (#206).
           moon query affected > affected.json
           for env in root staging prod; do
-            # .tasks is omitted entirely when nothing is affected (moon's Affected struct skips
-            # empty maps on serialize), so `(.tasks // {})` guards against `has` erroring on null.
+            # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
             val=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' affected.json)
             echo "$env=$val" >> "$GITHUB_OUTPUT"
           done
@@ -77,9 +64,7 @@ jobs:
   # - lint-check: every lint/format/build task. `:format`/`:validate` reach infra-root/infra-env's
   #   inherited `terraform fmt -check` and `terraform validate` (.moon/tasks/terraform.yml);
   #   `:validate` is `runInCI: 'only'`, so this is the one place it runs at all.
-  # - test: every project's tests (a shared package still reaches its dependents via each test
-  #   task's own `inputs`, e.g. `project://packages/api`) plus both images, so a broken
-  #   image build fails the PR rather than the job that publishes it.
+  #   task's own `inputs`, e.g. `project://packages/api`) plus both images.
   # - api-drift: packages/api:drift, both generators re-run and diffed.
   moon:
     name: ${{ matrix.check }}
@@ -104,9 +89,9 @@ jobs:
           auto-install: true
           cache: false # see `changed`'s identical setup step above for why
       # internal/repository/firestore's emulator tests skip unless FIRESTORE_EMULATOR_HOST is set.
-      # The jar is the one `gcloud emulators firestore` runs, fetched directly (checksum from
-      # firebase-tools' downloadableEmulatorInfo.json) rather than through a gcloud component
-      # install; it needs Java 21, which the runner image ships beside its default.
+      # The emulator jar is the one `gcloud emulators firestore` runs, fetched directly (checksum
+      # from firebase-tools' downloadableEmulatorInfo.json). It needs Java 21, which the runner
+      # ships beside its default.
       - name: Start the Firestore emulator
         if: matrix.check == 'test'
         shell: bash
@@ -138,11 +123,9 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.PLAN_SERVICE_ACCOUNT }}
-      # The plan identity can read no secret (decision 38): the plan is made without refreshing, so
-      # no provider uses these placeholders. The Cloudflare provider still validates the token's
-      # shape (40 characters of a-z, A-Z, 0-9, - and _), hence the padding. The GitHub provider looks the
-      # owner up when it configures, even with -refresh=false, and a bad token is a 401 where no
-      # token is an anonymous 404 for a user account, so its token is left empty.
+      # The plan identity reads no secret (decision 38). The plan is made without refreshing, against
+      # placeholder tokens: 40 characters for Cloudflare (the provider validates the token's shape)
+      # and an empty one for GitHub (the provider's owner lookup is anonymous).
       - uses: ./.github/actions/terraform-pull-request
         with:
           terraform_directory: 'infrastructure/root'

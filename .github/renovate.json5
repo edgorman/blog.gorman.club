@@ -1,7 +1,5 @@
-// Self-hosted Renovate (.github/workflows/renovate.yaml), replacing Dependabot's version updates
-// (Dependabot alerts and security updates stay on). One grouped PR per ecosystem, weekly - the
-// cadence is the workflow's schedule - titled as a Conventional Commit, since the PR title becomes the
-// squash commit and the pr-title check enforces it (decision 40).
+// Self-hosted Renovate (.github/workflows/renovate.yaml). One grouped PR per ecosystem, weekly (the
+// workflow's schedule), titled as a Conventional Commit (decision 40).
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: ['config:recommended'],
@@ -33,7 +31,7 @@
     { matchManagers: ['gomod'], groupName: 'gomod-deps', labels: ['backend'] },
     { matchManagers: ['custom.regex'], groupName: 'tool-deps', labels: ['ci'] },
 
-    // Pinned by digest, so what is built is what was reviewed.
+    // Pinned by digest.
     { matchDatasources: ['docker'], pinDigests: true, groupName: 'docker-deps', labels: ['backend'] },
 
     // One pin in several files moves together or CI fails: Go in .prototools, go.mod and the

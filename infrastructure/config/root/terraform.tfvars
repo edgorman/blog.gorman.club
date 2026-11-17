@@ -18,10 +18,10 @@ google_site_verification = "Zp_UP1vLDTpUNWsHeNP3xGScmS8c4q5wJw0SPat6j38"
 
 # Cloudflare dashboard > the gorman.club zone's Overview page: the account id and the zone id sit
 # in the right-hand column. Neither is a secret. Both are read at plan time, so they live here
-# rather than in Secret Manager (decision 38). TODO(Ed): fill both in before the first apply; the
-# validation on each variable fails the plan until they are 32-character ids.
-cloudflare_account_id = ""
-cloudflare_zone_id    = ""
+# rather than in Secret Manager (decision 38). The validation
+# on each variable fails the plan unless they are 32-character ids.
+cloudflare_account_id = "3d8161599481144eae472c57c1d976f5"
+cloudflare_zone_id    = "9ceaeb42168f13278a92f344ba127b54"
 
 cloudflare_zone = "gorman.club"
 frontend_hostnames = {

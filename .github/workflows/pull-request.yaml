@@ -56,6 +56,8 @@ jobs:
           MOON_TOOLCHAIN_FORCE_GLOBALS: 'true'
           MOON_SKIP_SETUP_TOOLCHAIN: 'true'
           MOON_LOG: debug
+          # The runner's go is older than go.mod's, so go would download the matching toolchain.
+          GOTOOLCHAIN: local
         run: |
           # The targets each required check hands to `moon ci`, kept here so the check and the
           # decision to run it can't drift apart. `:name` means that task in any project.

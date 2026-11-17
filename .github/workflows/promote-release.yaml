@@ -31,7 +31,7 @@ concurrency:
 jobs:
   # Resolves what is being deployed; a manual run names only the tag.
   target:
-    # Every later job needs this one, so skipping it skips the promotion before root's bootstrap.
+    # Skipped before root's bootstrap; every later job needs it.
     if: vars.WORKLOAD_IDENTITY_PROVIDER != ''
     runs-on: ubuntu-latest
     outputs:

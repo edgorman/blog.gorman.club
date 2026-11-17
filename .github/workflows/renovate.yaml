@@ -1,9 +1,8 @@
 name: 'Renovate'
 
 # Self-hosted dependency updates (decision 40): one grouped PR per ecosystem, weekly, from
-# .github/renovate.json5. It runs with the personal access token already stored in Secret Manager,
-# so its PRs trigger the PR checks (a PR opened with GITHUB_TOKEN would not), and as an identity
-# that can read that one secret and nothing else (decision 38).
+# .github/renovate.json5. It runs with the personal access token in Secret Manager, as an identity
+# that reads that one secret (decision 38).
 on:
   schedule:
     - cron: '37 3 * * 1'

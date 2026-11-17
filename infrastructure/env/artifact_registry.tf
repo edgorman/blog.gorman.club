@@ -47,8 +47,7 @@ resource "google_artifact_registry_repository" "backend" {
   }
 
   # Every image promoted to prod, whatever its age: promote-release.yaml tags it release-<version>
-  # (e.g. release-v1.4.0) on top of its commit-SHA tag, so a rollback target never falls out of the
-  # most-recent window above however many merges land between promotions (#279).
+  # (e.g. release-v1.4.0) on top of its commit-SHA tag (#279).
   cleanup_policies {
     id     = "keep-releases"
     action = "KEEP"
@@ -69,10 +68,8 @@ resource "google_artifact_registry_repository" "backend" {
   }
 }
 
-# Granted on the repository itself rather than relying on the project-wide editor role from
-# infrastructure/root, per the IAM section of `infrastructure/AGENTS.md`: a grant lives beside the resource it
-# applies to. Applied in both environments - prod is the new one, since the merge-to-main job is
-# moving from staging-only plus a release-time gcrane copy to publishing both on merge.
+# Granted on the repository itself, beside the resource it applies to (the IAM section of
+# `infrastructure/AGENTS.md`). Applied in both environments.
 resource "google_artifact_registry_repository_iam_member" "backend_github_actions_writer" {
   project    = google_artifact_registry_repository.backend.project
   location   = google_artifact_registry_repository.backend.location

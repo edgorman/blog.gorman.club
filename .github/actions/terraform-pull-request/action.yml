@@ -22,10 +22,8 @@ inputs:
 runs:
   using: "composite"
   steps:
-    # The values arrive as an environment variable rather than spliced into the script with ${{ }}.
-    # An expression is substituted into the source text before bash ever sees it, so a value holding
-    # a quote or a $(...) would stop being data and start being code; through the environment it can
-    # only ever be a string. See the same step in terraform-push-commit and frontend-deploy.
+    # The values pass through an environment variable, not ${{ }} interpolation, so they are only
+    # ever strings. The same applies in terraform-push-commit and frontend-deploy.
     - name: Export Secrets
       shell: bash
       env:
@@ -35,7 +33,7 @@ runs:
           printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
         fi
 
-    # The version comes from .prototools, the one place it is pinned, so it can't drift from it.
+    # The version comes from .prototools.
     - id: terraform-version
       name: Read the Terraform version
       shell: bash

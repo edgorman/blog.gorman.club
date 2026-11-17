@@ -16,7 +16,7 @@ terraform {
     }
   }
 
-  # Blank because the bucket doesn't exist on the first apply; see the Makefile's `init` target.
+  # Set with -backend-config; the Makefile's `init` target covers the first apply.
   backend "gcs" {
     bucket = ""
   }
@@ -28,8 +28,7 @@ provider "google" {
   zone    = var.gcp_provider_zone
 }
 
-# Only writes the Actions variables in github_cicd.tf; repository settings live in
-# .github/settings.yml.
+# Writes the Actions variables in github_cicd.tf. Repository settings are in .github/settings.yml.
 provider "github" {
   owner = var.github_repository_owner
   token = var.github_provider_token

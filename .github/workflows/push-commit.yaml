@@ -13,13 +13,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # #199: cutover - moon decides which Terraform deployment(s) an apply reaches, the same way
-  # pull-request.yaml's `changed` job decides which to plan (see its own comment for why the old
-  # github-file-diff blanket glob has no replacement here). The publish markers decide which of
-  # the backend, worker and frontend are rebuilt; the rest reuse base_sha's artifacts (decision 33).
+  # moon decides which Terraform deployments an apply reaches, as pull-request.yaml's `changed` job
+  # decides which to plan. The publish markers decide which of the backend, worker and frontend are
+  # rebuilt; the rest reuse base_sha's artifacts (decision 33).
   changed:
-    # Skipped until root's apply writes the repository variables (decision 38); everything that
-    # deploys waits on this job.
+    # Skipped until root's apply writes the repository variables (decision 38). Every deploying job
+    # needs it.
     if: vars.DEPLOY_SERVICE_ACCOUNT != ''
     runs-on: ubuntu-latest
     outputs:
@@ -37,23 +36,16 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
-          # See pull-request.yaml's identical `changed` step: every observed
-          # `proto-shim: ... Permission denied (os error 13)` failure across #209/#212's early CI
-          # runs happened right after a toolchain cache hit, on a different task each time - the
-          # cache restore is the common thread, not the task. Disabled until that's fixed upstream.
+          # The toolchain cache is disabled (see pull-request.yaml's `changed` step).
           cache: false
       - id: moon
         name: Compute moon-affected deployments
         shell: bash
         run: |
-          # Diffed against the last commit this workflow fully processed - the newest release tag
-          # before this commit (release-please only tags a commit once every publish job succeeded) -
-          # rather than `github.event.before` (#262). The concurrency group keeps at most one
-          # pending run and cancels the rest, so `before` can name a merge whose run never happened,
-          # and that merge's infrastructure changes would never be applied. HEAD~1, not HEAD, so a
-          # re-run of an already-tagged commit still sees its own changes. moon reads MOON_BASE the
-          # same way `moon ci` does (`moon query affected` has no --base flag). No tag at all fails
-          # open: every deployment marked affected rather than guessed at.
+          # Diffed against the newest release tag before this commit, the last commit this workflow
+          # fully processed (#262). HEAD~1 is the diff end, so a re-run of a tagged commit sees its
+          # own changes. moon reads MOON_BASE as `moon ci` does. With no tag, every deployment is
+          # marked affected.
           if base=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD~1 2>/dev/null); then
             echo "Diffing against $base"
             export MOON_BASE="$base"
@@ -65,21 +57,18 @@ jobs:
           moon query affected > affected.json
           for pair in root=deploy-root:plan staging=deploy-staging:plan backend=services/backend:publish \
             worker=worker:publish frontend=services/frontend:publish; do
-            # .tasks is omitted entirely when nothing is affected (moon's Affected struct skips
-            # empty maps on serialize), so `(.tasks // {})` guards against `has` erroring on null.
+            # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
             val=$(jq -r --arg t "${pair#*=}" '(.tasks // {}) | has($t)' affected.json)
             echo "${pair%%=*}=$val" >> "$GITHUB_OUTPUT"
           done
 
-  # Runs on every merge so every commit on `main`, and therefore every release tag, has a folder in
-  # both buckets. It only builds when the frontend is affected; otherwise it publishes base_sha's
-  # folder again under this commit (or builds, if that folder has aged out). Either way it deploys,
-  # so staging always shows this commit. One folder feeds both buckets and the Worker, so the live
-  # staging site is never different from what's stored.
+  # Runs on every merge, so every commit on `main` has a folder in both buckets. It builds when the
+  # frontend is affected; otherwise it publishes base_sha's folder again under this commit (or
+  # builds, if that folder has aged out). It deploys either way, so staging shows this commit. One
+  # folder feeds both buckets and the Worker.
   services-frontend:
-    # services-backend only succeeds once `changed` and infrastructure-staging have; infrastructure-root
-    # is checked on its own because infrastructure-staging skips (rather than fails) after it when
-    # staging isn't affected.
+    # services-backend runs after `changed` and infrastructure-staging succeed; infrastructure-root
+    # is checked on its own (infrastructure-staging skips when staging isn't affected).
     needs: [changed, infrastructure-root, services-backend]
     if: |
       always() &&
@@ -99,8 +88,7 @@ jobs:
           service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
           secrets_list: |
             CLOUDFLARE_API_TOKEN=cloudflare_api_token
-      # Looked up directly (reusing gcp-secret-manager's auth): services-backend is a matrix, and a
-      # matrix job's outputs don't say which leg wrote them.
+      # Looked up directly, reusing gcp-secret-manager's auth.
       - id: backend
         name: Get Backend URL
         shell: bash
@@ -197,11 +185,10 @@ jobs:
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
             TF_VAR_ci_service_account=${{ vars.DEPLOY_SERVICE_ACCOUNT }}
 
-  # Runs on every merge so every commit on `main`, and therefore every release tag, has a commit-SHA
-  # image in both registries. An unaffected image is base_sha's re-tagged, with no build and no
-  # staging deploy (staging already runs it). One leg per image: the API and the worker, built from
-  # the same Dockerfile with CMD=<image>. Must still follow infrastructure-staging so the staging
-  # deploy target exists.
+  # Runs on every merge, so every commit on `main` has a commit-SHA image in both registries. An
+  # unaffected image is base_sha's re-tagged, with no build and no staging deploy. One leg per image
+  # (the API and the worker), built from the same Dockerfile with CMD=<image>. Follows
+  # infrastructure-staging.
   services-backend:
     name: services-${{ matrix.image }}
     needs: [changed, infrastructure-staging]
@@ -210,7 +197,7 @@ jobs:
       needs.changed.result == 'success' &&
       (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
     strategy:
-      # A failed build in one leg shouldn't cancel the other's staging deploy halfway through.
+      # The legs run independently.
       fail-fast: false
       matrix:
         image: [backend, worker]
@@ -233,10 +220,8 @@ jobs:
           service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
 
   # #277: the deployed frontend and backend together, signed out and read-only, against the live
-  # staging site - the defects that sit between components (config.json, CORS, the Worker,
-  # routing) and so pass every unit test. services-frontend already waits on services-backend, so
-  # this runs once both are live, and release-please waits on it: a failing smoke test keeps this
-  # commit from being released.
+  # staging site. Covers config.json, CORS, the Worker and routing. Runs once both are live;
+  # release-please waits on it.
   smoke:
     needs: services-frontend
     if: always() && needs.services-frontend.result == 'success'
@@ -256,12 +241,10 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
 
-  # Opens or updates the release PR and, on the release PR's own merge, tags the release (decision 39).
-  # It waits on this commit's deploy and smoke test, so a release is only cut for a commit that is
-  # live on staging with its artifacts in both stores. `if:` tests each direct need for `success`:
-  # a bare `needs:` inherits a skip from two hops back (infrastructure-root and -staging skip on
-  # most merges), and always() opts out of that. No publish job has a benign skip path, so a skip
-  # of any of them here is not release-worthy (#156, #185).
+  # Opens or updates the release PR and, on the release PR's own merge, tags the release (decision
+  # 39). It waits on this commit's deploy and smoke test. `if:` tests each direct need for
+  # `success`, since infrastructure-root and -staging skip on most merges and always() opts out of
+  # inherited skips. A skip of any publish job is not release-worthy (#156, #185).
   release-please:
     needs: [services-backend, services-frontend, smoke]
     if: |
@@ -320,7 +303,7 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/prod'
-          # Same as every prod plan/apply, or the plan shows GOOGLE_CLIENT_ID being blanked.
+          # Passed as in every prod plan and apply.
           secrets: |
             TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
             TF_VAR_ci_service_account=${{ vars.PROMOTE_SERVICE_ACCOUNT }}

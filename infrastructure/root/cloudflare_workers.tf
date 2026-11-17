@@ -13,8 +13,7 @@ resource "cloudflare_worker" "frontend" {
   }
 }
 
-# A custom domain also creates the DNS record that routes to the Worker, so no cloudflare_dns_record
-# for the hostnames (the CNAMEs that pointed at the Pages projects are gone with them).
+# Each custom domain creates the DNS record that routes to its Worker.
 resource "cloudflare_workers_custom_domain" "frontend" {
   for_each = var.frontend_hostnames
 
@@ -25,9 +24,7 @@ resource "cloudflare_workers_custom_domain" "frontend" {
 }
 
 # Proves ownership of gorman.club to Google Search Console (a Domain property), so the blog can be
-# submitted for indexing (#221). Search Console created this record itself when the property was
-# verified and it is already in state. The zone id is a variable, not a data source, so a PR plan
-# never calls Cloudflare (decision 38).
+# submitted for indexing (#221).
 resource "cloudflare_dns_record" "google_site_verification" {
   zone_id = var.cloudflare_zone_id
   name    = var.cloudflare_zone

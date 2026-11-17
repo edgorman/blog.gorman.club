@@ -38,10 +38,9 @@ runs:
         SECRETS: ${{ inputs.secrets }}
       run: printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
 
-    # Written next to the static files rather than baked into the image, so one build can serve
-    # any environment - see the Read the backend URL at runtime issue and src/lib/config.ts. Empty
-    # inputs are dropped (with_entries(select)) rather than written as "", matching how
-    # src/lib/config.ts already treats a missing field and an empty one the same way.
+    # Written next to the static files, so one build serves any environment (see
+    # src/lib/config.ts). Empty inputs are omitted, as src/lib/config.ts treats a missing field and
+    # an empty one alike.
     - name: Write Runtime Config
       if: inputs.backend_url != '' || inputs.version != '' || inputs.environment != ''
       shell: bash
@@ -58,8 +57,8 @@ runs:
           '{backendUrl: $backendUrl, version: $version, environment: $environment} | with_entries(select(.value != ""))' \
           > "$CONFIG_PATH"
 
-    # `--name` is how one bundle serves every environment: wrangler.jsonc carries a placeholder and
-    # the deploy names the Worker Terraform created for this environment.
+    # `--name` names the Worker Terraform created for this environment; wrangler.jsonc carries a
+    # placeholder name.
     - name: Deploy to Cloudflare Workers
       uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
       with:

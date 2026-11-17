@@ -1,10 +1,6 @@
-# The tokens CI needs after the one-time manual bootstrap, each in Secret Manager so a workflow reads
-# it with its identity instead of from a GitHub Actions secret.
-#
-# The plan identity reads neither: a pull request's workflow runs with it, and a token it could read
-# would be readable by anyone who can push a branch. A PR plan is therefore planned without
-# refreshing, against placeholder tokens (see terraform-pull-request), and secret_data is ignored
-# below so those placeholders never show as a change.
+# The tokens CI needs after the one-time manual bootstrap, each in Secret Manager and read by a
+# workflow with its identity. The plan identity reads neither. PR plans use placeholder tokens (see
+# terraform-pull-request), and secret_data is ignored so they show no change.
 
 # The GitHub PAT: Terraform's github provider, release-please and Renovate. Read by deploy and renovate.
 resource "google_secret_manager_secret" "github_provider_token" {

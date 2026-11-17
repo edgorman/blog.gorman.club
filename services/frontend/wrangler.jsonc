@@ -1,7 +1,7 @@
 // The Worker that serves the site: dist/ as static assets, with worker/index.js in front of them.
-// `name` is the base for local use only: the deploy passes the real one (`wrangler deploy --name`),
-// so one bundle serves every environment. Terraform (infrastructure/root/cloudflare_workers.tf)
-// creates the Worker and its domains; wrangler only uploads versions.
+// `name` is for local use; `wrangler deploy --name` names the real Worker, so one bundle serves
+// every environment. Terraform (infrastructure/root/cloudflare_workers.tf) creates the Worker and
+// its domains; wrangler uploads versions.
 {
   "name": "app",
   "main": "worker/index.js",

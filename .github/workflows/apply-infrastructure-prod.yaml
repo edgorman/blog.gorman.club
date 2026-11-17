@@ -1,15 +1,9 @@
 name: 'Apply Prod Infrastructure (Manual)'
 
-# This is an escape hatch, not the normal path. Prod infrastructure is meant to change through
-# Promote Release (`promote-release.yaml`), where a `terraform apply` on `blog-gorman-club-prod`
-# runs as step 1 of promoting a specific release - so infra always lands alongside a deliberate
-# decision to ship a commit, with its plan posted on the release PR first. This workflow exists only to backfill a newly-added per-environment
-# resource (a bucket, a registry, an IAM binding, ...) into prod ahead of that, for the narrow case
-# where `infrastructure/env` gained something new that a merge-time job now assumes already exists
-# in prod - the trunk-based model's staging-applies-on-merge / prod-applies-on-promotion split means
-# prod can otherwise lag main by however long it takes for someone to promote, and a merge in that
-# gap has nothing to write into. Reach for this only to close that specific gap, and prefer letting
-# the next promotion carry the change whenever the timing isn't forcing your hand.
+# Applies `infrastructure/env` to prod outside a promotion. Prod infrastructure normally changes
+# through Promote Release (`promote-release.yaml`), step 1, with the plan posted on the release PR.
+# Run this to add a newly created per-environment resource (a bucket, a registry, an IAM binding)
+# to prod when a merge-time job already depends on it.
 on:
   workflow_dispatch:
     inputs:
@@ -21,8 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  # Shared with Promote Release: both mutate the same prod Terraform state, so one must queue
-  # behind the other rather than risk a concurrent apply.
+  # Shared with Promote Release; runs queue on prod's Terraform state.
   group: promote-release-main
   cancel-in-progress: false
 

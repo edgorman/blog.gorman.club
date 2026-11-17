@@ -1,5 +1,4 @@
-# The root project is created by hand (nothing exists yet to create it with) and imported here;
-# staging/prod are created by Terraform.
+# The root project is created by hand and imported here; staging and prod are created by Terraform.
 resource "google_project" "root_project" {
   name       = "${var.gcp_project_prefix} root"
   project_id = var.gcp_provider_project_id

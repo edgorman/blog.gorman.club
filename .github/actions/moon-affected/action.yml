@@ -1,0 +1,39 @@
+name: 'Moon Affected'
+description: 'Installs moon alone, not the toolchain it would run tasks with, and writes `moon query affected` to a file'
+
+inputs:
+  base:
+    description: 'The ref the diff is taken against (moon reads it as MOON_BASE). The checkout needs full history.'
+    required: false
+    default: 'origin/main'
+
+outputs:
+  file:
+    description: 'Path of the JSON `moon query affected` wrote'
+    value: ${{ steps.query.outputs.file }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      with:
+        auto-install: false
+        # The toolchain cache is disabled: restoring it loses the executable bit on proto's shim.
+        cache: false
+    - id: query
+      shell: bash
+      env:
+        # `moon query affected` has no --base flag; it reads MOON_BASE as `moon ci` does.
+        MOON_BASE: ${{ inputs.base }}
+        # A query reads the project graph and runs no task, so moon needs none of the pinned
+        # tools. These stop it installing them, and stop the runner's go (older than go.mod's)
+        # downloading the matching toolchain, which took the query from 28s to 11s.
+        MOON_TOOLCHAIN_FORCE_GLOBALS: 'true'
+        MOON_SKIP_SETUP_TOOLCHAIN: 'true'
+        GOTOOLCHAIN: local
+      run: |
+        # Run with the command's own defaults (no --upstream/--downstream); the explicit
+        # project:// inputs on each task are the affectedness signal.
+        moon query affected > "$RUNNER_TEMP/affected.json"
+        echo "file=$RUNNER_TEMP/affected.json" >> "$GITHUB_OUTPUT"
+        cat "$RUNNER_TEMP/affected.json"

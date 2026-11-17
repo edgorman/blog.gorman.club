@@ -86,8 +86,6 @@ tasks:
       - '/.github/actions/**/*'
       - '/.github/scripts/**/*'
     options:
-      # Not runInCI: false: moon treats that as never affected, hiding the marker from the
-      # `moon query affected` the `changed` jobs read.
       cache: false
 
   # Marker for security.yaml's secrets job: any file can leak a secret, but release-please's generated files carry none.
@@ -99,6 +97,4 @@ tasks:
       - '!/.github/.release-please-manifest.json'
       - '!/.github/version.txt'
     options:
-      # Not runInCI: false: moon treats that as never affected, hiding the marker from the
-      # `moon query affected` the `changed` jobs read.
       cache: false

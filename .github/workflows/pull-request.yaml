@@ -22,7 +22,7 @@ concurrency:
 jobs:
   # moon decides what a diff reaches (decision 41): `moon query affected` lists the tasks whose inputs
   # changed, and every job below gates on that list. Only moon, and not the toolchain it would run
-  # tasks with, is installed here (`auto-install: false`), which keeps this job to a few seconds.
+  # tasks with, is installed here (the moon-affected action), which keeps this job to a few seconds.
   # The deploy-{root,staging,prod}:plan markers list a plan's own action and workflow
   # file, so a change to push-commit.yaml or an apply-only action plans nothing.
   changed:
@@ -41,34 +41,21 @@ jobs:
         with:
           fetch-depth: 0
           filter: 'blob:none'
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
-        with:
-          auto-install: false
-          # The toolchain cache is disabled: restoring it loses the executable bit on proto's shim.
-          cache: false
+      - id: affected
+        uses: ./.github/actions/moon-affected
       - id: moon
         name: Compute moon-affected jobs
         shell: bash
         env:
-          # `moon query affected` has no --base flag; it reads MOON_BASE as `moon ci` does.
-          MOON_BASE: origin/main
-          # A query reads the project graph and runs no task, so moon needs none of the pinned
-          # tools. These stop it installing them, and stop the runner's go (older than go.mod's)
-          # downloading the matching toolchain, which took the query from 28s to 11s.
-          MOON_TOOLCHAIN_FORCE_GLOBALS: 'true'
-          MOON_SKIP_SETUP_TOOLCHAIN: 'true'
-          GOTOOLCHAIN: local
+          AFFECTED_FILE: ${{ steps.affected.outputs.file }}
         run: |
           declare -A targets=(
             [lint-check]=$LINT_CHECK_TARGETS
             [test]=$TEST_TARGETS
             [api-drift]=$API_DRIFT_TARGETS
           )
-          # Run with the command's own defaults (no --upstream/--downstream); the explicit
-          # project:// inputs are the affectedness signal.
-          moon query affected > "$RUNNER_TEMP/affected.json"
           # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
-          tasks=$(jq -c '(.tasks // {}) | keys' "$RUNNER_TEMP/affected.json")
+          tasks=$(jq -c '(.tasks // {}) | keys' "$AFFECTED_FILE")
           affected() { jq -r --argjson tasks "$tasks" --arg t "$1" '
             ($t | split(" ")) as $want
             | any($tasks[]; . as $k | any($want[]; . as $w
@@ -79,9 +66,8 @@ jobs:
           # The Firestore emulator is only needed when a Go test will run.
           echo "test-emulator=$(affected ':test')" >> "$GITHUB_OUTPUT"
           for env in root staging prod; do
-            echo "$env=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' "$RUNNER_TEMP/affected.json")" >> "$GITHUB_OUTPUT"
+            echo "$env=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' "$AFFECTED_FILE")" >> "$GITHUB_OUTPUT"
           done
-          cat "$RUNNER_TEMP/affected.json"
 
   # The three required checks, one job each so each keeps its own check name and a skipped job reports
   # as skipped, which branch protection counts as passing (a matrix leg skipped at job level would

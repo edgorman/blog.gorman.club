@@ -60,8 +60,6 @@ tasks:
       - '/.github/actions/backend-deploy/**/*'
       - '/.github/actions/backend-cloudrun-deploy/**/*'
     options:
-      # Not runInCI: false: moon treats that as never affected, hiding the marker from the
-      # `moon query affected` the `changed` jobs read.
       cache: false
 
   # Marker for security.yaml's go job (decision 41): affected when govulncheck or gosec has new code to read.
@@ -74,8 +72,6 @@ tasks:
       - '/.github/workflows/security.yaml'
       - '/.github/scripts/advisory.sh'
     options:
-      # Not runInCI: false: moon treats that as never affected, hiding the marker from the
-      # `moon query affected` the `changed` jobs read.
       cache: false
 
   # Marker for security.yaml's image job.
@@ -88,6 +84,4 @@ tasks:
       - '/.github/workflows/security.yaml'
       - '/.github/scripts/advisory.sh'
     options:
-      # Not runInCI: false: moon treats that as never affected, hiding the marker from the
-      # `moon query affected` the `changed` jobs read.
       cache: false

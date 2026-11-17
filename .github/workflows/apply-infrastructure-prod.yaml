@@ -45,7 +45,7 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/prod'
+        env:
           # One client ID, defined in infrastructure/root, serves every environment.
-          secrets: |
-            TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
-            TF_VAR_ci_service_account=${{ vars.PROMOTE_SERVICE_ACCOUNT }}
+          TF_VAR_google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
+          TF_VAR_ci_service_account: ${{ vars.PROMOTE_SERVICE_ACCOUNT }}

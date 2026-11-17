@@ -1,0 +1,124 @@
+name: 'Push Release'
+
+# A release-please release commit on main: the merge of its release PR, which changes only the files
+# release-please owns. push-commit.yaml skips such a push. Nothing deployable changed, so this
+# publishes the previous commit's artifacts under the release commit (promotion deploys by commit
+# SHA, decision 22), tags the release, and promotes it to production (decision 39). It never deploys
+# to staging, which already runs the same code.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'CHANGELOG.md'
+      - '.github/.release-please-manifest.json'
+      - '.github/version.txt'
+
+permissions:
+  contents: read
+
+# Its own group, so a later push-commit.yaml run can never supersede a release that is waiting.
+concurrency:
+  group: push-release-main
+  cancel-in-progress: false
+
+jobs:
+  # One leg per artifact, run in parallel. The previous commit's artifact is tagged (or, for the
+  # frontend, copied) under this commit in both environments. If it is missing, because that run
+  # was cancelled or aged out, the leg builds it from this commit, which has the same code.
+  artifacts:
+    name: artifacts-${{ matrix.service }}
+    # Skipped until root's apply writes the repository variables (decision 38).
+    if: vars.DEPLOY_SERVICE_ACCOUNT != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, worker, frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - if: matrix.service != 'frontend'
+        uses: ./.github/actions/backend-deploy
+        with:
+          gcp_project_id: 'blog-gorman-club-stag'
+          prod_project_id: 'blog-gorman-club-prod'
+          gcp_region: 'europe-west1'
+          service_name: '${{ matrix.service }}-stag'
+          image_name: ${{ matrix.service }}
+          image_tag: ${{ github.sha }}
+          reuse_from: ${{ github.event.before }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
+      - id: reuse
+        if: matrix.service == 'frontend'
+        continue-on-error: true
+        uses: ./.github/actions/frontend-fetch
+        with:
+          gcp_project_id: 'blog-gorman-club-stag'
+          sha: ${{ github.event.before }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
+      - if: matrix.service == 'frontend' && steps.reuse.outcome != 'success'
+        uses: ./.github/actions/frontend-build
+        with:
+          google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
+      - if: matrix.service == 'frontend'
+        uses: ./.github/actions/frontend-publish
+        with:
+          gcp_project_id: 'blog-gorman-club-stag'
+          prod_project_id: 'blog-gorman-club-prod'
+          sha: ${{ github.sha }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
+
+  # Creates the tag and the GitHub release. It waits on the artifacts, so a tag always has the
+  # commit-SHA artifacts promotion deploys. `if:` tests the direct need for `success`, since
+  # always() would opt out of inherited skips.
+  release-please:
+    needs: artifacts
+    if: always() && needs.artifacts.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # The PAT, so the release PR triggers the PR checks (decision 39).
+      - id: secrets
+        uses: ./.github/actions/gcp-secret-manager
+        with:
+          project_id: 'blog-gorman-club-root'
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
+          secrets_list: |
+            RELEASE_PLEASE_TOKEN=github_provider_token
+      - name: Export Secrets
+        shell: bash
+        env:
+          SECRETS: ${{ steps.secrets.outputs.secrets }}
+        run: printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ env.RELEASE_PLEASE_TOKEN }}
+          config-file: .github/release-please-config.json
+          manifest-file: .github/.release-please-manifest.json
+
+  # Deploys the release to production from the artifacts already in prod's stores (decision 39);
+  # rollback is promote-release.yaml run by hand.
+  promote:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/promote-release.yaml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+      sha: ${{ github.sha }}

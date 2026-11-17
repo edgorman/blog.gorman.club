@@ -1,9 +1,16 @@
 name: 'Push Commit'
 
+# Every push to main except a release-please release commit, which push-release.yaml handles. A
+# release commit changes only the files release-please owns, and a push that changes only those is
+# the one `paths-ignore` skips; a push that also changes anything else runs both files.
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'CHANGELOG.md'
+      - '.github/.release-please-manifest.json'
+      - '.github/version.txt'
 
 permissions:
   contents: read
@@ -211,10 +218,11 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
 
-  # Opens or updates the release PR and, on the release PR's own merge, tags the release (decision
-  # 39). It waits on this commit's deploy and smoke test. `if:` tests each direct need for
-  # `success` (smoke may also be skipped, when nothing deployable changed), since always() opts out
-  # of inherited skips. A skip of any publish job is not release-worthy (#156, #185).
+  # Opens or updates the release PR, so it lists this commit. Tagging the release is
+  # push-release.yaml's job, on the release PR's own merge (decision 39). It waits on this commit's
+  # deploy and smoke test. `if:` tests each direct need for `success` (smoke may also be skipped,
+  # when nothing deployable changed), since always() opts out of inherited skips. A skip of any
+  # publish job is not release-worthy (#156, #185).
   release-please:
     needs: [services, smoke]
     if: |
@@ -226,8 +234,6 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
       pr_number: ${{ steps.release.outputs.prs_created == 'true' && fromJSON(steps.release.outputs.pr).number || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -255,7 +261,7 @@ jobs:
   # The prod plan for the open release PR, so a reviewer sees what merging will apply (decision 37).
   plan-prod:
     needs: release-please
-    if: needs.release-please.outputs.pr_number != '' && needs.release-please.outputs.release_created != 'true'
+    if: needs.release-please.outputs.pr_number != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -278,16 +284,3 @@ jobs:
             TF_VAR_ci_service_account=${{ vars.PROMOTE_SERVICE_ACCOUNT }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           pull_request_number: ${{ needs.release-please.outputs.pr_number }}
-
-  # Deploys the release to production from the artifacts already in prod's stores (decision 39);
-  # rollback is promote-release.yaml run by hand.
-  promote:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
-    permissions:
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/promote-release.yaml
-    with:
-      tag: ${{ needs.release-please.outputs.tag_name }}
-      sha: ${{ github.sha }}

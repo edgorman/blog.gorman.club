@@ -8,7 +8,7 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 - Every pipeline has an environment-scoped concurrency group.
 - Shared steps live in composite actions under `.github/actions/`.
 - An apply plans and applies in the same job from its own commit; the PR comment is the review, and a plan is never saved or passed between jobs ([37](../docs/decisions/0037-replan-at-apply.md)).
-- Each workflow authenticates as its own identity: PR checks as `PLAN_`, `push-commit.yaml` as `DEPLOY_`, promotion and the manual prod apply as `PROMOTE_`, Renovate as `RENOVATE_SERVICE_ACCOUNT`. A PR's plan job gets placeholder tokens and `-refresh=false`, never a secret; a workflow that needs another identity calls a reusable workflow ([38](../docs/decisions/0038-separate-plan-and-apply-identities.md)).
+- Each workflow authenticates as its own identity: PR checks as `PLAN_`, `push-commit.yaml` and `push-release.yaml` as `DEPLOY_`, promotion and the manual prod apply as `PROMOTE_`, Renovate as `RENOVATE_SERVICE_ACCOUNT`. A PR's plan job gets placeholder tokens and `-refresh=false`, never a secret; a workflow that needs another identity calls a reusable workflow ([38](../docs/decisions/0038-separate-plan-and-apply-identities.md)).
 - Renovate (`renovate.yaml`, `renovate.json5`) opens the dependency PRs. A hand-written version pin gets a `# renovate: datasource=... depName=...` comment above it ([40](../docs/decisions/0040-self-hosted-renovate.md)).
 
 - `security.yaml` is advisory: its scanners report in the job summary and never fail a run or gate a merge; a scanner that cannot run does fail ([35](../docs/decisions/0035-advisory-security-scanning.md)). Each scanner has a moon marker task (`scan-go`, `scan-image`, `scan`, `scan-workflows`, `scan-secrets`) and a `changes` job skips the ones a pull request doesn't reach; the weekly and manual runs scan everything ([41](../docs/decisions/0041-moon-gates-every-ci-job.md)).
@@ -35,7 +35,8 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 
 ### Release PRs
 
-- `release-please` runs on every merge and checks each direct need for `success` (`services`, a matrix over the backend, worker and frontend, and `smoke`, which may be skipped), never a bare `needs:` ([39](../docs/decisions/0039-releases-from-release-please.md)).
+- A push to main runs one of two workflows by path: `push-release.yaml` when it changes `CHANGELOG.md`, `.github/.release-please-manifest.json` or `.github/version.txt` (the release commit), else `push-commit.yaml` (`paths-ignore` on those). A release commit re-tags the previous commit's artifacts, tags the release and promotes; it never deploys to staging. A new workflow that signs in as `DEPLOY_` needs its filename in `github_cicd.tf`'s `github_deploy_wif`.
+- `release-please` in `push-commit.yaml` runs on every non-release merge and checks each direct need for `success` (`services`, a matrix over the backend, worker and frontend, and `smoke`, which may be skipped), never a bare `needs:` ([39](../docs/decisions/0039-releases-from-release-please.md)).
 - `plan-prod` posts the prod plan on the open release PR, with `-lock=false` ([39](../docs/decisions/0039-releases-from-release-please.md)).
 - Staging shows the short commit SHA; only production shows a release tag ([39](../docs/decisions/0039-releases-from-release-please.md)).
 

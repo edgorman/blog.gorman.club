@@ -21,7 +21,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decides which scanners a pull request reaches, from the files it changes. No scanner is a
+  # required check (decision 33), so a skipped job costs a merge nothing. The weekly scan and a
+  # manual run have no diff, so they run everything. `secrets` is unconditional: any file can leak.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.diff.outputs.go }}
+      frontend: ${{ steps.diff.outputs.frontend }}
+      workflows: ${{ steps.diff.outputs.workflows }}
+      terraform: ${{ steps.diff.outputs.terraform }}
+      image: ${{ steps.diff.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          filter: 'blob:none'
+      - id: diff
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # A scanner's own workflow file and helper script are inputs to it, so editing either
+          # re-runs everything that uses them.
+          common='^(\.github/workflows/security\.yaml|\.github/scripts/advisory\.sh)$'
+          if [ "$EVENT" != pull_request ]; then
+            printf '%s=true\n' go frontend workflows terraform image >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$BASE...$HEAD" > changed.txt
+          # `grep -E` exits 1 on no match, which is the "false" answer here.
+          check() { if grep -Eq "$common|$2" changed.txt; then echo "$1=true"; else echo "$1=false"; fi; }
+          {
+            check go '^(services/backend/|packages/api/|\.prototools$)'
+            check frontend '^(services/frontend/|packages/api/)'
+            check workflows '^\.github/'
+            check terraform '^(infrastructure/|\.prototools$)'
+            check image '^services/backend/'
+          } | tee -a "$GITHUB_OUTPUT"
+
   go:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -45,6 +88,8 @@ jobs:
         run: ../../.github/scripts/advisory.sh gosec 1 gosec -no-fail ./...
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -56,6 +101,8 @@ jobs:
         run: ../../.github/scripts/advisory.sh 'npm audit' 1 npm audit --omit=dev
 
   workflows:
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -78,6 +125,8 @@ jobs:
         run: .github/scripts/advisory.sh zizmor 1 zizmor --no-exit-codes .github
 
   terraform:
+    needs: changes
+    if: needs.changes.outputs.terraform == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -102,6 +151,8 @@ jobs:
           exit-code: '0'
 
   image:
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

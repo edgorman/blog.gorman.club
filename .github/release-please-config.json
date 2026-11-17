@@ -9,48 +9,39 @@
       "changelog-sections": [
         {
           "type": "feat",
-          "section": "Features",
-          "hidden": false
+          "section": "Features"
         },
         {
           "type": "fix",
-          "section": "Bug Fixes",
-          "hidden": false
+          "section": "Bug Fixes"
         },
         {
           "type": "perf",
-          "section": "Performance Improvements",
-          "hidden": false
+          "section": "Performance Improvements"
         },
         {
           "type": "revert",
-          "section": "Reverts",
-          "hidden": false
+          "section": "Reverts"
         },
         {
           "type": "build",
-          "section": "Build System",
-          "hidden": false
+          "section": "Build System"
         },
         {
           "type": "chore",
-          "section": "Miscellaneous Chores",
-          "hidden": false
+          "section": "Miscellaneous Chores"
         },
         {
           "type": "ci",
-          "section": "Continuous Integration",
-          "hidden": false
+          "section": "Continuous Integration"
         },
         {
           "type": "docs",
-          "section": "Documentation",
-          "hidden": false
+          "section": "Documentation"
         },
         {
           "type": "refactor",
-          "section": "Code Refactoring",
-          "hidden": false
+          "section": "Code Refactoring"
         }
       ]
     }

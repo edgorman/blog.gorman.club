@@ -36,6 +36,4 @@ tasks:
       - '/.github/actions/backend-deploy/**/*'
       - '/.github/actions/backend-cloudrun-deploy/**/*'
     options:
-      # Not runInCI: false: moon treats that as never affected, hiding the marker from the
-      # `moon query affected` the `changed` jobs read.
       cache: false

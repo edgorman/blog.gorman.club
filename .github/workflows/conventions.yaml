@@ -41,31 +41,24 @@ jobs:
         # Full history, so origin/main is there to read main's spec from.
         with:
           fetch-depth: 0
-      # moon alone first (`auto-install: false`); the toolchain is only installed if the check will
-      # run, so a PR that leaves the spec alone, or marks itself breaking, pays for neither.
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
-        with:
-          auto-install: false
-          cache: false # see pull-request.yaml's `changed` job for why
+      # moon alone first; the toolchain is only installed if the check will run, so a PR that
+      # leaves the spec alone, or marks itself breaking, pays for neither.
+      - id: affected
+        uses: ./.github/actions/moon-affected
       - id: run
         name: Decide whether the check runs
         shell: bash
         env:
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
-          MOON_BASE: origin/main
-          # A query runs no task, so moon needs none of the pinned tools (see pull-request.yaml).
-          MOON_TOOLCHAIN_FORCE_GLOBALS: 'true'
-          MOON_SKIP_SETUP_TOOLCHAIN: 'true'
-          GOTOOLCHAIN: local
+          AFFECTED_FILE: ${{ steps.affected.outputs.file }}
         run: |
           re='^[a-z]+(\([^)]+\))?!:'
           if [[ "$TITLE" =~ $re ]] || grep -qE '^BREAKING[ -]CHANGE:' <<<"$BODY"; then
             echo "Marked breaking; skipping the API breaking-change check."
             echo 'run=false' >> "$GITHUB_OUTPUT"
           else
-            moon query affected > "$RUNNER_TEMP/affected.json"
-            echo "run=$(jq -r '(.tasks // {}) | has("packages/api:breaking")' "$RUNNER_TEMP/affected.json")" >> "$GITHUB_OUTPUT"
+            echo "run=$(jq -r '(.tasks // {}) | has("packages/api:breaking")' "$AFFECTED_FILE")" >> "$GITHUB_OUTPUT"
           fi
       - name: Install the toolchain
         if: steps.run.outputs.run == 'true'

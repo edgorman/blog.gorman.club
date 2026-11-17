@@ -139,14 +139,15 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.PLAN_SERVICE_ACCOUNT }}
       # The plan identity can read no secret (decision 38): the plan is made without refreshing, so
-      # no provider uses these placeholders.
+      # no provider uses these placeholders. The Cloudflare provider still validates the token's
+      # shape (40 characters of a-z, A-Z, 0-9, - and _), hence the padding.
       - uses: ./.github/actions/terraform-pull-request
         with:
           terraform_directory: 'infrastructure/root'
           config_directory: 'infrastructure/config/root'
           secrets: |
             TF_VAR_github_provider_token=plan-only
-            TF_VAR_cloudflare_api_token=plan-only
+            TF_VAR_cloudflare_api_token=plan-only-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
   # infrastructure/env/** is shared, so a change to it plans against both environments - see the

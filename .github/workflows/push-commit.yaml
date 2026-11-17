@@ -234,7 +234,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: '22'
+          node-version: '26'
           cache: 'npm'
           cache-dependency-path: services/frontend/package-lock.json
       - run: npm ci
@@ -277,7 +277,7 @@ jobs:
           SECRETS: ${{ steps.secrets.outputs.secrets }}
         run: printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
       - id: release
-        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ env.RELEASE_PLEASE_TOKEN }}
           config-file: .github/release-please-config.json

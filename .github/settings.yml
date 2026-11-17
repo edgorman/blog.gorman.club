@@ -68,8 +68,7 @@ branches:
       #
       # `strict: true` makes each PR re-run CI after every merge ahead of it. A merge queue would
       # batch that, but GitHub only offers merge queues to organization-owned repositories, and
-      # this one is user-owned, so there is no queue to configure here (#275). pull-request.yaml
-      # already runs on merge_group for when the repository moves to an organization.
+      # this one is user-owned, so there is no queue to configure here.
       required_status_checks:
         strict: true
         contexts:

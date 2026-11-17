@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs a scanner as an advisory check: its findings are shown (the job summary and a warning
 # annotation) but never fail the job, while a scanner that cannot run at all still does, so a broken
-# tool is noticed rather than reading as a clean result (decision 33).
+# tool is noticed rather than reading as a clean result (decision 35).
 #
 # usage: advisory.sh <name> <findings-exit-code> <command> [args...]
 set -uo pipefail

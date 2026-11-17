@@ -4,23 +4,26 @@ on:
   pull_request:
     branches:
       - main
-  # Runs the required checks on a merge queue's merge commits. Inactive until the repository is
-  # organization-owned (.github/settings.yml).
-  merge_group:
 
 permissions:
   contents: read
 
+env:
+  # The targets each required check hands to `moon ci`. `changed` reads the same variables to decide
+  # whether to run the check, so the two can't drift apart. `:name` means that task in any project.
+  LINT_CHECK_TARGETS: ':format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync root:decision-links'
+  TEST_TARGETS: ':test services/backend:image worker:image'
+  API_DRIFT_TARGETS: 'packages/api:drift'
+
 concurrency:
-  # A merge_group event has no PR number; its ref is unique per queue entry.
-  group: pull-request-root-${{ github.event.pull_request.number || github.ref }}
+  group: pull-request-root-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   # moon decides what a diff reaches (decision 41): `moon query affected` lists the tasks whose inputs
   # changed, and every job below gates on that list. Only moon, and not the toolchain it would run
   # tasks with, is installed here (`auto-install: false`), which keeps this job to a few seconds.
-  # The deploy-{root,staging,prod}:plan markers (#195/#206) list a plan's own action and workflow
+  # The deploy-{root,staging,prod}:plan markers list a plan's own action and workflow
   # file, so a change to push-commit.yaml or an apply-only action plans nothing.
   changed:
     runs-on: ubuntu-latest
@@ -47,9 +50,7 @@ jobs:
         name: Compute moon-affected jobs
         shell: bash
         env:
-          # `moon query affected` has no --base flag; it reads MOON_BASE as `moon ci` does. On
-          # merge_group the queue commit diffs against origin/main, which covers this PR and the
-          # entries queued ahead of it.
+          # `moon query affected` has no --base flag; it reads MOON_BASE as `moon ci` does.
           MOON_BASE: origin/main
           # A query reads the project graph and runs no task, so moon needs none of the pinned
           # tools. These stop it installing them, and stop the runner's go (older than go.mod's)
@@ -58,15 +59,13 @@ jobs:
           MOON_SKIP_SETUP_TOOLCHAIN: 'true'
           GOTOOLCHAIN: local
         run: |
-          # The targets each required check hands to `moon ci`, kept here so the check and the
-          # decision to run it can't drift apart. `:name` means that task in any project.
           declare -A targets=(
-            [lint-check]=':format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync root:decision-links'
-            [test]=':test services/backend:image worker:image'
-            [api-drift]='packages/api:drift'
+            [lint-check]=$LINT_CHECK_TARGETS
+            [test]=$TEST_TARGETS
+            [api-drift]=$API_DRIFT_TARGETS
           )
           # Run with the command's own defaults (no --upstream/--downstream); the explicit
-          # project:// inputs are the affectedness signal (#206).
+          # project:// inputs are the affectedness signal.
           moon query affected > "$RUNNER_TEMP/affected.json"
           # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
           tasks=$(jq -c '(.tasks // {}) | keys' "$RUNNER_TEMP/affected.json")
@@ -88,7 +87,7 @@ jobs:
   # as skipped, which branch protection counts as passing (a matrix leg skipped at job level would
   # report an unexpanded name and stay pending). `:taskId` (no project prefix) is moon's "run in
   # every project that has this task" scope (https://moonrepo.dev/docs/concepts/target); a project
-  # without a given task is silently skipped. The targets live in `changed`.
+  # without a given task is silently skipped. The targets are the workflow-level `env` above.
   # - lint-check: every lint/format/build task. `:format`/`:validate` reach infra-root/infra-env's
   #   inherited `terraform fmt -check` and `terraform validate` (.moon/tasks/terraform.yml);
   #   `:validate` is `runInCI: 'only'`, so this is the one place it runs at all.
@@ -109,7 +108,7 @@ jobs:
           cache: false # see `changed`'s identical setup step above for why
       - name: moon ci
         shell: bash
-        run: moon ci :format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync root:decision-links
+        run: moon ci $LINT_CHECK_TARGETS
         env:
           MOON_BASE: origin/main
 
@@ -142,7 +141,7 @@ jobs:
           echo 'FIRESTORE_EMULATOR_HOST=127.0.0.1:8081' >> "$GITHUB_ENV"
       - name: moon ci
         shell: bash
-        run: moon ci :test services/backend:image worker:image
+        run: moon ci $TEST_TARGETS
         env:
           MOON_BASE: origin/main
 
@@ -161,15 +160,13 @@ jobs:
           cache: false # see `changed`'s identical setup step above for why
       - name: moon ci
         shell: bash
-        run: moon ci packages/api:drift
+        run: moon ci $API_DRIFT_TARGETS
         env:
           MOON_BASE: origin/main
 
   infrastructure-root:
     needs: changed
-    # The plan runs as the identity root's apply writes into the repository variables (decision 38);
-    # until then only the moon checks run.
-    if: vars.PLAN_SERVICE_ACCOUNT != '' && needs.changed.outputs.infrastructure-root == 'true'
+    if: needs.changed.outputs.infrastructure-root == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -198,9 +195,7 @@ jobs:
   # `changed` job above.
   infrastructure-staging:
     needs: changed
-    # The plan runs as the identity root's apply writes into the repository variables (decision 38);
-    # until then only the moon checks run.
-    if: vars.PLAN_SERVICE_ACCOUNT != '' && needs.changed.outputs.infrastructure-staging == 'true'
+    if: needs.changed.outputs.infrastructure-staging == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -225,9 +220,7 @@ jobs:
 
   infrastructure-prod:
     needs: changed
-    # The plan runs as the identity root's apply writes into the repository variables (decision 38);
-    # until then only the moon checks run.
-    if: vars.PLAN_SERVICE_ACCOUNT != '' && needs.changed.outputs.infrastructure-prod == 'true'
+    if: needs.changed.outputs.infrastructure-prod == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

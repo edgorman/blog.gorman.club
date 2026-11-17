@@ -1,5 +1,5 @@
 name: 'Terraform Pull Request'
-description: 'Performs terraform init, fmt, validate, and plan, and posts the plan on the pull request'
+description: 'Performs terraform init and plan, and posts the plan on the pull request'
 
 inputs:
   terraform_directory:
@@ -51,16 +51,8 @@ runs:
         terraform init \
           -backend-config="${{ github.workspace }}/${{ inputs.config_directory }}/terraform.tfbackend"
 
-    - name: Terraform Format
-      shell: bash
-      working-directory: ${{ inputs.terraform_directory }}
-      run: terraform fmt -check
-
-    - name: Terraform Validate
-      shell: bash
-      working-directory: ${{ inputs.terraform_directory }}
-      run: terraform validate
-
+    # Formatting and validation are the `lint-check` job's (moon's :format and :validate), and
+    # plan validates the configuration again.
     - name: Terraform Plan
       id: plan
       shell: bash
@@ -75,9 +67,7 @@ runs:
           -out=tfplan.binary
         terraform show -no-color tfplan.binary > tfplan.txt
 
-    # A merge_group run has no PR to comment on; the plan above still has to succeed.
     - name: Post Terraform Plan Comment
-      if: github.event_name == 'pull_request' || inputs.pull_request_number != ''
       uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       with:
         github-token: ${{ inputs.github_token }}

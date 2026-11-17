@@ -24,9 +24,6 @@ jobs:
   # decides which to plan. The publish markers decide which of the backend, worker and frontend are
   # rebuilt; the rest reuse base_sha's artifacts (decision 33).
   changed:
-    # Skipped until root's apply writes the repository variables (decision 38). Every deploying job
-    # needs it.
-    if: vars.DEPLOY_SERVICE_ACCOUNT != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -59,7 +56,7 @@ jobs:
           MOON_SKIP_SETUP_TOOLCHAIN: 'true'
           GOTOOLCHAIN: local
         run: |
-          # Diffed against the last commit this workflow fully processed (#262, decision 41): the
+          # Diffed against the last commit this workflow fully processed (decision 41): the
           # previous commit when its own run succeeded, else the newest release tag before this
           # commit. So a merge builds and applies only what it changes, not everything since the last
           # release. A cancelled or failed run is never the base, so its work is redone. HEAD~1 is
@@ -189,7 +186,7 @@ jobs:
           service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
 
   # Skipped when this merge changes nothing deployable: the staging site is then the one the last
-  # smoke test passed. #277: the deployed frontend and backend together, signed out and read-only, against the live
+  # smoke test passed. The deployed frontend and backend together, signed out and read-only, against the live
   # staging site. Covers config.json, CORS, the Worker and routing. Runs once both are live;
   # release-please waits on it.
   smoke:
@@ -222,7 +219,7 @@ jobs:
   # push-release.yaml's job, on the release PR's own merge (decision 39). It waits on this commit's
   # deploy and smoke test. `if:` tests each direct need for `success` (smoke may also be skipped,
   # when nothing deployable changed), since always() opts out of inherited skips. A skip of any
-  # publish job is not release-worthy (#156, #185).
+  # publish job is not release-worthy.
   release-please:
     needs: [services, smoke]
     if: |

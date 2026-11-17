@@ -4,7 +4,8 @@ name: 'Push Release'
 # release-please owns. push-commit.yaml skips such a push. Nothing deployable changed, so this
 # publishes the previous commit's artifacts under the release commit (promotion deploys by commit
 # SHA, decision 22), tags the release, and promotes it to production (decision 39). It never deploys
-# to staging, which already runs the same code.
+# to staging, which already runs the same code (unless an artifact is missing and has to be
+# built, which also deploys it there).
 on:
   push:
     branches:
@@ -28,8 +29,6 @@ jobs:
   # was cancelled or aged out, the leg builds it from this commit, which has the same code.
   artifacts:
     name: artifacts-${{ matrix.service }}
-    # Skipped until root's apply writes the repository variables (decision 38).
-    if: vars.DEPLOY_SERVICE_ACCOUNT != ''
     strategy:
       fail-fast: false
       matrix:

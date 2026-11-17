@@ -1,6 +1,6 @@
 # 33. Build only what changed, reuse the rest
 
-Status: Accepted (amends [22](0022-build-once-promote-by-sha.md))
+Status: Accepted (amends [22](0022-build-once-promote-by-sha.md); the base is now the previous successful run, see [41](0041-moon-gates-every-ci-job.md))
 
 ## Context
 

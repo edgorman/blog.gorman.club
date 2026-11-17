@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: '22'
+          node-version: '26'
       - name: npm audit
         working-directory: services/frontend
         run: ../../.github/scripts/advisory.sh 'npm audit' 1 npm audit --omit=dev
@@ -94,7 +94,7 @@ jobs:
         working-directory: infrastructure
         run: ../.github/scripts/advisory.sh tflint 2 tflint --recursive
       - name: trivy config
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
           scan-ref: infrastructure
@@ -108,7 +108,7 @@ jobs:
       - name: Build the backend image
         run: docker build -t backend:scan services/backend
       - name: trivy image
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: backend:scan
           # Advisory: report, never fail.

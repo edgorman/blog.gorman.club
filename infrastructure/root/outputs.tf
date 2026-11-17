@@ -23,11 +23,6 @@ output "github_service_accounts" {
   }
 }
 
-output "github_actions_service_account_email" {
-  description = "Legacy single GitHub Actions service account, kept for one release (github_actions_legacy.tf)"
-  value       = google_service_account.github_actions.email
-}
-
 output "frontend_workers_dev_urls" {
   description = "workers.dev address of each environment's Cloudflare Worker"
   value       = { for k, v in cloudflare_worker.frontend : k => v.subdomain.url }

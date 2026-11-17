@@ -140,13 +140,15 @@ jobs:
           service_account: ${{ vars.PLAN_SERVICE_ACCOUNT }}
       # The plan identity can read no secret (decision 38): the plan is made without refreshing, so
       # no provider uses these placeholders. The Cloudflare provider still validates the token's
-      # shape (40 characters of a-z, A-Z, 0-9, - and _), hence the padding.
+      # shape (40 characters of a-z, A-Z, 0-9, - and _), hence the padding. The GitHub provider looks the
+      # owner up when it configures, even with -refresh=false, and a bad token is a 401 where no
+      # token is an anonymous 404 for a user account, so its token is left empty.
       - uses: ./.github/actions/terraform-pull-request
         with:
           terraform_directory: 'infrastructure/root'
           config_directory: 'infrastructure/config/root'
           secrets: |
-            TF_VAR_github_provider_token=plan-only
+            TF_VAR_github_provider_token=
             TF_VAR_cloudflare_api_token=plan-only-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
           github_token: ${{ secrets.GITHUB_TOKEN }}
 

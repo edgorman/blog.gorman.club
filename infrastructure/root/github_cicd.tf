@@ -194,10 +194,6 @@ locals {
     # One client ID for every environment: passed to infrastructure/env as TF_VAR_google_client_id
     # and baked into the frontend build as VITE_GOOGLE_CLIENT_ID.
     GOOGLE_CLIENT_ID = var.google_client_id
-    # Legacy: the single all-powerful identity the workflows used before the split (decision 38).
-    # Kept for one release so a run of the old workflows still authenticates between this root's
-    # apply and the merge; the follow-up that deletes github_actions_legacy.tf drops this too.
-    SERVICE_ACCOUNT = google_service_account.github_actions.email
   }
 }
 
@@ -209,16 +205,11 @@ resource "github_actions_variable" "variables" {
   value         = each.value
 }
 
-# These were three separate resources before the variables became one map; moving them keeps the
+# These were separate resources before the variables became one map; moving them keeps the
 # apply from deleting and recreating the variables the live workflows read.
 moved {
   from = github_actions_variable.workload_identity_provider
   to   = github_actions_variable.variables["WORKLOAD_IDENTITY_PROVIDER"]
-}
-
-moved {
-  from = github_actions_variable.service_account
-  to   = github_actions_variable.variables["SERVICE_ACCOUNT"]
 }
 
 moved {

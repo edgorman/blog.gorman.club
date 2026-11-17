@@ -18,8 +18,8 @@ concurrency:
 
 jobs:
   # moon decides which Terraform deployments a diff reaches via `moon query affected`. Each
-  # deploy-{root,staging,prod}:plan task's `inputs` (#195/#206) list the composite actions and
-  # workflow files its environment depends on.
+  # deploy-{root,staging,prod}:plan task's `inputs` (#195/#206) list the plan's own action and
+  # workflow file, so a change to push-commit.yaml or an apply-only action plans nothing.
   changed:
     # The three infrastructure plans run as the plan identity that root's apply writes into the
     # repository variables (decision 38); until then only the moon checks run.

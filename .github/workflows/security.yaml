@@ -23,7 +23,8 @@ concurrency:
 jobs:
   # Decides which scanners a pull request reaches, from the files it changes. No scanner is a
   # required check (decision 33), so a skipped job costs a merge nothing. The weekly scan and a
-  # manual run have no diff, so they run everything. `secrets` is unconditional: any file can leak.
+  # manual run have no diff, so they run everything. `secrets` runs on every change except a
+  # release PR's (only generated files): any other file can leak.
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -32,18 +33,28 @@ jobs:
       workflows: ${{ steps.diff.outputs.workflows }}
       terraform: ${{ steps.diff.outputs.terraform }}
       image: ${{ steps.diff.outputs.image }}
+      release: ${{ steps.release.outputs.only }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           filter: 'blob:none'
+      - id: release
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/release-only
       - id: diff
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          RELEASE_ONLY: ${{ steps.release.outputs.only }}
         run: |
+          # The release PR changes only generated files, so nothing needs scanning.
+          if [ "$RELEASE_ONLY" = true ]; then
+            printf '%s=false\n' go frontend workflows terraform image >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           # A scanner's own workflow file and helper script are inputs to it, so editing either
           # re-runs everything that uses them.
           common='^(\.github/workflows/security\.yaml|\.github/scripts/advisory\.sh)$'
@@ -57,7 +68,7 @@ jobs:
           {
             check go '^(services/backend/|packages/api/|\.prototools$)'
             check frontend '^(services/frontend/|packages/api/)'
-            check workflows '^\.github/'
+            check workflows '^\.github/(workflows|actions|scripts)/'
             check terraform '^(infrastructure/|\.prototools$)'
             check image '^services/backend/'
           } | tee -a "$GITHUB_OUTPUT"
@@ -166,6 +177,8 @@ jobs:
           exit-code: '0'
 
   secrets:
+    needs: changes
+    if: needs.changes.outputs.release != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

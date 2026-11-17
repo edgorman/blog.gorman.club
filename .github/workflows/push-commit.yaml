@@ -67,13 +67,15 @@ jobs:
   # builds, if that folder has aged out). It deploys either way, so staging shows this commit. One
   # folder feeds both buckets and the Worker.
   services-frontend:
-    # services-backend runs after `changed` and infrastructure-staging succeed; infrastructure-root
-    # is checked on its own (infrastructure-staging skips when staging isn't affected).
-    needs: [changed, infrastructure-root, services-backend]
+    # Runs beside services-backend, not after it: the staging backend's URL is fixed, so the two
+    # deploys don't depend on each other. smoke and release-please wait for both. Each infrastructure
+    # job skips when its deployment isn't affected, so a skip counts as passing.
+    needs: [changed, infrastructure-root, infrastructure-staging]
     if: |
       always() &&
+      needs.changed.result == 'success' &&
       (needs.infrastructure-root.result == 'success' || needs.infrastructure-root.result == 'skipped') &&
-      needs.services-backend.result == 'success'
+      (needs.infrastructure-staging.result == 'success' || needs.infrastructure-staging.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -222,9 +224,19 @@ jobs:
   # #277: the deployed frontend and backend together, signed out and read-only, against the live
   # staging site. Covers config.json, CORS, the Worker and routing. Runs once both are live;
   # release-please waits on it.
+  # Skipped when the merge touches nothing deployable (no infrastructure, backend, worker or
+  # frontend change): the staging site is then the one the last smoke test passed.
   smoke:
-    needs: services-frontend
-    if: always() && needs.services-frontend.result == 'success'
+    needs: [changed, services-backend, services-frontend]
+    if: |
+      always() &&
+      needs.services-backend.result == 'success' &&
+      needs.services-frontend.result == 'success' &&
+      (needs.changed.outputs.infrastructure-root == 'true' ||
+        needs.changed.outputs.infrastructure-staging == 'true' ||
+        needs.changed.outputs.backend == 'true' ||
+        needs.changed.outputs.worker == 'true' ||
+        needs.changed.outputs.frontend == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -243,13 +255,13 @@ jobs:
 
   # Opens or updates the release PR and, on the release PR's own merge, tags the release (decision
   # 39). It waits on this commit's deploy and smoke test. `if:` tests each direct need for
-  # `success`, since infrastructure-root and -staging skip on most merges and always() opts out of
-  # inherited skips. A skip of any publish job is not release-worthy (#156, #185).
+  # `success` (smoke may also be skipped, when nothing deployable changed), since always() opts out
+  # of inherited skips. A skip of any publish job is not release-worthy (#156, #185).
   release-please:
     needs: [services-backend, services-frontend, smoke]
     if: |
       always() &&
-      needs.smoke.result == 'success' &&
+      (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') &&
       needs.services-backend.result == 'success' &&
       needs.services-frontend.result == 'success'
     runs-on: ubuntu-latest

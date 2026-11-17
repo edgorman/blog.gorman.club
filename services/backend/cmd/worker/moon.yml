@@ -35,7 +35,6 @@ tasks:
       - '/services/backend/.dockerignore'
       - '/.github/actions/backend-deploy/**/*'
       - '/.github/actions/backend-cloudrun-deploy/**/*'
-      - '/.github/workflows/push-commit.yaml'
     options:
       # Not runInCI: false - see infrastructure/config/root/moon.yml's comment: excluding it from CI
       # hides it from moon query affected's CI-mode results, which push-commit's `changed` reads.

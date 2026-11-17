@@ -84,7 +84,12 @@ jobs:
         with:
           fetch-depth: 0
           filter: 'blob:none'
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      # The release PR changes only generated files. The job still runs, so its required check
+      # reports, but its steps are skipped.
+      - id: release
+        uses: ./.github/actions/release-only
+      - if: steps.release.outputs.only != 'true'
+        uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
           cache: false # see `changed`'s identical setup step above for why
@@ -92,8 +97,21 @@ jobs:
       # The emulator jar is the one `gcloud emulators firestore` runs, fetched directly (checksum
       # from firebase-tools' downloadableEmulatorInfo.json). It needs Java 21, which the runner
       # ships beside its default.
+      # Only worth starting when moon will run a :test task, which moon query affected tells us.
+      - id: tests
+        name: Find affected tests
+        if: matrix.check == 'test' && steps.release.outputs.only != 'true'
+        shell: bash
+        env:
+          MOON_BASE: origin/main
+        run: |
+          if moon query affected > "$RUNNER_TEMP/affected.json"; then
+            echo "affected=$(jq -r '(.tasks // {}) | keys | any(endswith(":test"))' "$RUNNER_TEMP/affected.json")" >> "$GITHUB_OUTPUT"
+          else
+            echo 'affected=true' >> "$GITHUB_OUTPUT"
+          fi
       - name: Start the Firestore emulator
-        if: matrix.check == 'test'
+        if: steps.tests.outputs.affected == 'true'
         shell: bash
         run: |
           curl -fsSL -o "$RUNNER_TEMP/firestore-emulator.jar" \
@@ -103,6 +121,7 @@ jobs:
           timeout 60 bash -c 'until curl -sf http://127.0.0.1:8081 > /dev/null; do sleep 1; done'
           echo 'FIRESTORE_EMULATOR_HOST=127.0.0.1:8081' >> "$GITHUB_ENV"
       - name: moon ci
+        if: steps.release.outputs.only != 'true'
         shell: bash
         run: moon ci ${{ matrix.targets }}
         env:

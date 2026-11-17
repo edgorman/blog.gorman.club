@@ -1,0 +1,22 @@
+name: 'Release-only change'
+description: 'Reports whether a pull request changes nothing but the files release-please generates (CHANGELOG.md, .github/.release-please-manifest.json, .github/version.txt), so its checks have nothing to verify'
+
+outputs:
+  only:
+    description: '"true" when every changed file is one of those'
+    value: ${{ steps.diff.outputs.only }}
+
+runs:
+  using: "composite"
+  steps:
+    # Needs a checkout with history, so origin/main is there to diff against. An empty diff is not
+    # a release-only change.
+    - id: diff
+      shell: bash
+      run: |
+        files=$(git diff --name-only origin/main...HEAD)
+        if [ -n "$files" ] && ! grep -qvxE 'CHANGELOG\.md|\.github/\.release-please-manifest\.json|\.github/version\.txt' <<<"$files"; then
+          echo 'only=true' >> "$GITHUB_OUTPUT"
+        else
+          echo 'only=false' >> "$GITHUB_OUTPUT"
+        fi

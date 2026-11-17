@@ -45,11 +45,16 @@ jobs:
         # Full history, so origin/main is there to read main's spec from.
         with:
           fetch-depth: 0
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      # A release PR changes only generated files; skip the steps, not the job (required check).
+      - id: release
+        uses: ./.github/actions/release-only
+      - if: steps.release.outputs.only != 'true'
+        uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
           cache: false # see pull-request.yaml's `changed` job for why
       - name: moon ci
+        if: steps.release.outputs.only != 'true'
         shell: bash
         env:
           TITLE: ${{ github.event.pull_request.title }}

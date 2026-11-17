@@ -11,7 +11,9 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 - Each workflow authenticates as its own identity: PR checks as `PLAN_`, `push-commit.yaml` as `DEPLOY_`, promotion and the manual prod apply as `PROMOTE_`, Renovate as `RENOVATE_SERVICE_ACCOUNT`. A PR's plan job gets placeholder tokens and `-refresh=false`, never a secret; a workflow that needs another identity calls a reusable workflow ([38](../docs/decisions/0038-separate-plan-and-apply-identities.md)).
 - Renovate (`renovate.yaml`, `renovate.json5`) opens the dependency PRs. A hand-written version pin gets a `# renovate: datasource=... depName=...` comment above it ([40](../docs/decisions/0040-self-hosted-renovate.md)).
 
-- `security.yaml` is advisory: its scanners report in the job summary and never fail a run or gate a merge; a scanner that cannot run does fail ([35](../docs/decisions/0035-advisory-security-scanning.md)). On a pull request a `changes` job maps the diff to scanners (Go, frontend, workflows, Terraform, image) and skips the rest; the weekly and manual runs scan everything, and gitleaks always runs.
+- `security.yaml` is advisory: its scanners report in the job summary and never fail a run or gate a merge; a scanner that cannot run does fail ([35](../docs/decisions/0035-advisory-security-scanning.md)). On a pull request a `changes` job maps the diff to scanners (Go, frontend, workflows, Terraform, image) and skips the rest; the weekly and manual runs scan everything, and gitleaks runs on every change.
+- A release PR (only `CHANGELOG.md`, `.github/.release-please-manifest.json` and `.github/version.txt` changed) skips its moon legs, `api-breaking` and the scanners through `.github/actions/release-only`. The jobs still run and report, because a required check can't be skipped at the job level for a matrix leg.
+- `push-commit.yaml` deploys the backend, worker and frontend in parallel, skips the staging smoke test when nothing deployable changed, and does not rebuild an image or the bundle for an edit to `push-commit.yaml` alone.
 
 ### Building with moon
 

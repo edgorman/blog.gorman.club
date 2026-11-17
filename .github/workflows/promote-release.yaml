@@ -71,9 +71,9 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/prod'
-          secrets: |
-            TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
-            TF_VAR_ci_service_account=${{ vars.PROMOTE_SERVICE_ACCOUNT }}
+        env:
+          TF_VAR_google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
+          TF_VAR_ci_service_account: ${{ vars.PROMOTE_SERVICE_ACCOUNT }}
 
   # Step 2: deploy the commit-SHA image already in prod's registry. It reads nothing from staging.
   services-backend:
@@ -153,14 +153,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.target.outputs.sha }}
-      - id: secrets
-        uses: ./.github/actions/gcp-secret-manager
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
-          project_id: 'blog-gorman-club-root'
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.PROMOTE_SERVICE_ACCOUNT }}
-          secrets_list: |
-            CLOUDFLARE_API_TOKEN=cloudflare_api_token
+      - id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            cloudflare_api_token: projects/blog-gorman-club-root/secrets/cloudflare_api_token/versions/latest
       - uses: ./.github/actions/frontend-fetch
         with:
           gcp_project_id: 'blog-gorman-club-prod'
@@ -169,7 +171,7 @@ jobs:
           service_account: ${{ vars.PROMOTE_SERVICE_ACCOUNT }}
       - uses: ./.github/actions/frontend-deploy
         with:
-          secrets: ${{ steps.secrets.outputs.secrets }}
+          cloudflare_api_token: ${{ steps.secrets.outputs.cloudflare_api_token }}
           cloudflare_project_name: 'frontend-prod'
           cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           backend_url: ${{ needs.services-backend.outputs.backend_url }}

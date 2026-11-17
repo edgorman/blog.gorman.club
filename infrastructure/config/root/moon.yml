@@ -26,7 +26,6 @@ tasks:
       - 'terraform.tfbackend'
       - 'terraform.tfvars'
       - 'project://infra-root'
-      - '/.github/actions/gcp-secret-manager/**/*'
       - '/.github/actions/terraform-push-commit/**/*'
       - '/.github/workflows/push-commit.yaml'
     options:

@@ -89,23 +89,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # The PAT, so the release PR triggers the PR checks (decision 39).
-      - id: secrets
-        uses: ./.github/actions/gcp-secret-manager
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
-          project_id: 'blog-gorman-club-root'
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
-          secrets_list: |
-            RELEASE_PLEASE_TOKEN=github_provider_token
-      - name: Export Secrets
-        shell: bash
-        env:
-          SECRETS: ${{ steps.secrets.outputs.secrets }}
-        run: printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
+      - id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            release_please_token: projects/blog-gorman-club-root/secrets/github_provider_token/versions/latest
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          token: ${{ env.RELEASE_PLEASE_TOKEN }}
+          token: ${{ steps.secrets.outputs.release_please_token }}
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
 

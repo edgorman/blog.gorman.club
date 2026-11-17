@@ -186,10 +186,10 @@ jobs:
         with:
           terraform_directory: 'infrastructure/root'
           config_directory: 'infrastructure/config/root'
-          secrets: |
-            TF_VAR_github_provider_token=
-            TF_VAR_cloudflare_api_token=plan-only-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
           github_token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          TF_VAR_github_provider_token: ''
+          TF_VAR_cloudflare_api_token: plan-only-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
   # infrastructure/env/** is shared, so a change to it plans against both environments - see the
   # `changed` job above.
@@ -212,11 +212,11 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/staging'
-          # One client ID, defined in infrastructure/root, serves every environment.
-          secrets: |
-            TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
-            TF_VAR_ci_service_account=${{ vars.DEPLOY_SERVICE_ACCOUNT }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          # One client ID, defined in infrastructure/root, serves every environment.
+          TF_VAR_google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
+          TF_VAR_ci_service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
 
   infrastructure-prod:
     needs: changed
@@ -237,9 +237,9 @@ jobs:
         with:
           terraform_directory: 'infrastructure/env'
           config_directory: 'infrastructure/config/prod'
-          # One client ID, defined in infrastructure/root, serves every environment.
-          secrets: |
-            TF_VAR_google_client_id=${{ vars.GOOGLE_CLIENT_ID }}
-            TF_VAR_ci_service_account=${{ vars.PROMOTE_SERVICE_ACCOUNT }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          # One client ID, defined in infrastructure/root, serves every environment.
+          TF_VAR_google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
+          TF_VAR_ci_service_account: ${{ vars.PROMOTE_SERVICE_ACCOUNT }}
 

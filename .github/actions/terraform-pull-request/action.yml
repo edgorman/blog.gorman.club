@@ -8,10 +8,6 @@ inputs:
   config_directory:
     description: 'The directory containing the configuration files (backend and vars)'
     required: true
-  secrets:
-    description: 'Newline-separated list of secrets or env vars to export (e.g., KEY=VALUE)'
-    required: false
-    default: ''
   github_token:
     description: 'GitHub token for posting comments'
     required: true
@@ -22,17 +18,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-    # The values pass through an environment variable, not ${{ }} interpolation, so they are only
-    # ever strings. The same applies in terraform-push-commit and frontend-deploy.
-    - name: Export Secrets
-      shell: bash
-      env:
-        SECRETS: ${{ inputs.secrets }}
-      run: |
-        if [ -n "$SECRETS" ]; then
-          printf '%s\n' "$SECRETS" >> "$GITHUB_ENV"
-        fi
-
+    # TF_VAR_* values come from the calling step's `env:`.
     # The version comes from .prototools.
     - id: terraform-version
       name: Read the Terraform version

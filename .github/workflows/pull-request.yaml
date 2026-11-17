@@ -17,15 +17,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # moon decides which Terraform deployments a diff reaches via `moon query affected`. Each
-  # deploy-{root,staging,prod}:plan task's `inputs` (#195/#206) list the plan's own action and
-  # workflow file, so a change to push-commit.yaml or an apply-only action plans nothing.
+  # moon decides what a diff reaches (decision 41): `moon query affected` lists the tasks whose inputs
+  # changed, and every job below gates on that list. Only moon, and not the toolchain it would run
+  # tasks with, is installed here (`auto-install: false`), which keeps this job to a few seconds.
+  # The deploy-{root,staging,prod}:plan markers (#195/#206) list a plan's own action and workflow
+  # file, so a change to push-commit.yaml or an apply-only action plans nothing.
   changed:
-    # The three infrastructure plans run as the plan identity that root's apply writes into the
-    # repository variables (decision 38); until then only the moon checks run.
-    if: vars.PLAN_SERVICE_ACCOUNT != ''
     runs-on: ubuntu-latest
     outputs:
+      lint-check: ${{ steps.moon.outputs.lint-check }}
+      test: ${{ steps.moon.outputs.test }}
+      test-emulator: ${{ steps.moon.outputs.test-emulator }}
+      api-drift: ${{ steps.moon.outputs.api-drift }}
       infrastructure-root: ${{ steps.moon.outputs.root }}
       infrastructure-staging: ${{ steps.moon.outputs.staging }}
       infrastructure-prod: ${{ steps.moon.outputs.prod }}
@@ -37,11 +40,11 @@ jobs:
           filter: 'blob:none'
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
-          auto-install: true
+          auto-install: false
           # The toolchain cache is disabled: restoring it loses the executable bit on proto's shim.
           cache: false
       - id: moon
-        name: Compute moon-affected deployments
+        name: Compute moon-affected jobs
         shell: bash
         env:
           # `moon query affected` has no --base flag; it reads MOON_BASE as `moon ci` does. On
@@ -49,35 +52,64 @@ jobs:
           # entries queued ahead of it.
           MOON_BASE: origin/main
         run: |
+          # The targets each required check hands to `moon ci`, kept here so the check and the
+          # decision to run it can't drift apart. `:name` means that task in any project.
+          declare -A targets=(
+            [lint-check]=':format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync root:decision-links'
+            [test]=':test services/backend:image worker:image'
+            [api-drift]='packages/api:drift'
+          )
           # Run with the command's own defaults (no --upstream/--downstream); the explicit
-          # project://infra-root / project://infra-env inputs are the affectedness signal (#206).
-          moon query affected > affected.json
-          for env in root staging prod; do
-            # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
-            val=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' affected.json)
-            echo "$env=$val" >> "$GITHUB_OUTPUT"
+          # project:// inputs are the affectedness signal (#206).
+          moon query affected > "$RUNNER_TEMP/affected.json"
+          # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
+          tasks=$(jq -c '(.tasks // {}) | keys' "$RUNNER_TEMP/affected.json")
+          affected() { jq -r --argjson tasks "$tasks" --arg t "$1" '
+            ($t | split(" ")) as $want
+            | any($tasks[]; . as $k | any($want[]; . as $w
+                | if $w | startswith(":") then ($k | endswith($w)) else $k == $w end))' <<<null; }
+          for check in "${!targets[@]}"; do
+            echo "$check=$(affected "${targets[$check]}")" >> "$GITHUB_OUTPUT"
           done
+          # The Firestore emulator is only needed when a Go test will run.
+          echo "test-emulator=$(affected ':test')" >> "$GITHUB_OUTPUT"
+          for env in root staging prod; do
+            echo "$env=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' "$RUNNER_TEMP/affected.json")" >> "$GITHUB_OUTPUT"
+          done
+          cat "$RUNNER_TEMP/affected.json"
 
-  # The three required moon checks, one leg each, so each keeps its own check name. `:taskId` (no
-  # project prefix) is moon's "run in every project that has this task" scope
-  # (https://moonrepo.dev/docs/concepts/target); a project without a given task is silently skipped.
+  # The three required checks, one job each so each keeps its own check name and a skipped job reports
+  # as skipped, which branch protection counts as passing (a matrix leg skipped at job level would
+  # report an unexpanded name and stay pending). `:taskId` (no project prefix) is moon's "run in
+  # every project that has this task" scope (https://moonrepo.dev/docs/concepts/target); a project
+  # without a given task is silently skipped. The targets live in `changed`.
   # - lint-check: every lint/format/build task. `:format`/`:validate` reach infra-root/infra-env's
   #   inherited `terraform fmt -check` and `terraform validate` (.moon/tasks/terraform.yml);
   #   `:validate` is `runInCI: 'only'`, so this is the one place it runs at all.
-  #   task's own `inputs`, e.g. `project://packages/api`) plus both images.
+  # - test: every test, plus both images.
   # - api-drift: packages/api:drift, both generators re-run and diffed.
-  moon:
-    name: ${{ matrix.check }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - check: lint-check
-            targets: ':format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync root:decision-links'
-          - check: test
-            targets: ':test services/backend:image worker:image'
-          - check: api-drift
-            targets: 'packages/api:drift'
+  lint-check:
+    needs: changed
+    if: needs.changed.outputs.lint-check == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          filter: 'blob:none'
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+          cache: false # see `changed`'s identical setup step above for why
+      - name: moon ci
+        shell: bash
+        run: moon ci :format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync root:decision-links
+        env:
+          MOON_BASE: origin/main
+
+  test:
+    needs: changed
+    if: needs.changed.outputs.test == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -93,7 +125,7 @@ jobs:
       # from firebase-tools' downloadableEmulatorInfo.json). It needs Java 21, which the runner
       # ships beside its default.
       - name: Start the Firestore emulator
-        if: matrix.check == 'test'
+        if: needs.changed.outputs.test-emulator == 'true'
         shell: bash
         run: |
           curl -fsSL -o "$RUNNER_TEMP/firestore-emulator.jar" \
@@ -104,13 +136,34 @@ jobs:
           echo 'FIRESTORE_EMULATOR_HOST=127.0.0.1:8081' >> "$GITHUB_ENV"
       - name: moon ci
         shell: bash
-        run: moon ci ${{ matrix.targets }}
+        run: moon ci :test services/backend:image worker:image
+        env:
+          MOON_BASE: origin/main
+
+  api-drift:
+    needs: changed
+    if: needs.changed.outputs.api-drift == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          filter: 'blob:none'
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+          cache: false # see `changed`'s identical setup step above for why
+      - name: moon ci
+        shell: bash
+        run: moon ci packages/api:drift
         env:
           MOON_BASE: origin/main
 
   infrastructure-root:
     needs: changed
-    if: needs.changed.outputs.infrastructure-root == 'true'
+    # The plan runs as the identity root's apply writes into the repository variables (decision 38);
+    # until then only the moon checks run.
+    if: vars.PLAN_SERVICE_ACCOUNT != '' && needs.changed.outputs.infrastructure-root == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -139,7 +192,9 @@ jobs:
   # `changed` job above.
   infrastructure-staging:
     needs: changed
-    if: needs.changed.outputs.infrastructure-staging == 'true'
+    # The plan runs as the identity root's apply writes into the repository variables (decision 38);
+    # until then only the moon checks run.
+    if: vars.PLAN_SERVICE_ACCOUNT != '' && needs.changed.outputs.infrastructure-staging == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -164,7 +219,9 @@ jobs:
 
   infrastructure-prod:
     needs: changed
-    if: needs.changed.outputs.infrastructure-prod == 'true'
+    # The plan runs as the identity root's apply writes into the repository variables (decision 38);
+    # until then only the moon checks run.
+    if: vars.PLAN_SERVICE_ACCOUNT != '' && needs.changed.outputs.infrastructure-prod == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

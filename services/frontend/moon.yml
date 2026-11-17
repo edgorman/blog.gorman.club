@@ -59,8 +59,20 @@ tasks:
       - '@group(configs)'
       - '/.github/actions/frontend-build/**/*'
       - '/.github/actions/frontend-publish/**/*'
-      - '/.github/workflows/push-commit.yaml'
     options:
       # Not runInCI: false - see infrastructure/config/root/moon.yml's comment: excluding it from CI
       # hides it from moon query affected's CI-mode results, which push-commit's `changed` reads.
+      cache: false
+
+  # Marker for security.yaml's frontend job: npm audit reads the lockfile and the API types.
+  scan:
+    command: 'noop'
+    inputs:
+      - '@group(configs)'
+      - 'project://packages/api'
+      - '/.github/workflows/security.yaml'
+      - '/.github/scripts/advisory.sh'
+    options:
+      # Not runInCI: false: a noop task is harmless to execute, and excluding it from CI would hide it
+      # from moon query affected's CI-mode results, which the workflows' `changed` jobs read.
       cache: false

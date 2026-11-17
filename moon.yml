@@ -76,3 +76,29 @@ tasks:
       exit "$missing"
     inputs:
       - '/**/*.md'
+      - '!/CHANGELOG.md'
+
+  # Marker for security.yaml's workflows job: actionlint and zizmor read these.
+  scan-workflows:
+    command: 'noop'
+    inputs:
+      - '/.github/workflows/**/*'
+      - '/.github/actions/**/*'
+      - '/.github/scripts/**/*'
+    options:
+      # Not runInCI: false: a noop task is harmless to execute, and excluding it from CI would hide it
+      # from moon query affected's CI-mode results, which the workflows' `changed` jobs read.
+      cache: false
+
+  # Marker for security.yaml's secrets job: any file can leak a secret, but release-please's generated files carry none.
+  scan-secrets:
+    command: 'noop'
+    inputs:
+      - '/**/*'
+      - '!/CHANGELOG.md'
+      - '!/.github/.release-please-manifest.json'
+      - '!/.github/version.txt'
+    options:
+      # Not runInCI: false: a noop task is harmless to execute, and excluding it from CI would hide it
+      # from moon query affected's CI-mode results, which the workflows' `changed` jobs read.
+      cache: false

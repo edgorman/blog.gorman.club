@@ -16,3 +16,13 @@ tasks:
       # (see AGENTS.md) - confirmed locally: `terraform init` fails with a 403 fetching the
       # provider discovery document. Runs in CI only until that's addressed.
       runInCI: 'only'
+  # Marker for security.yaml's terraform job (tflint and trivy read every .tf file).
+  scan:
+    command: 'noop'
+    inputs:
+      - '**/*'
+      - '/.prototools'
+      - '/.github/workflows/security.yaml'
+      - '/.github/scripts/advisory.sh'
+    options:
+      cache: false

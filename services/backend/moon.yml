@@ -59,8 +59,35 @@ tasks:
       - '.dockerignore'
       - '/.github/actions/backend-deploy/**/*'
       - '/.github/actions/backend-cloudrun-deploy/**/*'
-      - '/.github/workflows/push-commit.yaml'
     options:
       # Not runInCI: false - see infrastructure/config/root/moon.yml's comment: excluding it from CI
       # hides it from moon query affected's CI-mode results, which push-commit's `changed` reads.
+      cache: false
+
+  # Marker for security.yaml's go job (decision 41): affected when govulncheck or gosec has new code to read.
+  scan-go:
+    command: 'noop'
+    inputs:
+      - '@group(sources)'
+      - 'project://packages/api'
+      - '/.prototools'
+      - '/.github/workflows/security.yaml'
+      - '/.github/scripts/advisory.sh'
+    options:
+      # Not runInCI: false: a noop task is harmless to execute, and excluding it from CI would hide it
+      # from moon query affected's CI-mode results, which the workflows' `changed` jobs read.
+      cache: false
+
+  # Marker for security.yaml's image job.
+  scan-image:
+    command: 'noop'
+    inputs:
+      - '@group(sources)'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '/.github/workflows/security.yaml'
+      - '/.github/scripts/advisory.sh'
+    options:
+      # Not runInCI: false: a noop task is harmless to execute, and excluding it from CI would hide it
+      # from moon query affected's CI-mode results, which the workflows' `changed` jobs read.
       cache: false

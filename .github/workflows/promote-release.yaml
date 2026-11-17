@@ -1,7 +1,7 @@
 name: 'Promote Release'
 
 # Deploys a release to production from the commit-SHA artifacts already in prod's own stores:
-# push-commit.yaml calls it when release-please cuts a release, and it is run by hand to roll back
+# push-release.yaml calls it when release-please cuts a release, and it is run by hand to roll back
 # (or finish a failed promotion) with an earlier release tag. Nothing is rebuilt (decisions 22, 39).
 on:
   workflow_call:
@@ -31,8 +31,6 @@ concurrency:
 jobs:
   # Resolves what is being deployed; a manual run names only the tag.
   target:
-    # Skipped before root's bootstrap; every later job needs it.
-    if: vars.WORKLOAD_IDENTITY_PROVIDER != ''
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.target.outputs.tag }}

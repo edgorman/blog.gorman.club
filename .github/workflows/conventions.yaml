@@ -7,21 +7,18 @@ on:
     branches:
       - main
     types: [opened, edited, synchronize, reopened]
-  merge_group:
 
 permissions:
   contents: read
 
 concurrency:
-  group: conventions-${{ github.event.pull_request.number || github.ref }}
+  group: conventions-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   # The squash commit subject is the PR title, and versioning parses it (root AGENTS.md, Commit
-  # Message Convention). In a merge queue the title was already checked on the PR, so this
-  # reports skipped, which counts as passing.
+  # Message Convention).
   pr-title:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Check Conventional Commit title
@@ -36,8 +33,7 @@ jobs:
           fi
 
   # oasdiff against main's spec, unless the PR declares itself breaking, so a deliberate wire break
-  # also bumps major. In a merge queue the squash commit carries the PR title and body, so the
-  # same markers are read from it.
+  # also bumps major.
   api-breaking:
     runs-on: ubuntu-latest
     steps:
@@ -56,16 +52,15 @@ jobs:
         shell: bash
         env:
           TITLE: ${{ github.event.pull_request.title }}
-          BODY: ${{ github.event.pull_request.body || github.event.merge_group.head_commit.message }}
+          BODY: ${{ github.event.pull_request.body }}
           MOON_BASE: origin/main
           # A query runs no task, so moon needs none of the pinned tools (see pull-request.yaml).
           MOON_TOOLCHAIN_FORCE_GLOBALS: 'true'
           MOON_SKIP_SETUP_TOOLCHAIN: 'true'
           GOTOOLCHAIN: local
         run: |
-          subject="${TITLE:-${BODY%%$'\n'*}}"
           re='^[a-z]+(\([^)]+\))?!:'
-          if [[ "$subject" =~ $re ]] || grep -qE '^BREAKING[ -]CHANGE:' <<<"$BODY"; then
+          if [[ "$TITLE" =~ $re ]] || grep -qE '^BREAKING[ -]CHANGE:' <<<"$BODY"; then
             echo "Marked breaking; skipping the API breaking-change check."
             echo 'run=false' >> "$GITHUB_OUTPUT"
           else

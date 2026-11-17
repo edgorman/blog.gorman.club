@@ -24,7 +24,7 @@ tasks:
       - '/services/backend/internal/service/**/*.go'
 
   # A services/* or packages/* folder without its own moon.yml is exactly the folder
-  # services/*/moon.yml and packages/*/moon.yml globs (#191) would silently skip discovering as a
+  # services/*/moon.yml and packages/*/moon.yml globs would silently skip discovering as a
   # project, so check for the file directly rather than parsing `moon query projects` output - the
   # two are equivalent (a glob only picks up a folder that has one) and this needs no JSON parsing
   # or dependency on the query command's shape.
@@ -35,7 +35,7 @@ tasks:
       for dir in services/*/ packages/*/; do
         dir="${dir%/}"
         if [ ! -f "$dir/moon.yml" ]; then
-          echo "::error file=$dir::${dir} has no moon.yml - every services/* and packages/* folder must be a moon project (see #196)."
+          echo "::error file=$dir::${dir} has no moon.yml - every services/* and packages/* folder must be a moon project."
           missing=1
         fi
       done
@@ -47,7 +47,7 @@ tasks:
       - '/packages/**/*'
       - '/.moon/workspace.yml'
 
-  # .prototools' `go` pin (#191) is a second source of truth alongside go.mod's own `go` line -
+  # .prototools' `go` pin is a second source of truth alongside go.mod's own `go` line -
   # keeping them in sync is a manual invariant now that setup-go no longer reads go.mod alone.
   go-version-sync:
     description: '.prototools go pin matches services/backend/go.mod'
@@ -86,8 +86,8 @@ tasks:
       - '/.github/actions/**/*'
       - '/.github/scripts/**/*'
     options:
-      # Not runInCI: false: a noop task is harmless to execute, and excluding it from CI would hide it
-      # from moon query affected's CI-mode results, which the workflows' `changed` jobs read.
+      # Not runInCI: false: moon treats that as never affected, hiding the marker from the
+      # `moon query affected` the `changed` jobs read.
       cache: false
 
   # Marker for security.yaml's secrets job: any file can leak a secret, but release-please's generated files carry none.
@@ -99,6 +99,6 @@ tasks:
       - '!/.github/.release-please-manifest.json'
       - '!/.github/version.txt'
     options:
-      # Not runInCI: false: a noop task is harmless to execute, and excluding it from CI would hide it
-      # from moon query affected's CI-mode results, which the workflows' `changed` jobs read.
+      # Not runInCI: false: moon treats that as never affected, hiding the marker from the
+      # `moon query affected` the `changed` jobs read.
       cache: false

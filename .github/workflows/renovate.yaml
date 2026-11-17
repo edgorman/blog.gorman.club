@@ -17,10 +17,8 @@ concurrency:
 
 jobs:
   renovate:
-    # Skipped until infrastructure/root's bootstrap writes the repository variables
-    # (decision 38). GitHub also pauses a schedule after 60 days without repository activity;
-    # running this by hand (workflow_dispatch) restarts it.
-    if: vars.RENOVATE_SERVICE_ACCOUNT != ''
+    # GitHub pauses a schedule after 60 days without repository activity; running this by hand
+    # (workflow_dispatch) restarts it.
     runs-on: ubuntu-latest
     permissions:
       contents: read

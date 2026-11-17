@@ -36,6 +36,6 @@ tasks:
       - '/.github/actions/backend-deploy/**/*'
       - '/.github/actions/backend-cloudrun-deploy/**/*'
     options:
-      # Not runInCI: false - see infrastructure/config/root/moon.yml's comment: excluding it from CI
-      # hides it from moon query affected's CI-mode results, which push-commit's `changed` reads.
+      # Not runInCI: false: moon treats that as never affected, hiding the marker from the
+      # `moon query affected` the `changed` jobs read.
       cache: false

@@ -1,6 +1,6 @@
 name: 'Security'
 
-# Advisory scanning (decision 33): every scanner reports what it finds in the job summary and as a
+# Advisory scanning (decision 35): every scanner reports what it finds in the job summary and as a
 # warning, and none of them fails a run or is a required check. A scanner that cannot run at all
 # does fail (.github/scripts/advisory.sh). Everything here is an open-source CLI run as an ordinary
 # job, so it works on any plan; code scanning and secret scanning from GitHub need a paid one.
@@ -23,7 +23,7 @@ concurrency:
 jobs:
   # moon decides which scanners a pull request reaches (decision 41): each is a noop marker task
   # (scan-go, scan-image, scan, scan-workflows, scan-secrets) whose `inputs` are what the scanner
-  # reads. No scanner is a required check (decision 33), so a skipped job costs a merge nothing. The
+  # reads. No scanner is a required check (decision 35), so a skipped job costs a merge nothing. The
   # weekly scan and a manual run have no diff, so they run everything.
   changes:
     runs-on: ubuntu-latest
@@ -43,7 +43,7 @@ jobs:
         if: github.event_name == 'pull_request'
         with:
           auto-install: false
-          cache: false # decision 35
+          cache: false # see pull-request.yaml's `changed` job
       - id: diff
         shell: bash
         env:
@@ -84,7 +84,7 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
-          cache: false # decision 35
+          cache: false # see pull-request.yaml's `changed` job
       - name: Install scanners
         run: |
           # renovate: datasource=go depName=golang.org/x/vuln
@@ -122,7 +122,7 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
-          cache: false # decision 35
+          cache: false # see pull-request.yaml's `changed` job
       - name: Install scanners
         run: |
           # renovate: datasource=go depName=github.com/rhysd/actionlint
@@ -146,7 +146,7 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
-          cache: false # decision 35
+          cache: false # see pull-request.yaml's `changed` job
       - name: Install tflint
         run: |
           # renovate: datasource=go depName=github.com/terraform-linters/tflint
@@ -189,7 +189,7 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
-          cache: false # decision 35
+          cache: false # see pull-request.yaml's `changed` job
       - name: Install gitleaks
         run: |
           # renovate: datasource=go depName=github.com/zricethezav/gitleaks/v8

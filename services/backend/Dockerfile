@@ -13,7 +13,7 @@ ARG CMD=backend
 RUN CGO_ENABLED=0 go build -ldflags "-X main.commit=${COMMIT_SHA}" -o /out/app ./cmd/${CMD}
 
 # distroless/static: no shell or package manager for a compromised process to use.
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 COPY --from=build /out/app /app
 
 EXPOSE 8080

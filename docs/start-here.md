@@ -63,4 +63,4 @@ This runs every check your branch affects. On a fresh branch nothing is affected
 
 - Start from an issue (see [`CONTRIBUTING.md`](../.github/CONTRIBUTING.md)).
 - Title it as a Conventional Commit, e.g. `fix(frontend): keep the draft when sign-in expires`. The title becomes the commit on `main` and decides the version.
-- Fill in the PR template. CI runs the checks from step 4, plus the title check and the API breaking-change check. A code owner reviews, and on merge the change deploys to staging. Production is a separate promotion, by merging the release PR; nothing is deployed by hand.
+- Fill in the PR template. CI runs the checks from step 4, plus the title check and the API breaking-change check. A code owner reviews, and on merge the change deploys to staging. Production is a separate promotion, by merging the release PR; nothing is deployed by hand. The whole path, and how to roll back, is in [`ci-cd.md`](ci-cd.md).

@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.0.3](https://github.com/edgorman/blog.gorman.club/compare/v1.0.2...v1.0.3) (2026-11-18)
+
+
+### Bug Fixes
+
+* **ci:** stop Renovate bumping packages/api to TypeScript 7 ([#368](https://github.com/edgorman/blog.gorman.club/issues/368)) ([beccbd1](https://github.com/edgorman/blog.gorman.club/commit/beccbd161f722d013283b1b5ae97cbf9833e175d))
+* **deps:** update backend-deps ([#365](https://github.com/edgorman/blog.gorman.club/issues/365)) ([242acea](https://github.com/edgorman/blog.gorman.club/commit/242aceaa69a9e256fccbe1fac10c6c4f97820ca6))
+
+
+### Build System
+
+* **config:** migrate Renovate config ([#367](https://github.com/edgorman/blog.gorman.club/issues/367)) ([f3f6b8c](https://github.com/edgorman/blog.gorman.club/commit/f3f6b8c0a6bc25bdbaa64bacba031c0fecf64776))
+
+
+### Miscellaneous Chores
+
+* **deps:** update ci-deps ([#363](https://github.com/edgorman/blog.gorman.club/issues/363)) ([ad84f31](https://github.com/edgorman/blog.gorman.club/commit/ad84f316fd77fa0c685f6173dde81539e84890f0))
+* **deps:** update ci-deps (major) ([#366](https://github.com/edgorman/blog.gorman.club/issues/366)) ([3f94d70](https://github.com/edgorman/blog.gorman.club/commit/3f94d70916ef3f562cae8f5cc0fb2e734a77182d))
+* **deps:** update dependency npm to v10.9.11 ([#361](https://github.com/edgorman/blog.gorman.club/issues/361)) ([96145ad](https://github.com/edgorman/blog.gorman.club/commit/96145ad5ff4d2ebffd8601c24fbf7dfe82f35901))
+* **deps:** update dependency vitest to v5.1.1 ([#362](https://github.com/edgorman/blog.gorman.club/issues/362)) ([1ad7d74](https://github.com/edgorman/blog.gorman.club/commit/1ad7d74fe050bb489e171276c7652e37530439f1))
+* **deps:** update infrastructure-deps to v8.12.0 ([#364](https://github.com/edgorman/blog.gorman.club/issues/364)) ([da80978](https://github.com/edgorman/blog.gorman.club/commit/da80978a1063a8fbc15c46cdc40d3d88594c0bb6))
+
+
+### Continuous Integration
+
+* drop version.txt, require a healthy previous commit before a release, fix stale docs ([#359](https://github.com/edgorman/blog.gorman.club/issues/359)) ([74a7aeb](https://github.com/edgorman/blog.gorman.club/commit/74a7aeb3d6d7fe12b495c0ee9ed9465d5ef4e137))
+
 ## [1.0.2](https://github.com/edgorman/blog.gorman.club/compare/v1.0.1...v1.0.2) (2026-11-18)
 
 

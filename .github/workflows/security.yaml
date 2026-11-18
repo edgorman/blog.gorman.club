@@ -64,7 +64,7 @@ jobs:
       - name: Install scanners
         run: |
           # renovate: datasource=go depName=golang.org/x/vuln
-          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
           # renovate: datasource=go depName=github.com/securego/gosec/v2
           GOBIN="$RUNNER_TEMP/bin" go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"

@@ -19,7 +19,7 @@ commit SHA the running image was built from, as JSON:
 
 ## Layout
 
-```
+```text
 cmd/backend/          Entrypoint: reads config, builds adapters, hands them to the service
 internal/
   entity/             Domain types and their rules - no I/O, no HTTP, no persistence tags
@@ -279,7 +279,7 @@ far as public posts allow rather than rejected. A profile has nothing
 caller-specific to hide, so it is readable either way. A signed-in caller sends the ID token Google issued, plus a header
 naming the provider that issued it:
 
-```
+```text
 Authorization: Bearer <google-id-token>
 Authorization-Provider: google
 ```

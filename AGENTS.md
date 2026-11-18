@@ -28,7 +28,7 @@ Each language's manifest lives in the directory that owns its code; the root dec
 
 What to run before pushing, mirroring `pull-request.yaml`:
 
-```
+```text
 # Backend (services/backend)
 go test ./... && go vet ./... && gofmt -l .
 

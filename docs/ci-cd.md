@@ -15,13 +15,13 @@ Nothing is rebuilt for production, so a release and a rollback are the same oper
 
 | Workflow | Runs when | What it does |
 | --- | --- | --- |
-| `pull-request.yaml` | a PR is opened or updated | Lint, tests, API drift, and Terraform plans for the environments the diff reaches. |
+| `pull-request.yaml` | a PR is opened or updated | Lint (including Markdown), tests, API drift, and Terraform plans for the environments the diff reaches. |
 | `conventions.yaml` | a PR is opened or updated | Checks the PR title is a Conventional Commit and that the API has no breaking change. |
 | `push-commit.yaml` | a push to `main`, except a release commit | Applies infrastructure, builds, deploys staging, smoke-tests, then opens or updates the release PR. |
 | `push-release.yaml` | a push to `main` that changes the release files | Tags the release and calls `promote-release.yaml`. Never touches staging. |
 | `promote-release.yaml` | called by `push-release.yaml`, or run by hand | Deploys one release tag to production. |
 | `apply-infrastructure-prod.yaml` | run by hand | Applies prod Terraform only, to backfill a new resource a merge depends on ([24](decisions/0024-manual-prod-infrastructure-apply.md)). |
-| `security.yaml`, `renovate.yaml` | schedule and PRs | Advisory scanners and dependency PRs. |
+| `security.yaml`, `renovate.yaml` | schedule and PRs | Advisory scanners (the secrets scan skips docs-only changes) and dependency PRs. |
 
 Each workflow signs in to Google Cloud as its own identity, so a PR check can never touch production ([38](decisions/0038-separate-plan-and-apply-identities.md)). moon decides which jobs a change needs and every other job gates on that, so an unrelated change skips them ([41](decisions/0041-moon-gates-every-ci-job.md)).
 

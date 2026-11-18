@@ -3,9 +3,9 @@ name: 'Push Release'
 # A release-please release commit on main: the merge of its release PR, which changes only the files
 # release-please owns. push-commit.yaml skips such a push. Nothing deployable changed, so this
 # publishes the previous commit's artifacts under the release commit (promotion deploys by commit
-# SHA, decision 22), tags the release, and promotes it to production (decision 39). It never deploys
-# to staging, which already runs the same code (unless an artifact is missing and has to be
-# built, which also deploys it there).
+# SHA, decision 22), tags the release, and promotes it to production (decision 39). It does not
+# deploy to staging, which already runs the same code, unless an artifact is missing and has to be
+# built, which also deploys it there.
 on:
   push:
     branches:
@@ -45,8 +45,6 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - if: matrix.service != 'frontend'
         uses: ./.github/actions/backend-deploy
         with:
@@ -59,12 +57,10 @@ jobs:
           reuse_from: ${{ github.event.before }}
           google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
 
-  # Creates the tag and the GitHub release. It waits on the artifacts, so a tag always has the
-  # commit-SHA artifacts promotion deploys. `if:` tests the direct need for `success`, since
-  # always() would opt out of inherited skips.
+  # Creates the tag and the GitHub release. It waits on the artifacts (the default `if` runs it only
+  # when every leg succeeded), so a tag always has the commit-SHA artifacts promotion deploys.
   release-please:
     needs: artifacts
-    if: always() && needs.artifacts.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,8 +69,7 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # The PAT, so the release PR triggers the PR checks (decision 39).
+      # The same token as push-commit.yaml's release-please job (decision 39).
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:

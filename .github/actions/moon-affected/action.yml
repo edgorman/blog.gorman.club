@@ -1,30 +1,33 @@
 name: 'Moon Affected'
-description: 'Installs moon alone, not the toolchain it would run tasks with, and writes `moon query affected` to a file'
+description: 'Installs moon alone, not the toolchain it would run tasks with, and reports which named groups of tasks `moon query affected` marks affected'
 
 inputs:
   base:
     description: 'The ref the diff is taken against (moon reads it as MOON_BASE). The checkout needs full history.'
     required: false
     default: 'origin/main'
+  tasks:
+    description: |
+      What to report, one `name=target target ...` per line. A name is affected when any of its
+      targets is. A target is a moon target (`project:task`) or `:task`, which means that task in
+      any project.
+    required: true
 
 outputs:
-  file:
-    description: 'Path of the JSON `moon query affected` wrote'
-    value: ${{ steps.query.outputs.file }}
+  affected:
+    description: 'JSON object mapping each name to true or false'
+    value: ${{ steps.query.outputs.affected }}
 
 runs:
   using: "composite"
   steps:
-    - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
-      with:
-        auto-install: false
-        # The toolchain cache is disabled: restoring it loses the executable bit on proto's shim.
-        cache: false
+    - uses: ./.github/actions/setup-moon
     - id: query
       shell: bash
       env:
         # `moon query affected` has no --base flag; it reads MOON_BASE as `moon ci` does.
         MOON_BASE: ${{ inputs.base }}
+        TASKS: ${{ inputs.tasks }}
         # A query reads the project graph and runs no task, so moon needs none of the pinned
         # tools. These stop it installing them, and stop the runner's go (older than go.mod's)
         # downloading the matching toolchain, which took the query from 28s to 11s.
@@ -35,5 +38,15 @@ runs:
         # Run with the command's own defaults (no --upstream/--downstream); the explicit
         # project:// inputs on each task are the affectedness signal.
         moon query affected > "$RUNNER_TEMP/affected.json"
-        echo "file=$RUNNER_TEMP/affected.json" >> "$GITHUB_OUTPUT"
         cat "$RUNNER_TEMP/affected.json"
+        # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
+        affected=$(jq -c --arg spec "$TASKS" '
+          ((.tasks // {}) | keys) as $tasks
+          | [ $spec | split("\n")[] | select(test("=")) | capture("^\\s*(?<name>[^=\\s]+)\\s*=(?<want>.*)$")
+              | { key: .name,
+                  value: ((.want | [splits(" +")] | map(select(. != ""))) as $want
+                    | any($tasks[]; . as $k | any($want[]; . as $w
+                        | if $w | startswith(":") then ($k | endswith($w)) else $k == $w end))) } ]
+          | from_entries' "$RUNNER_TEMP/affected.json")
+        echo "affected=$affected" >> "$GITHUB_OUTPUT"
+        echo "$affected"

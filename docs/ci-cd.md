@@ -18,7 +18,7 @@ Nothing is rebuilt for production, so a release and a rollback are the same oper
 | `pull-request.yaml` | a PR is opened or updated | Lint (including Markdown), tests, API drift, and Terraform plans for the environments the diff reaches. |
 | `conventions.yaml` | a PR is opened or updated | Checks the PR title is a Conventional Commit and that the API has no breaking change. |
 | `push-commit.yaml` | a push to `main`, except a release commit | Applies infrastructure, builds, deploys staging, smoke-tests, then opens or updates the release PR. |
-| `push-release.yaml` | a push to `main` that changes the release files | Tags the release and calls `promote-release.yaml`. Never touches staging. |
+| `push-release.yaml` | a push to `main` that changes the release files | Tags the release and calls `promote-release.yaml`. Leaves staging alone unless an artifact is missing. |
 | `promote-release.yaml` | called by `push-release.yaml`, or run by hand | Deploys one release tag to production. |
 | `apply-infrastructure-prod.yaml` | run by hand | Applies prod Terraform only, to backfill a new resource a merge depends on ([24](decisions/0024-manual-prod-infrastructure-apply.md)). |
 | `security.yaml`, `renovate.yaml` | schedule and PRs | Advisory scanners (the secrets scan skips docs-only changes) and dependency PRs. |
@@ -45,7 +45,7 @@ Title the PR as a Conventional Commit, such as `fix(frontend): keep the draft wh
 
 The release PR holds the changelog and the version bump. Reading its prod plan is the review for what production will receive. Merging it makes a release commit that changes only `CHANGELOG.md`, `.github/.release-please-manifest.json` and `.github/version.txt` ([42](decisions/0042-release-commits-have-their-own-workflow.md)). That push runs `push-release.yaml`:
 
-1. Publishes the previous commit's artifacts under the release commit, in both environments. It builds them only if they are missing. Staging is not redeployed, because it already runs the same code.
+1. Publishes the previous commit's artifacts under the release commit, in both environments. It builds them only if they are missing. Staging is not redeployed, because it already runs the same code, unless a missing artifact has to be built.
 2. release-please creates the tag (`vMAJOR.MINOR.PATCH`) and the GitHub release.
 3. If a release was created, it calls `promote-release.yaml` with the tag and commit.
 

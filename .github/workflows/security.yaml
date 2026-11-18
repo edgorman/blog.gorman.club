@@ -28,12 +28,12 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      go: ${{ steps.diff.outputs.go }}
-      frontend: ${{ steps.diff.outputs.frontend }}
-      workflows: ${{ steps.diff.outputs.workflows }}
-      terraform: ${{ steps.diff.outputs.terraform }}
-      image: ${{ steps.diff.outputs.image }}
-      secrets: ${{ steps.diff.outputs.secrets }}
+      go: ${{ github.event_name != 'pull_request' || fromJSON(steps.affected.outputs.affected || '{}').go }}
+      frontend: ${{ github.event_name != 'pull_request' || fromJSON(steps.affected.outputs.affected || '{}').frontend }}
+      workflows: ${{ github.event_name != 'pull_request' || fromJSON(steps.affected.outputs.affected || '{}').workflows }}
+      terraform: ${{ github.event_name != 'pull_request' || fromJSON(steps.affected.outputs.affected || '{}').terraform }}
+      image: ${{ github.event_name != 'pull_request' || fromJSON(steps.affected.outputs.affected || '{}').image }}
+      secrets: ${{ github.event_name != 'pull_request' || fromJSON(steps.affected.outputs.affected || '{}').secrets }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -42,31 +42,15 @@ jobs:
       - id: affected
         if: github.event_name == 'pull_request'
         uses: ./.github/actions/moon-affected
-      - id: diff
-        shell: bash
-        env:
-          EVENT: ${{ github.event_name }}
-          AFFECTED_FILE: ${{ steps.affected.outputs.file }}
-        run: |
-          if [ "$EVENT" != pull_request ]; then
-            printf '%s=true\n' go frontend workflows terraform image secrets >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
-          has() { jq -r --arg t "$1" '(.tasks // {}) | has($t)' "$AFFECTED_FILE"; }
-          {
-            echo "go=$(has services/backend:scan-go)"
-            echo "image=$(has services/backend:scan-image)"
-            echo "frontend=$(has services/frontend:scan)"
-            echo "workflows=$(has root:scan-workflows)"
-            echo "secrets=$(has root:scan-secrets)"
-            # Either Terraform root is enough for tflint and trivy, which read the whole tree.
-            if [ "$(has infra-root:scan)" = true ] || [ "$(has infra-env:scan)" = true ]; then
-              echo 'terraform=true'
-            else
-              echo 'terraform=false'
-            fi
-          } | tee -a "$GITHUB_OUTPUT"
+        with:
+          # Either Terraform root is enough for tflint and trivy, which read the whole tree.
+          tasks: |
+            go=services/backend:scan-go
+            image=services/backend:scan-image
+            frontend=services/frontend:scan
+            workflows=root:scan-workflows
+            secrets=root:scan-secrets
+            terraform=infra-root:scan infra-env:scan
 
   go:
     needs: changes
@@ -74,10 +58,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      - uses: ./.github/actions/setup-moon
         with:
           auto-install: true
-          cache: false # see pull-request.yaml's `changed` job
       - name: Install scanners
         run: |
           # renovate: datasource=go depName=golang.org/x/vuln
@@ -110,10 +93,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      - uses: ./.github/actions/setup-moon
         with:
           auto-install: true
-          cache: false # see pull-request.yaml's `changed` job
       - name: Install scanners
         run: |
           # renovate: datasource=go depName=github.com/rhysd/actionlint
@@ -134,10 +116,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      - uses: ./.github/actions/setup-moon
         with:
           auto-install: true
-          cache: false # see pull-request.yaml's `changed` job
       - name: Install tflint
         run: |
           # renovate: datasource=go depName=github.com/terraform-linters/tflint
@@ -177,10 +158,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      - uses: ./.github/actions/setup-moon
         with:
           auto-install: true
-          cache: false # see pull-request.yaml's `changed` job
       - name: Install gitleaks
         run: |
           # renovate: datasource=go depName=github.com/zricethezav/gitleaks/v8

@@ -75,15 +75,21 @@ jobs:
           TF_VAR_google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
           TF_VAR_ci_service_account: ${{ vars.PROMOTE_SERVICE_ACCOUNT }}
 
-  # Step 2: deploy the commit-SHA image already in prod's registry. It reads nothing from staging.
-  services-backend:
+  # Step 2: deploy the commit-SHA image already in prod's registry, the backend and the worker in
+  # parallel. It reads nothing from staging.
+  services:
+    name: services-${{ matrix.service }}
     needs: [target, infrastructure-prod]
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, worker]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
-    outputs:
-      backend_url: ${{ steps.deploy.outputs.backend_url }}
+    env:
+      IMAGE: europe-west1-docker.pkg.dev/blog-gorman-club-prod/backend/${{ matrix.service }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -93,44 +99,9 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.PROMOTE_SERVICE_ACCOUNT }}
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       # The release-<version> tag is for retention only (decision 29); the deploy goes by commit SHA.
       - name: Tag the image with its release
         env:
-          IMAGE: 'europe-west1-docker.pkg.dev/blog-gorman-club-prod/backend/backend'
-          RELEASE: ${{ needs.target.outputs.tag }}
-          SHA: ${{ needs.target.outputs.sha }}
-        run: gcloud artifacts docker tags add "$IMAGE:$SHA" "$IMAGE:release-$RELEASE" --quiet
-      - id: deploy
-        uses: ./.github/actions/backend-cloudrun-deploy
-        with:
-          gcp_project_id: 'blog-gorman-club-prod'
-          gcp_region: 'europe-west1'
-          service_name: 'backend-prod'
-          image: 'europe-west1-docker.pkg.dev/blog-gorman-club-prod/backend/backend:${{ needs.target.outputs.sha }}'
-
-  # Step 2, alongside the backend: the worker's commit-SHA image, already in prod's registry the same way.
-  services-worker:
-    needs: [target, infrastructure-prod]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ needs.target.outputs.sha }}
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.PROMOTE_SERVICE_ACCOUNT }}
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-      - name: Tag the image with its release
-        env:
-          IMAGE: 'europe-west1-docker.pkg.dev/blog-gorman-club-prod/backend/worker'
           RELEASE: ${{ needs.target.outputs.tag }}
           SHA: ${{ needs.target.outputs.sha }}
         run: gcloud artifacts docker tags add "$IMAGE:$SHA" "$IMAGE:release-$RELEASE" --quiet
@@ -138,13 +109,13 @@ jobs:
         with:
           gcp_project_id: 'blog-gorman-club-prod'
           gcp_region: 'europe-west1'
-          service_name: 'worker-prod'
-          image: 'europe-west1-docker.pkg.dev/blog-gorman-club-prod/backend/worker:${{ needs.target.outputs.sha }}'
+          service_name: '${{ matrix.service }}-prod'
+          image: '${{ env.IMAGE }}:${{ needs.target.outputs.sha }}'
 
-  # Step 3: fetch the commit-SHA folder from prod's own bucket and deploy it, with config.json
-  # written from the just-promoted backend URL.
+  # Step 3, once the backend is live: fetch the commit-SHA folder from prod's own bucket and deploy
+  # it, with config.json written from the backend's URL.
   services-frontend:
-    needs: [target, infrastructure-prod, services-backend]
+    needs: [target, infrastructure-prod, services]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -163,8 +134,16 @@ jobs:
         with:
           secrets: |-
             cloudflare_api_token: projects/blog-gorman-club-root/secrets/cloudflare_api_token/versions/latest
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - id: backend
+        name: Get Backend URL
+        shell: bash
+        run: |
+          URL=$(gcloud run services describe backend-prod \
+            --region=europe-west1 \
+            --project=blog-gorman-club-prod \
+            --format='value(status.url)')
+          test -n "$URL" || { echo '::error::backend-prod URL not found'; exit 1; }
+          echo "backend_url=$URL" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/frontend-fetch
         with:
           gcp_project_id: 'blog-gorman-club-prod'
@@ -174,6 +153,6 @@ jobs:
           cloudflare_api_token: ${{ steps.secrets.outputs.cloudflare_api_token }}
           cloudflare_project_name: 'frontend-prod'
           cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          backend_url: ${{ needs.services-backend.outputs.backend_url }}
+          backend_url: ${{ steps.backend.outputs.backend_url }}
           version: ${{ needs.target.outputs.tag }}
           environment: 'production'

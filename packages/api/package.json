@@ -6,6 +6,6 @@
   "description": "Generators for the contract in openapi.yaml. A manifest of its own because openapi-typescript needs the TypeScript 5 compiler API, which the frontend's TypeScript 7 no longer ships.",
   "devDependencies": {
     "openapi-typescript": "7.13.0",
-    "typescript": "7.0.2"
+    "typescript": "5.9.3"
   }
 }

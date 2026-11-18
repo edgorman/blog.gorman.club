@@ -128,5 +128,20 @@
       ],
       enabled: false,
     },
+    {
+      matchManagers: [
+        'npm',
+      ],
+      matchFileNames: [
+        'packages/api/**',
+      ],
+      matchPackageNames: [
+        'typescript',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
+      enabled: false,
+    },
   ],
 }

@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.2](https://github.com/edgorman/blog.gorman.club/compare/v1.0.1...v1.0.2) (2026-11-18)
+
+
+### Continuous Integration
+
+* share moon setup and affected queries, merge promote services, drop setup-gcloud ([#358](https://github.com/edgorman/blog.gorman.club/issues/358)) ([868720f](https://github.com/edgorman/blog.gorman.club/commit/868720fd5c361a7b6376279c762173b39718eadd))
+* skip the secrets scan on docs-only changes, lint Markdown ([#357](https://github.com/edgorman/blog.gorman.club/issues/357)) ([7ded901](https://github.com/edgorman/blog.gorman.club/commit/7ded901bc474455513421ec0f3d9474c94535b52))
+
+
+### Documentation
+
+* explain CI/CD, normal releases and manual rollbacks ([#355](https://github.com/edgorman/blog.gorman.club/issues/355)) ([50f3114](https://github.com/edgorman/blog.gorman.club/commit/50f311489e3b06d7def047748a576a353a7b938b))
+
 ## [1.0.1](https://github.com/edgorman/blog.gorman.club/compare/v1.0.0...v1.0.1) (2026-11-17)
 
 

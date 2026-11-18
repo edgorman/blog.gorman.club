@@ -53,9 +53,8 @@ jobs:
             staging=deploy-staging:plan
             prod=deploy-prod:plan
 
-  # The three required checks, one job each so each keeps its own check name and a skipped job reports
-  # as skipped, which branch protection counts as passing (a matrix leg skipped at job level would
-  # report an unexpanded name and stay pending). `:taskId` (no project prefix) is moon's "run in
+  # The three `moon ci` checks, one job each (a matrix leg skipped at job level would report an
+  # unexpanded name). `required` below is what branch protection requires. `:taskId` (no project prefix) is moon's "run in
   # every project that has this task" scope (https://moonrepo.dev/docs/concepts/target); a project
   # without a given task is silently skipped. The targets are the workflow-level `env` above.
   # - lint-check: every lint/format/build task. `:format`/`:validate` reach infra-root/infra-env's
@@ -211,3 +210,23 @@ jobs:
           TF_VAR_google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
           TF_VAR_ci_service_account: ${{ vars.PROMOTE_SERVICE_ACCOUNT }}
 
+
+  # The one check this workflow requires (.github/settings.yml). The jobs above are skipped when a
+  # change doesn't reach them, which differs between a normal PR and a release PR, so requiring each
+  # by name would list skipped checks as required. This job always runs and fails only when a job
+  # that did run failed or was cancelled; a skipped job passes, as branch protection counts it.
+  required:
+    needs: [changed, lint-check, test, api-drift, infrastructure-root, infrastructure-staging, infrastructure-prod]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every job that ran passed
+        shell: bash
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          if [[ " $RESULTS " =~ " failure " || " $RESULTS " =~ " cancelled " ]]; then
+            echo "::error::A job failed or was cancelled."
+            exit 1
+          fi

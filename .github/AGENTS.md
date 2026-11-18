@@ -36,7 +36,8 @@ Workflows, composite actions, repository settings and the moon setup CI runs thr
 
 ### Release PRs
 
-- A push to main runs one of two workflows by path: `push-release.yaml` when it changes `CHANGELOG.md`, `.github/.release-please-manifest.json` or `.github/version.txt` (the release commit), else `push-commit.yaml` (`paths-ignore` on those). A release commit re-tags the previous commit's artifacts, tags the release and promotes; it does not deploy to staging unless an artifact is missing and has to be built. A new workflow that signs in as `DEPLOY_` needs its filename in `github_cicd.tf`'s `github_deploy_wif`.
+- A push to main runs one of two workflows by path: `push-release.yaml` when it changes `CHANGELOG.md` or `.github/.release-please-manifest.json` (the release commit), else `push-commit.yaml` (`paths-ignore` on those). A release commit re-tags the previous commit's artifacts, tags the release and promotes; it does not deploy to staging unless an artifact is missing and has to be built. A new workflow that signs in as `DEPLOY_` needs its filename in `github_cicd.tf`'s `github_deploy_wif`.
+- `push-release.yaml` first checks that the previous commit's `push-commit.yaml` (or `push-release.yaml`) run succeeded, and stops before tagging if not ([39](../docs/decisions/0039-releases-from-release-please.md)).
 - `release-please` in `push-commit.yaml` runs on every non-release merge and checks each direct need for `success` (`services`, a matrix over the backend, worker and frontend, and `smoke`, which may be skipped), never a bare `needs:` ([39](../docs/decisions/0039-releases-from-release-please.md)).
 - `plan-prod` posts the prod plan on the open release PR, with `-lock=false` ([39](../docs/decisions/0039-releases-from-release-please.md)).
 - Staging shows the short commit SHA; only production shows a release tag ([39](../docs/decisions/0039-releases-from-release-please.md)).

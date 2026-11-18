@@ -1,17 +1,17 @@
 # blog.gorman.club
 
 [![Push Commit](https://github.com/edgorman/blog.gorman.club/actions/workflows/push-commit.yaml/badge.svg?branch=main)](https://github.com/edgorman/blog.gorman.club/actions/workflows/push-commit.yaml)
-[![Promote Release](https://github.com/edgorman/blog.gorman.club/actions/workflows/promote-release.yaml/badge.svg)](https://github.com/edgorman/blog.gorman.club/actions/workflows/promote-release.yaml)
+[![Push Release](https://github.com/edgorman/blog.gorman.club/actions/workflows/push-release.yaml/badge.svg)](https://github.com/edgorman/blog.gorman.club/actions/workflows/push-release.yaml)
 [![Release](https://img.shields.io/github/v/release/edgorman/blog.gorman.club)](https://github.com/edgorman/blog.gorman.club/releases)
 
-[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](services/backend)
+[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](services/backend)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](services/frontend)
 [![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)](services/frontend)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0-6BA539?logo=openapiinitiative&logoColor=white)](packages/api)
-[![Terraform](https://img.shields.io/badge/Terraform-1.15-844FBA?logo=terraform&logoColor=white)](infrastructure)
+[![Terraform](https://img.shields.io/badge/Terraform-1.17-844FBA?logo=terraform&logoColor=white)](infrastructure)
 [![Cloud Run](https://img.shields.io/badge/GCP-Cloud_Run-4285F4?logo=googlecloud&logoColor=white)](infrastructure)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](infrastructure)
-[![moon](https://img.shields.io/badge/moon-2.5-6F53F3)](https://moonrepo.dev)
+[![moon](https://img.shields.io/badge/moon-2.6-6F53F3)](https://moonrepo.dev)
 
 A demo of a small, cloud-deployed full-stack web service - a blog with a Gemini-backed writing assistant - built to show a trunk-based monorepo with CI/CD and infrastructure-as-code, rather than a real blog hosting platform.
 
@@ -32,7 +32,7 @@ Every merge to `main` deploys to staging; production is promoted by merging the 
 
 New here? [`docs/start-here.md`](docs/start-here.md) goes from a fresh clone to an open pull request, with no GCP access needed.
 
-[moon](https://moonrepo.dev) runs every task, and [proto](https://moonrepo.dev/proto) pins the toolchain (`.prototools`: Go, Node, npm, buf, Terraform, moon itself).
+[moon](https://moonrepo.dev) runs every task, and [proto](https://moonrepo.dev/proto) pins the toolchain (`.prototools`: Go, Node, npm, Terraform, moon itself).
 
 ```sh
 proto install                                   # install the pinned toolchain

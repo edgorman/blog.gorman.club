@@ -9,7 +9,7 @@ You need git, [proto](https://moonrepo.dev/docs/proto/install), and for the loca
 ```sh
 git clone https://github.com/edgorman/blog.gorman.club.git
 cd blog.gorman.club
-proto install                                      # moon, Go, Node, npm, buf, Terraform at the pinned versions
+proto install                                      # moon, Go, Node, npm, Terraform at the pinned versions
 gcloud components install cloud-firestore-emulator
 ```
 

@@ -1,6 +1,6 @@
 # 22. Build once, promote by commit SHA
 
-Status: Accepted
+Status: Accepted (amended by [33](0033-build-only-what-changed.md), [36](0036-frontend-on-workers.md) and [39](0039-releases-from-release-please.md))
 
 ## Context
 

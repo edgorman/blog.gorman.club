@@ -18,7 +18,7 @@ resource "google_storage_bucket" "frontend" {
   # environment it lives in is promoted to often. Unlike the registry's keep-count policy, GCS
   # lifecycle rules only condition on object age - there is no "keep the N most recent folders"
   # equivalent - so this expires anything older than frontend_retention_days outright. See the
-  # Artifact Stores section of `infrastructure/AGENTS.md` for how that number was chosen and, since an age-based
+  # decision 29 (`docs/decisions/0029-artifact-retention.md`) for how that number was chosen and, since an age-based
   # rule cannot single out "the folder currently deployed to prod" the way the registry's keep-count
   # can single out recent versions, what has to stay true operationally for it to never be caught by
   # this rule.

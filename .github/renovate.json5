@@ -1,51 +1,132 @@
-// Self-hosted Renovate (.github/workflows/renovate.yaml). One grouped PR per area (backend,
-// frontend, infrastructure, ci), weekly (the workflow's schedule), titled as a Conventional Commit
-// (decision 40). Rules that share a groupName share a PR.
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-  extends: ['config:recommended'],
+  extends: [
+    'config:recommended',
+  ],
   semanticCommits: 'enabled',
   semanticCommitType: 'build',
   semanticCommitScope: 'deps',
-  dependencyDashboard: true,
+  dependencyDashboard: {
+    enabled: true,
+  },
   prConcurrentLimit: 0,
   prHourlyLimit: 0,
-
-  // Hand-written pins that carry a `# renovate: datasource=... depName=...` comment on the line
-  // above: .prototools, the tools installed by `go install`/`go run`/`pip install`, wrangler, and
-  // the proto version in the session hook.
   customManagers: [
     {
       customType: 'regex',
-      managerFilePatterns: ['/^\\.prototools$/', '/\\.ya?ml$/', '/\\.sh$/'],
+      managerFilePatterns: [
+        '/^\\.prototools$/',
+        '/\\.ya?ml$/',
+        '/\\.sh$/',
+      ],
       matchStrings: [
         '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\n[^\\n]*?[@=:]\\s*["\']?(?<currentValue>v?\\d+(?:\\.\\d+)*)',
       ],
     },
   ],
-
   packageRules: [
-    { matchManagers: ['github-actions'], groupName: 'ci-deps', labels: ['ci'] },
-    { matchManagers: ['terraform'], groupName: 'infrastructure-deps', labels: ['infrastructure'] },
-    { matchManagers: ['npm'], matchFileNames: ['services/frontend/**'], groupName: 'frontend-deps', labels: ['frontend'] },
-    { matchManagers: ['npm'], matchFileNames: ['packages/api/**'], groupName: 'ci-deps', labels: ['ci'] },
-    { matchManagers: ['gomod'], groupName: 'backend-deps', labels: ['backend'] },
-    { matchManagers: ['custom.regex'], groupName: 'ci-deps', labels: ['ci'] },
-
-    // Pinned by digest.
-    { matchDatasources: ['docker'], pinDigests: true, groupName: 'backend-deps', labels: ['backend'] },
-
-    // One pin in several files moves together or CI fails: Go in .prototools, go.mod and the
-    // Dockerfile's golang image, and Terraform in .prototools and every providers.tf.
     {
-      matchPackageNames: ['go', 'golang'],
-      matchDatasources: ['golang-version', 'docker', 'go'],
-      groupName: 'backend-deps',
-      labels: ['backend'],
+      matchManagers: [
+        'github-actions',
+      ],
+      groupName: 'ci-deps',
+      labels: [
+        'ci',
+      ],
     },
-    { matchPackageNames: ['hashicorp/terraform'], groupName: 'infrastructure-deps', labels: ['infrastructure'] },
-
-    // npm is the version bundled with the pinned Node, so a major npm is not an update on its own.
-    { matchPackageNames: ['npm'], matchUpdateTypes: ['major'], enabled: false },
+    {
+      matchManagers: [
+        'terraform',
+      ],
+      groupName: 'infrastructure-deps',
+      labels: [
+        'infrastructure',
+      ],
+    },
+    {
+      matchManagers: [
+        'npm',
+      ],
+      matchFileNames: [
+        'services/frontend/**',
+      ],
+      groupName: 'frontend-deps',
+      labels: [
+        'frontend',
+      ],
+    },
+    {
+      matchManagers: [
+        'npm',
+      ],
+      matchFileNames: [
+        'packages/api/**',
+      ],
+      groupName: 'ci-deps',
+      labels: [
+        'ci',
+      ],
+    },
+    {
+      matchManagers: [
+        'gomod',
+      ],
+      groupName: 'backend-deps',
+      labels: [
+        'backend',
+      ],
+    },
+    {
+      matchManagers: [
+        'custom.regex',
+      ],
+      groupName: 'ci-deps',
+      labels: [
+        'ci',
+      ],
+    },
+    {
+      matchDatasources: [
+        'docker',
+      ],
+      pinDigests: true,
+      groupName: 'backend-deps',
+      labels: [
+        'backend',
+      ],
+    },
+    {
+      matchPackageNames: [
+        'go',
+        'golang',
+      ],
+      matchDatasources: [
+        'golang-version',
+        'docker',
+        'go',
+      ],
+      groupName: 'backend-deps',
+      labels: [
+        'backend',
+      ],
+    },
+    {
+      matchPackageNames: [
+        'hashicorp/terraform',
+      ],
+      groupName: 'infrastructure-deps',
+      labels: [
+        'infrastructure',
+      ],
+    },
+    {
+      matchPackageNames: [
+        'npm',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
+      enabled: false,
+    },
   ],
 }

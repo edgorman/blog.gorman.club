@@ -97,7 +97,6 @@ tasks:
       - '/**/*'
       - '!/CHANGELOG.md'
       - '!/.github/.release-please-manifest.json'
-      - '!/.github/version.txt'
       - '!/docs/**/*'
       - '!/**/*.md'
     options:

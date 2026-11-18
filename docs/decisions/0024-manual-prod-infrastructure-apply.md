@@ -1,6 +1,6 @@
 # 24. A manual prod apply, for bootstrapping only
 
-Status: Accepted
+Status: Accepted (amended by [39](0039-releases-from-release-please.md): the prod plan is now on the release PR, not in pre-release notes)
 
 ## Context
 

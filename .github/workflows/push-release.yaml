@@ -13,7 +13,6 @@ on:
     paths:
       - 'CHANGELOG.md'
       - '.github/.release-please-manifest.json'
-      - '.github/version.txt'
 
 permissions:
   contents: read
@@ -24,11 +23,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A release is cut only for a commit that is live and healthy on staging (decision 39). The release
+  # commit changes nothing deployable, so what staging ran is the previous commit's: its
+  # push-commit.yaml run must have succeeded (deploys and smoke test), or, when that commit was
+  # itself a release commit, its push-release.yaml run. Otherwise this stops before tagging.
+  previous-commit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Require the previous commit's run to have succeeded
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PREVIOUS: ${{ github.event.before }}
+        run: |
+          for workflow in push-commit.yaml push-release.yaml; do
+            passed=$(gh run list --repo "$REPO" --workflow "$workflow" --branch main --commit "$PREVIOUS" --status success --json databaseId --jq length)
+            if [ "$passed" -gt 0 ]; then
+              echo "$workflow succeeded for $PREVIOUS."
+              exit 0
+            fi
+          done
+          echo "::error::No successful push-commit.yaml or push-release.yaml run for $PREVIOUS, the commit before this release. Fix or re-run it, then re-run this workflow."
+          exit 1
+
   # One leg per artifact, run in parallel. The previous commit's artifact is tagged (or, for the
   # frontend, copied) under this commit in both environments. If it is missing, because that run
   # was cancelled or aged out, the leg builds it from this commit, which has the same code.
   artifacts:
     name: artifacts-${{ matrix.service }}
+    needs: previous-commit
     strategy:
       fail-fast: false
       matrix:

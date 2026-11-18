@@ -14,7 +14,7 @@ moon already chose what the Terraform plans and applies and the image and bundle
 - `api-breaking` installs moon, asks it whether `packages/api:breaking` is affected, and installs the toolchain only if so.
 - A merge diffs against the last commit its workflow fully processed ([33](0033-build-only-what-changed.md), #262): the previous commit when its own `push-commit.yaml` run succeeded, otherwise the newest release tag. A cancelled or failed run is never a base, so its work is redone.
 - `backend`, `worker` and `frontend` build only what the merge changed, and reuse the previous commit's artifacts for the rest. The backend and frontend deploy in parallel, and `smoke` is skipped when nothing deployable changed.
-- Release-please's generated files (`CHANGELOG.md`, `.github/.release-please-manifest.json`, `.github/version.txt`) are inputs to no marker, so a release PR affects nothing and its jobs are skipped.
+- Release-please's generated files (`CHANGELOG.md`, `.github/.release-please-manifest.json`) are inputs to no marker, so a release PR affects nothing and its jobs are skipped.
 - Schedule and manual runs have no diff, so `security.yaml` runs every scanner on them.
 
 ## Consequences

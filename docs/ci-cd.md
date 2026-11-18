@@ -36,18 +36,19 @@ Title the PR as a Conventional Commit, such as `fix(frontend): keep the draft wh
 `push-commit.yaml` runs on every merge:
 
 1. **Infrastructure** applies first (root, then staging), re-planned in the job.
-2. **Services** deploy as a matrix of backend, worker and frontend, in parallel. Only what the change affects is built; anything unaffected is the previous commit's artifact, re-tagged, so it is not rebuilt or redeployed ([33](decisions/0033-build-only-what-changed.md)).
+2. **Services** deploy as a matrix of backend, worker and frontend, in parallel. Only what the change affects is built; anything unaffected is the previous commit's artifact, re-tagged, so it is not rebuilt, and an unchanged backend or worker is not redeployed either; the frontend is always redeployed to staging so the site shows this commit ([33](decisions/0033-build-only-what-changed.md)).
 3. Every commit's backend image, worker image and frontend `dist/` are published by **commit SHA** to both staging's and prod's stores, whether or not they changed. This is what makes promotion a deploy and not a build.
 4. **Smoke** tests the live staging site. It is skipped when nothing deployable changed.
 5. **release-please** opens or updates the release PR, and `plan-prod` posts the production plan on it.
 
 ### 3. Merge the release PR: production
 
-The release PR holds the changelog and the version bump. Reading its prod plan is the review for what production will receive. Merging it makes a release commit that changes only `CHANGELOG.md`, `.github/.release-please-manifest.json` and `.github/version.txt` ([42](decisions/0042-release-commits-have-their-own-workflow.md)). That push runs `push-release.yaml`:
+The release PR holds the changelog and the version bump. Reading its prod plan is the review for what production will receive. Merging it makes a release commit that changes only `CHANGELOG.md` and `.github/.release-please-manifest.json` ([42](decisions/0042-release-commits-have-their-own-workflow.md)). That push runs `push-release.yaml`:
 
-1. Publishes the previous commit's artifacts under the release commit, in both environments. It builds them only if they are missing. Staging is not redeployed, because it already runs the same code, unless a missing artifact has to be built.
-2. release-please creates the tag (`vMAJOR.MINOR.PATCH`) and the GitHub release.
-3. If a release was created, it calls `promote-release.yaml` with the tag and commit.
+1. Checks that the previous commit's `push-commit.yaml` run succeeded (or `push-release.yaml`, if it was a release commit), so a release is only cut for a commit that was healthy on staging.
+2. Publishes the previous commit's artifacts under the release commit, in both environments. It builds them only if they are missing. Staging is not redeployed, because it already runs the same code, unless a missing artifact has to be built.
+3. release-please creates the tag (`vMAJOR.MINOR.PATCH`) and the GitHub release.
+4. If a release was created, it calls `promote-release.yaml` with the tag and commit.
 
 `promote-release.yaml` then runs, in order:
 
@@ -65,7 +66,7 @@ Use this when a release is broken in production, or when an automatic promotion 
 
 ### Roll back
 
-1. Find the last good release on the [Releases page](https://github.com/edgorman/blog.gorman.club/releases). It lists only versions that were deployed to production.
+1. Find the last good release on the [Releases page](https://github.com/edgorman/blog.gorman.club/releases). A release is created just before its promotion runs, so check that the version you pick was actually promoted (its Push Release run succeeded).
 2. In GitHub, go to **Actions**, then **Promote Release**, then **Run workflow**. Run it from `main` and enter the tag, such as `v1.0.0`.
 3. Watch the run. It resolves the tag to its commit and runs the same three steps as a normal release, but for that commit: that release's infrastructure, its images and its frontend folder.
 4. Check the production site.
@@ -80,7 +81,7 @@ If a release's automatic promotion failed partway, for example on a flaky step, 
 
 - **`main` still has the bad code.** A rollback changes production only. Fix forward or revert on `main` and let a new release go out, or the next release will redeploy the problem. Staging is unaffected and keeps running `main`.
 - **Infrastructure rolls back too.** Step 1 applies the old tag's Terraform to prod, so a resource added since will be planned for removal. Read the plan in the run if the releases differ in infrastructure.
-- **The artifacts must still exist.** Registries keep the 30 most recent versions of each image and every `release-` tagged one. Frontend folders in the bucket are deleted after 90 days ([29](decisions/0029-artifact-retention.md)). A recent release is safe; a very old tag may no longer have a frontend folder.
+- **The artifacts must still exist.** The registries are meant to keep the 30 most recent versions of each image and every `release-` tagged one, but that cleanup is still a dry run, so nothing is deleted yet. Frontend folders in the bucket are deleted after 90 days ([29](decisions/0029-artifact-retention.md)). A recent release is safe; a very old tag may no longer have a frontend folder.
 - **Data is not rolled back.** Promotion redeploys code and infrastructure only. A schema or data change made by a release is not undone.
 - **Only tags of the form `vMAJOR.MINOR.PATCH` are accepted**, and the workflow fails early if the tag has no commit.
 

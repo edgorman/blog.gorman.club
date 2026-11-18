@@ -8,7 +8,7 @@
 # policies pin the most recent backend_registry_keep_count versions regardless of age (plus every
 # release-tagged image), and the DELETE policy (unconditional - it matches any tag state) removes
 # anything a KEEP policy didn't pin. See
-# the Artifact Stores section of `infrastructure/AGENTS.md` for how the count was chosen and what it does not
+# decision 29 (`docs/decisions/0029-artifact-retention.md`) for how the count was chosen and what it does not
 # guarantee (there is no policy condition for "a Cloud Run revision still references this").
 #
 # Ships with cleanup_policy_dry_run enabled: the policy evaluates and logs what it would delete

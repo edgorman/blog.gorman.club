@@ -4,7 +4,6 @@
     ".": {
       "release-type": "simple",
       "changelog-path": "CHANGELOG.md",
-      "version-file": ".github/version.txt",
       "include-component-in-tag": false,
       "changelog-sections": [
         {

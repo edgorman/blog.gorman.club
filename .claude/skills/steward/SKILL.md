@@ -65,7 +65,7 @@ The plan job posts its output as a PR comment. Read it:
 
 ## Renovate PRs
 
-`build(deps)` PRs come from self-hosted Renovate, grouped per ecosystem (`gomod-deps`, `npm-deps`, `terraform-deps`, `ci-deps`, `docker-deps`, `tool-deps`):
+`build(deps)` PRs come from self-hosted Renovate, grouped per area (`backend-deps`, `frontend-deps`, `infrastructure-deps`, `ci-deps`):
 
 - Go: if the bump moves `go.mod`'s `go` line, `root:go-version-sync` fails. Bump `.prototools` and the `Dockerfile` image in the same PR.
 - `oapi-codegen` (a `go tool` in `go.mod`) or `openapi-typescript` (`packages/api/package.json`): run `moon run packages/api:generate` and commit the output, or `api-drift` fails.

@@ -12,7 +12,7 @@ env:
   # The targets each required check hands to `moon ci`. `changed` reads the same variables to decide
   # whether to run the check, so the two can't drift apart. `:name` means that task in any project.
   LINT_CHECK_TARGETS: ':format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync root:decision-links root:markdown-lint'
-  TEST_TARGETS: ':test services/backend:image worker:image'
+  TEST_TARGETS: ':test services/backend:image'
   API_DRIFT_TARGETS: 'packages/api:drift'
 
 concurrency:
@@ -28,13 +28,13 @@ jobs:
   changed:
     runs-on: ubuntu-latest
     outputs:
-      lint-check: ${{ steps.moon.outputs.lint-check }}
-      test: ${{ steps.moon.outputs.test }}
-      test-emulator: ${{ steps.moon.outputs.test-emulator }}
-      api-drift: ${{ steps.moon.outputs.api-drift }}
-      infrastructure-root: ${{ steps.moon.outputs.root }}
-      infrastructure-staging: ${{ steps.moon.outputs.staging }}
-      infrastructure-prod: ${{ steps.moon.outputs.prod }}
+      lint-check: ${{ fromJSON(steps.affected.outputs.affected)['lint-check'] }}
+      test: ${{ fromJSON(steps.affected.outputs.affected).test }}
+      test-emulator: ${{ fromJSON(steps.affected.outputs.affected)['test-emulator'] }}
+      api-drift: ${{ fromJSON(steps.affected.outputs.affected)['api-drift'] }}
+      infrastructure-root: ${{ fromJSON(steps.affected.outputs.affected).root }}
+      infrastructure-staging: ${{ fromJSON(steps.affected.outputs.affected).staging }}
+      infrastructure-prod: ${{ fromJSON(steps.affected.outputs.affected).prod }}
     steps:
       # moon needs full history to resolve the merge base.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -43,41 +43,25 @@ jobs:
           filter: 'blob:none'
       - id: affected
         uses: ./.github/actions/moon-affected
-      - id: moon
-        name: Compute moon-affected jobs
-        shell: bash
-        env:
-          AFFECTED_FILE: ${{ steps.affected.outputs.file }}
-        run: |
-          declare -A targets=(
-            [lint-check]=$LINT_CHECK_TARGETS
-            [test]=$TEST_TARGETS
-            [api-drift]=$API_DRIFT_TARGETS
-          )
-          # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
-          tasks=$(jq -c '(.tasks // {}) | keys' "$AFFECTED_FILE")
-          affected() { jq -r --argjson tasks "$tasks" --arg t "$1" '
-            ($t | split(" ")) as $want
-            | any($tasks[]; . as $k | any($want[]; . as $w
-                | if $w | startswith(":") then ($k | endswith($w)) else $k == $w end))' <<<null; }
-          for check in "${!targets[@]}"; do
-            echo "$check=$(affected "${targets[$check]}")" >> "$GITHUB_OUTPUT"
-          done
-          # The Firestore emulator is only needed when a Go test will run.
-          echo "test-emulator=$(affected ':test')" >> "$GITHUB_OUTPUT"
-          for env in root staging prod; do
-            echo "$env=$(jq -r --arg t "deploy-$env:plan" '(.tasks // {}) | has($t)' "$AFFECTED_FILE")" >> "$GITHUB_OUTPUT"
-          done
+        with:
+          tasks: |
+            lint-check=${{ env.LINT_CHECK_TARGETS }}
+            test=${{ env.TEST_TARGETS }}
+            test-emulator=:test
+            api-drift=${{ env.API_DRIFT_TARGETS }}
+            root=deploy-root:plan
+            staging=deploy-staging:plan
+            prod=deploy-prod:plan
 
-  # The three required checks, one job each so each keeps its own check name and a skipped job reports
-  # as skipped, which branch protection counts as passing (a matrix leg skipped at job level would
-  # report an unexpanded name and stay pending). `:taskId` (no project prefix) is moon's "run in
+  # The three `moon ci` checks, one job each (a matrix leg skipped at job level would report an
+  # unexpanded name). `required` below is what branch protection requires. `:taskId` (no project prefix) is moon's "run in
   # every project that has this task" scope (https://moonrepo.dev/docs/concepts/target); a project
   # without a given task is silently skipped. The targets are the workflow-level `env` above.
   # - lint-check: every lint/format/build task. `:format`/`:validate` reach infra-root/infra-env's
   #   inherited `terraform fmt -check` and `terraform validate` (.moon/tasks/terraform.yml);
   #   `:validate` is `runInCI: 'only'`, so this is the one place it runs at all.
-  # - test: every test, plus both images.
+  # - test: every test, plus the backend image (the worker's image is the same Dockerfile with another
+  #   CMD, built on merge by worker:publish).
   # - api-drift: packages/api:drift, both generators re-run and diffed.
   lint-check:
     needs: changed
@@ -88,10 +72,9 @@ jobs:
         with:
           fetch-depth: 0
           filter: 'blob:none'
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      - uses: ./.github/actions/setup-moon
         with:
           auto-install: true
-          cache: false # see `changed`'s identical setup step above for why
       - name: moon ci
         shell: bash
         run: moon ci $LINT_CHECK_TARGETS
@@ -107,10 +90,9 @@ jobs:
         with:
           fetch-depth: 0
           filter: 'blob:none'
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      - uses: ./.github/actions/setup-moon
         with:
           auto-install: true
-          cache: false # see `changed`'s identical setup step above for why
       # internal/repository/firestore's emulator tests skip unless FIRESTORE_EMULATOR_HOST is set.
       # The emulator jar is the one `gcloud emulators firestore` runs, fetched directly (checksum
       # from firebase-tools' downloadableEmulatorInfo.json). It needs Java 21, which the runner
@@ -140,10 +122,9 @@ jobs:
         with:
           fetch-depth: 0
           filter: 'blob:none'
-      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      - uses: ./.github/actions/setup-moon
         with:
           auto-install: true
-          cache: false # see `changed`'s identical setup step above for why
       - name: moon ci
         shell: bash
         run: moon ci $API_DRIFT_TARGETS
@@ -177,8 +158,8 @@ jobs:
           TF_VAR_github_provider_token: ''
           TF_VAR_cloudflare_api_token: plan-only-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-  # infrastructure/env/** is shared, so a change to it plans against both environments - see the
-  # `changed` job above.
+  # infrastructure/env/** is shared, so a change to it plans against both environments (infra-env is
+  # an input of the staging and prod plan markers).
   infrastructure-staging:
     needs: changed
     if: needs.changed.outputs.infrastructure-staging == 'true'
@@ -229,3 +210,23 @@ jobs:
           TF_VAR_google_client_id: ${{ vars.GOOGLE_CLIENT_ID }}
           TF_VAR_ci_service_account: ${{ vars.PROMOTE_SERVICE_ACCOUNT }}
 
+
+  # The one check this workflow requires (.github/settings.yml). The jobs above are skipped when a
+  # change doesn't reach them, which differs between a normal PR and a release PR, so requiring each
+  # by name would list skipped checks as required. This job always runs and fails only when a job
+  # that did run failed or was cancelled; a skipped job passes, as branch protection counts it.
+  required:
+    needs: [changed, lint-check, test, api-drift, infrastructure-root, infrastructure-staging, infrastructure-prod]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every job that ran passed
+        shell: bash
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          if [[ " $RESULTS " =~ " failure " || " $RESULTS " =~ " cancelled " ]]; then
+            echo "::error::A job failed or was cancelled."
+            exit 1
+          fi

@@ -45,25 +45,28 @@ jobs:
       # leaves the spec alone, or marks itself breaking, pays for neither.
       - id: affected
         uses: ./.github/actions/moon-affected
+        with:
+          tasks: 'breaking=packages/api:breaking'
       - id: run
         name: Decide whether the check runs
         shell: bash
         env:
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
-          AFFECTED_FILE: ${{ steps.affected.outputs.file }}
+          AFFECTED: ${{ fromJSON(steps.affected.outputs.affected).breaking }}
         run: |
           re='^[a-z]+(\([^)]+\))?!:'
           if [[ "$TITLE" =~ $re ]] || grep -qE '^BREAKING[ -]CHANGE:' <<<"$BODY"; then
             echo "Marked breaking; skipping the API breaking-change check."
             echo 'run=false' >> "$GITHUB_OUTPUT"
           else
-            echo "run=$(jq -r '(.tasks // {}) | has("packages/api:breaking")' "$AFFECTED_FILE")" >> "$GITHUB_OUTPUT"
+            echo "run=$AFFECTED" >> "$GITHUB_OUTPUT"
           fi
       - name: Install the toolchain
         if: steps.run.outputs.run == 'true'
-        shell: bash
-        run: proto install
+        uses: ./.github/actions/setup-moon
+        with:
+          auto-install: true
       - name: moon ci
         if: steps.run.outputs.run == 'true'
         shell: bash

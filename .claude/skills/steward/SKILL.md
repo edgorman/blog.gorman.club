@@ -22,7 +22,7 @@ moon ci --base origin/main packages/api:breaking
 
 ## Required checks
 
-All seven jobs of `.github/workflows/pull-request.yaml` and both jobs of `.github/workflows/conventions.yaml` are required (`.github/settings.yml`). A job its `if:` skips reports "skipped", which counts as passing.
+Three checks are required (`.github/settings.yml`): `required`, the last job of `.github/workflows/pull-request.yaml`, and `pr-title` and `api-breaking` from `.github/workflows/conventions.yaml`. `required` fails only when a job before it (`lint-check`, `test`, `api-drift`, `infrastructure-*`) failed or was cancelled; a job its `if:` skips reports "skipped", which counts as passing. Read the failing job's own log, not `required`'s.
 
 | Check | What a failure means | Fix |
 |---|---|---|

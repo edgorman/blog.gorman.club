@@ -1,0 +1,17 @@
+name: 'Setup Moon'
+description: 'Installs moon, and with auto-install the toolchain pinned in .prototools, without the toolchain cache'
+
+inputs:
+  auto-install:
+    description: 'Install the pinned toolchain too. Leave false for a job that only queries moon.'
+    required: false
+    default: 'false'
+
+runs:
+  using: "composite"
+  steps:
+    - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      with:
+        auto-install: ${{ inputs.auto-install }}
+        # The toolchain cache is disabled: restoring it loses the executable bit on proto's shim.
+        cache: false

@@ -29,11 +29,13 @@ jobs:
       contents: read
       actions: read
     outputs:
-      infrastructure-root: ${{ steps.moon.outputs.root }}
-      infrastructure-staging: ${{ steps.moon.outputs.staging }}
-      backend: ${{ steps.moon.outputs.backend }}
-      worker: ${{ steps.moon.outputs.worker }}
-      frontend: ${{ steps.moon.outputs.frontend }}
+      # With no base to diff against, everything is affected.
+      infrastructure-root: ${{ steps.base.outputs.base == '' || fromJSON(steps.affected.outputs.affected || '{}').root }}
+      infrastructure-staging: ${{ steps.base.outputs.base == '' || fromJSON(steps.affected.outputs.affected || '{}').staging }}
+      backend: ${{ steps.base.outputs.base == '' || fromJSON(steps.affected.outputs.affected || '{}').backend }}
+      worker: ${{ steps.base.outputs.base == '' || fromJSON(steps.affected.outputs.affected || '{}').worker }}
+      frontend: ${{ steps.base.outputs.base == '' || fromJSON(steps.affected.outputs.affected || '{}').frontend }}
+      deployable: ${{ steps.base.outputs.base == '' || fromJSON(steps.affected.outputs.affected || '{}').deployable }}
       base_sha: ${{ steps.base.outputs.base_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -69,22 +71,13 @@ jobs:
         uses: ./.github/actions/moon-affected
         with:
           base: ${{ steps.base.outputs.base }}
-      - id: moon
-        name: Mark what each deployment reaches
-        shell: bash
-        env:
-          AFFECTED_FILE: ${{ steps.affected.outputs.file }}
-        run: |
-          if [ -z "$AFFECTED_FILE" ]; then
-            printf '%s=true\n' root staging backend worker frontend >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          for pair in root=deploy-root:apply staging=deploy-staging:apply backend=services/backend:publish \
-            worker=worker:publish frontend=services/frontend:publish; do
-            # .tasks is omitted when nothing is affected, so `(.tasks // {})` handles null.
-            val=$(jq -r --arg t "${pair#*=}" '(.tasks // {}) | has($t)' "$AFFECTED_FILE")
-            echo "${pair%%=*}=$val" >> "$GITHUB_OUTPUT"
-          done
+          tasks: |
+            root=deploy-root:apply
+            staging=deploy-staging:apply
+            backend=services/backend:publish
+            worker=worker:publish
+            frontend=services/frontend:publish
+            deployable=deploy-root:apply deploy-staging:apply services/backend:publish worker:publish services/frontend:publish
 
   infrastructure-root:
     needs: changed
@@ -168,8 +161,6 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - if: matrix.service != 'frontend'
         uses: ./.github/actions/backend-deploy
         with:
@@ -189,14 +180,7 @@ jobs:
   # release-please waits on it.
   smoke:
     needs: [changed, services]
-    if: |
-      !cancelled() && !failure() &&
-      needs.services.result == 'success' &&
-      (needs.changed.outputs.infrastructure-root == 'true' ||
-        needs.changed.outputs.infrastructure-staging == 'true' ||
-        needs.changed.outputs.backend == 'true' ||
-        needs.changed.outputs.worker == 'true' ||
-        needs.changed.outputs.frontend == 'true')
+    if: ${{ !cancelled() && !failure() && needs.services.result == 'success' && needs.changed.outputs.deployable == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:

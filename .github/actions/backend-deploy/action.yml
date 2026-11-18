@@ -26,11 +26,6 @@ inputs:
     required: false
     default: ''
 
-outputs:
-  backend_url:
-    description: 'Public URL of the deployed Cloud Run service'
-    value: ${{ steps.deploy.outputs.backend_url }}
-
 runs:
   using: "composite"
   steps:

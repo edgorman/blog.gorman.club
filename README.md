@@ -32,7 +32,6 @@ Every merge to `main` deploys to staging; production is promoted by merging the 
 
 New here? [`docs/start-here.md`](docs/start-here.md) goes from a fresh clone to an open pull request, with no GCP access needed.
 
-
 [moon](https://moonrepo.dev) runs every task, and [proto](https://moonrepo.dev/proto) pins the toolchain (`.prototools`: Go, Node, npm, buf, Terraform, moon itself).
 
 ```sh
@@ -50,7 +49,6 @@ moon project services/backend                   # list a project's tasks
 ```
 
 Each project's tasks live in its `moon.yml` (e.g. `services/backend/moon.yml`). If you change `packages/api/openapi.yaml`, regenerate with `moon run packages/api:generate` and commit the output alongside it.
-
 
 ## Contributing and licence
 

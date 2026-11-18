@@ -4,7 +4,7 @@ Status: Superseded by [34](0034-openapi-is-the-api-contract.md)
 
 ## Context
 
-#173 swept `api.ts` and `internal/service` for anything #169-#172 left behind. The one real survivor was the `{"error": "..."}` envelope, hand-declared on the backend and mirrored inline in `api.ts`'s `request()`. It became `blogv1.ErrorResponse` (`error.proto`), one message shared by every resource. A dead `json:"authorUsername"` tag was removed. `entity.ValidationError` needed nothing: `writeValidationError` already collapses it to the one envelope.
+Issue #173 swept `api.ts` and `internal/service` for anything #169-#172 left behind. The one real survivor was the `{"error": "..."}` envelope, hand-declared on the backend and mirrored inline in `api.ts`'s `request()`. It became `blogv1.ErrorResponse` (`error.proto`), one message shared by every resource. A dead `json:"authorUsername"` tag was removed. `entity.ValidationError` needed nothing: `writeValidationError` already collapses it to the one envelope.
 
 ## Decision
 

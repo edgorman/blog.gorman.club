@@ -4,7 +4,7 @@ Status: Accepted (supersedes the Pants setup from #110)
 
 ## Context
 
-#110 adopted [Pants](https://www.pantsbuild.org/) to stop maintaining the dependency graph by hand. By #190 most of the cost had moved to fighting the tool:
+Issue #110 adopted [Pants](https://www.pantsbuild.org/) to stop maintaining the dependency graph by hand. By #190 most of the cost had moved to fighting the tool:
 
 - `go vet` ran outside Pants, because its vet backend never changed into the module directory and `services/backend/go.mod` isn't at the build root (#114).
 - The frontend bundle was never built through Pants. `node_build_script` is a field value, not a target; called as a bare statement in `services/frontend/BUILD` from #119 on, it built nothing, so #146's "green in CI" and #156's first packaging step were vacuous. Registering it properly failed, because the sandbox held only declared dependencies and nothing imports a tsconfig, `index.html` or `public/` asset.

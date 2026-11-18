@@ -11,7 +11,7 @@ permissions:
 env:
   # The targets each required check hands to `moon ci`. `changed` reads the same variables to decide
   # whether to run the check, so the two can't drift apart. `:name` means that task in any project.
-  LINT_CHECK_TARGETS: ':format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync root:decision-links'
+  LINT_CHECK_TARGETS: ':format :lint :vet :typecheck :build :validate root:wire-types root:projects-covered root:go-version-sync root:decision-links root:markdown-lint'
   TEST_TARGETS: ':test services/backend:image worker:image'
   API_DRIFT_TARGETS: 'packages/api:drift'
 

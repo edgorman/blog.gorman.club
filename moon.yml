@@ -108,7 +108,7 @@ tasks:
   markdown-lint:
     description: 'Markdown files pass markdownlint'
     # renovate: datasource=npm depName=markdownlint-cli2
-    command: 'npx --yes markdownlint-cli2@0.24.1 "**/*.md"'
+    command: 'npx --yes markdownlint-cli2@0.24.2 "**/*.md"'
     inputs:
       - '/**/*.md'
       - '!/CHANGELOG.md'

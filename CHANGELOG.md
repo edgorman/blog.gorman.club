@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.4](https://github.com/edgorman/blog.gorman.club/compare/v1.0.3...v1.0.4) (2026-11-24)
+
+
+### Bug Fixes
+
+* **deps:** update backend-deps ([#371](https://github.com/edgorman/blog.gorman.club/issues/371)) ([c54f7a5](https://github.com/edgorman/blog.gorman.club/commit/c54f7a5518b15aeca08081b8c8432ef6d1d84513))
+* **frontend:** constrain navbar items to page max-width on desktop ([#374](https://github.com/edgorman/blog.gorman.club/issues/374)) ([9bbcd1f](https://github.com/edgorman/blog.gorman.club/commit/9bbcd1f18d7559d06fa9894a677d8e9b9cc4ac1c))
+
+
+### Miscellaneous Chores
+
+* **deps:** update ci-deps ([#369](https://github.com/edgorman/blog.gorman.club/issues/369)) ([508ac0e](https://github.com/edgorman/blog.gorman.club/commit/508ac0e6955f3cc253f00ee5da2178da7fa5a93e))
+* **deps:** update dependency @testing-library/jest-dom to v8 ([#372](https://github.com/edgorman/blog.gorman.club/issues/372)) ([6ad6e51](https://github.com/edgorman/blog.gorman.club/commit/6ad6e516c001499ae455c0858eca342e10db39ad))
+* **deps:** update frontend-deps ([#370](https://github.com/edgorman/blog.gorman.club/issues/370)) ([bfa3f42](https://github.com/edgorman/blog.gorman.club/commit/bfa3f4263053e618e3cb4894bc19c1d2ac6daa9e))
+
 ## [1.0.3](https://github.com/edgorman/blog.gorman.club/compare/v1.0.2...v1.0.3) (2026-11-18)
 
 

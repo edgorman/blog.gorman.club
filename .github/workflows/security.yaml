@@ -102,7 +102,7 @@ jobs:
           GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
           # renovate: datasource=pypi depName=zizmor
-          pip install --user zizmor==1.32.0
+          pip install --user zizmor==1.33.1
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: actionlint
         run: .github/scripts/advisory.sh actionlint 1 actionlint

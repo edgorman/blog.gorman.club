@@ -37,44 +37,46 @@ export function NavBar() {
 
   return (
     <nav className="nav">
-      <Link to="/" className="nav-brand" aria-label="blog, gorman club">
-        <span className="nav-brand-main" aria-hidden="true">blog</span>
-        <span className="nav-brand-sub" aria-hidden="true">gorman club</span>
-      </Link>
-      <button
-        type="button"
-        className="btn btn-icon btn-secondary"
-        aria-label="Toggle dark mode"
-        onClick={toggleTheme}
-      >
-        {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-      </button>
-
-      {user ? (
-        <button
-          type="button"
-          className="gc-avatar"
-          aria-label="Account"
-          aria-haspopup="dialog"
-          aria-expanded={accountOpen}
-          onClick={() => setAccountOpen(true)}
-        >
-          {(profile?.username ?? user.email).charAt(0).toUpperCase()}
-        </button>
-      ) : (
+      <div className="nav-inner">
+        <Link to="/" className="nav-brand" aria-label="blog, gorman club">
+          <span className="nav-brand-main" aria-hidden="true">blog</span>
+          <span className="nav-brand-sub" aria-hidden="true">gorman club</span>
+        </Link>
         <button
           type="button"
           className="btn btn-icon btn-secondary"
-          aria-label="Account"
-          aria-haspopup="dialog"
-          aria-expanded={accountOpen}
-          onClick={() => setAccountOpen(true)}
+          aria-label="Toggle dark mode"
+          onClick={toggleTheme}
         >
-          <UserIcon />
+          {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </button>
-      )}
 
-      {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} />}
+        {user ? (
+          <button
+            type="button"
+            className="gc-avatar"
+            aria-label="Account"
+            aria-haspopup="dialog"
+            aria-expanded={accountOpen}
+            onClick={() => setAccountOpen(true)}
+          >
+            {(profile?.username ?? user.email).charAt(0).toUpperCase()}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-icon btn-secondary"
+            aria-label="Account"
+            aria-haspopup="dialog"
+            aria-expanded={accountOpen}
+            onClick={() => setAccountOpen(true)}
+          >
+            <UserIcon />
+          </button>
+        )}
+
+        {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} />}
+      </div>
     </nav>
   )
 }

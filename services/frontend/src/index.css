@@ -300,17 +300,23 @@ a.tag-topic:hover {
 
 /* — navigation — */
 .nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
   min-height: var(--nav-height);
-  padding: var(--space-3) var(--space-4);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
   border-bottom: 2px solid var(--color-divider);
   position: sticky;
   top: 0;
   background: var(--color-bg);
   z-index: 20;
   box-sizing: border-box;
+}
+.nav-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
 }
 .nav-brand {
   display: flex;

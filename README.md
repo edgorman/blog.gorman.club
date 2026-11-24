@@ -17,14 +17,14 @@ A demo of a small, cloud-deployed full-stack web service - a blog with a Gemini-
 
 ## What's in here
 
-| Path | What |
-| --- | --- |
-| `services/backend` | Go API (Firestore, Gemini), shipped as a container to GCP Cloud Run |
-| `services/frontend` | Vite/React single-page app, deployed to Cloudflare Workers |
-| `packages/api` | OpenAPI API contract; `moon run packages/api:generate` writes the Go and TypeScript types |
-| `infrastructure` | Terraform for the shared root, staging and prod environments (GCP, Cloudflare, GitHub) |
-| `.github` | Workflows and composite actions: PR checks, staging deploy on merge, release promotion to prod |
-| `docs/decisions` | Why things are the way they are, one decision per file |
+| Path                | What                                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------------------- |
+| `services/backend`  | Go API (Firestore, Gemini), shipped as a container to GCP Cloud Run                           |
+| `services/frontend` | Vite/React single-page app, deployed to Cloudflare Workers                                     |
+| `packages/api`      | OpenAPI API contract; `moon run packages/api:generate` writes the Go and TypeScript types      |
+| `infrastructure`    | Terraform for the shared root, staging and prod environments (GCP, Cloudflare, GitHub)         |
+| `.github`           | Workflows and composite actions: PR checks, staging deploy on merge, release promotion to prod |
+| `docs/decisions`    | Why things are the way they are, one decision per file                                         |
 
 Every merge to `main` deploys to staging; production is promoted by merging the release PR release-please keeps open. Nothing is ever applied or deployed by hand.
 

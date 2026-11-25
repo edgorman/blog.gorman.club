@@ -1,4 +1,4 @@
-moon = "2.6.5"
+moon = "2.6.6"
 go = "1.27.4"          # must equal services/backend/go.mod's `go` line
 node = "26"            # read by .github/actions/frontend-node
 npm = "10.9.11"         # no prior pin existed to match

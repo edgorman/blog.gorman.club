@@ -199,12 +199,12 @@ describe('Landing', () => {
   })
 
   it('drops a slower page of the feed the reader has since filtered away from', async () => {
-    let resolveFirst!: (p: BlogPage) => void
+    const first = Promise.withResolvers<BlogPage>()
     const api = fakeApi({
       listBlogs: vi.fn((params?: { q?: string }) =>
         params?.q === 'b'
           ? Promise.resolve(page([post({ slug: 'b', title: 'About b' })]))
-          : new Promise<BlogPage>((resolve) => (resolveFirst = resolve)),
+          : first.promise,
       ),
     })
     renderWithApp(<Landing />, { context: { api }, route: '/?q=a', path: '/' })
@@ -213,7 +213,7 @@ describe('Landing', () => {
     await userEvent.type(screen.getByRole('searchbox', { name: /Search posts/ }), 'b')
     await userEvent.click(screen.getByRole('button', { name: 'Search' }))
     expect(await screen.findByText('About b')).toBeInTheDocument()
-    resolveFirst(page([post({ slug: 'a', title: 'About a' })]))
+    first.resolve(page([post({ slug: 'a', title: 'About a' })]))
     await waitFor(() => expect(api.listBlogs).toHaveBeenCalledTimes(2))
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(screen.queryByText('About a')).not.toBeInTheDocument()

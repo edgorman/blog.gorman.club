@@ -249,11 +249,11 @@ describe('EditPost', () => {
   // Leaving post A's editor for post B's before A has loaded: A's text must not land in B's editor,
   // where saving would write it over B.
   it("ignores a slower answer for the post the author just left", async () => {
-    let resolveA!: (post: Blog) => void
+    const a = Promise.withResolvers<Blog>()
     const other: Blog = { ...blog, slug: 'other', title: 'Other post' }
     const api = fakeApi({
       getBlog: vi.fn((slug: string) =>
-        slug === 'hello-world' ? new Promise<Blog>((resolve) => (resolveA = resolve)) : Promise.resolve(other),
+        slug === 'hello-world' ? a.promise : Promise.resolve(other),
       ),
     })
     function GoToOther() {
@@ -270,7 +270,7 @@ describe('EditPost', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'other' }))
     expect(await screen.findByDisplayValue('Other post')).toBeInTheDocument()
-    await act(async () => resolveA(blog))
+    await act(async () => a.resolve(blog))
     expect(screen.getByDisplayValue('Other post')).toBeInTheDocument()
     expect(screen.queryByDisplayValue('Hello world')).not.toBeInTheDocument()
   })

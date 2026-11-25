@@ -87,7 +87,10 @@ export function AssistantPanel({ slug, title, content, onEdited }: Props) {
   }
 
   // Enter sends and shift+enter makes a new line, which is what a chat box is expected to do.
+  // Enter that confirms an IME composition (CJK input) is not a send; keyCode 229 covers Safari,
+  // which reports isComposing false on that keydown.
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       send()

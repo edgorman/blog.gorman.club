@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.0.5](https://github.com/edgorman/blog.gorman.club/compare/v1.0.4...v1.0.5) (2026-11-25)
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/api to v0.317.0 ([#381](https://github.com/edgorman/blog.gorman.club/issues/381)) ([1ca1e05](https://github.com/edgorman/blog.gorman.club/commit/1ca1e05cdefd5831e9abfaff4d3bf340f809b425))
+
+
+### Miscellaneous Chores
+
+* **deps:** update ci-deps ([#380](https://github.com/edgorman/blog.gorman.club/issues/380)) ([f26d6e8](https://github.com/edgorman/blog.gorman.club/commit/f26d6e867013008a0b541a0622d4861242ac6e61))
+* **deps:** update dependency moon to v2.6.6 ([#378](https://github.com/edgorman/blog.gorman.club/issues/378)) ([0c05fc4](https://github.com/edgorman/blog.gorman.club/commit/0c05fc46ea0bf343ecf825151a49bbabe24d4cf7))
+* **deps:** update frontend-deps ([#379](https://github.com/edgorman/blog.gorman.club/issues/379)) ([aa29b7e](https://github.com/edgorman/blog.gorman.club/commit/aa29b7e9507d11238bd1b9e09b4acac6cfce6b36))
+
+
+### Code Refactoring
+
+* **frontend:** modernize colour scheme, IME Enter and test promises ([#376](https://github.com/edgorman/blog.gorman.club/issues/376)) ([3028d74](https://github.com/edgorman/blog.gorman.club/commit/3028d74733863092812b627bbce76defcdd9ff72))
+
 ## [1.0.4](https://github.com/edgorman/blog.gorman.club/compare/v1.0.3...v1.0.4) (2026-11-24)
 
 

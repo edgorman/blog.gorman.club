@@ -47,7 +47,7 @@ tasks:
       base="$(mktemp)"
       git show origin/main:packages/api/openapi.yaml > "$base" 2>/dev/null || { echo 'No spec on origin/main yet; nothing to compare.'; exit 0; }
       # renovate: datasource=go depName=github.com/oasdiff/oasdiff
-      go run github.com/oasdiff/oasdiff@v1.39.0 breaking "$base" openapi.yaml --fail-on ERR
+      go run github.com/oasdiff/oasdiff@v1.40.0 breaking "$base" openapi.yaml --fail-on ERR
     inputs: ['openapi.yaml']
     options:
       cache: false

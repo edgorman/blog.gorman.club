@@ -1,20 +1,32 @@
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap');
 
 :root {
+  /* Follows the OS; the toggle pins a scheme through <meta name="color-scheme"> (src/lib/theme.ts),
+     which the two :has() rules below map back onto this property. */
   color-scheme: light dark;
 
-  --color-bg: #f3f2f2;
-  --color-surface: #eae9e9;
-  --color-text: #201e1d;
-  --color-accent: #ec3013;
-  --color-accent-100: #fff2ef;
+  &:has(> head > meta[name='color-scheme'][content='dark']) {
+    color-scheme: dark;
+  }
+  &:has(> head > meta[name='color-scheme'][content='light']) {
+    color-scheme: light;
+  }
+
+  --color-bg: light-dark(#f3f2f2, #1c1b1b);
+  --color-surface: light-dark(#eae9e9, #262424);
+  --color-text: light-dark(#201e1d, #f3f2f2);
+  --color-accent: light-dark(#ec3013, #ff9783);
+  --color-accent-100: light-dark(#fff2ef, #4d170e);
   --color-accent-200: #ffe0d9;
   --color-accent-600: #dd2b0f;
   --color-accent-700: #ae1800;
-  --color-accent-800: #7c1405;
-  --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
-  --color-code-string: #2f7d4f;
-  --color-code-entity: #6355c7;
+  --color-accent-800: light-dark(#7c1405, #ffe0d9);
+  --color-divider: light-dark(
+    color-mix(in srgb, #201e1d 40%, transparent),
+    color-mix(in srgb, #f3f2f2 30%, transparent)
+  );
+  --color-code-string: light-dark(#2f7d4f, #7ed99a);
+  --color-code-entity: light-dark(#6355c7, #b3a7ff);
 
   --font-heading: 'Archivo', system-ui, sans-serif;
   --font-heading-weight: 800;
@@ -32,34 +44,15 @@
 
   --nav-height: 64px;
 
-  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
-  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
-  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
-}
-
-:root[data-theme='dark'] {
-  --color-bg: #1c1b1b;
-  --color-surface: #262424;
-  --color-text: #f3f2f2;
-  --color-divider: color-mix(in srgb, #f3f2f2 30%, transparent);
-  --color-code-string: #7ed99a;
-  --color-code-entity: #b3a7ff;
-  --color-accent: #ff9783;
-  --color-accent-100: #4d170e;
-  --color-accent-800: #ffe0d9;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.55);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 1px 2px light-dark(color-mix(in srgb, #2d2b2b 14%, transparent), rgba(0, 0, 0, 0.5));
+  --shadow-md: 0 3px 10px light-dark(color-mix(in srgb, #2d2b2b 16%, transparent), rgba(0, 0, 0, 0.55));
+  --shadow-lg: 0 12px 32px light-dark(color-mix(in srgb, #2d2b2b 22%, transparent), rgba(0, 0, 0, 0.6));
 }
 
 *,
 *::before,
 *::after {
   box-sizing: border-box;
-}
-
-html {
-  color-scheme: light dark;
 }
 
 body {

@@ -4,7 +4,7 @@
     "composite": true,
     "declaration": true,
     "target": "es2023",
-    "lib": ["ES2023", "DOM"],
+    "lib": ["ES2024", "DOM"],
     "module": "esnext",
     "types": ["vite/client", "vitest/globals", "node"],
     "allowArbitraryExtensions": true,

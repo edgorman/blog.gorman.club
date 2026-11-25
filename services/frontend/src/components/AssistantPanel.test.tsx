@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Api, Blog, ChatReply } from '../lib/api'
 import { renderWithApp } from '../testUtils'
@@ -89,6 +89,21 @@ describe('AssistantPanel', () => {
         content: 'the cat sat',
       }),
     )
+  })
+
+  // Enter that confirms an IME composition (CJK input) must not send the half-typed message.
+  it('does not send on the Enter that confirms an IME composition', async () => {
+    const sendChatMessage = vi.fn().mockResolvedValue(reply())
+    renderPanel(fakeApi({ sendChatMessage }))
+    const box = screen.getByLabelText('Message the assistant')
+    await userEvent.type(box, 'ni hao')
+
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 })
+    expect(sendChatMessage).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() => expect(sendChatMessage).toHaveBeenCalledTimes(1))
   })
 
   // The assistant edits the post server-side, so the editor has to adopt what was stored - or the
